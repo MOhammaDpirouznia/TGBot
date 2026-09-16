@@ -1613,15 +1613,29 @@ class Database:
         except Exception as e:
             logger.warning(f"Error updating support_tickets target_role: {e}")
 
-        # افزودن ستون مانده پس از تراکنش به جدول reseller_transactions
+        # افزودن ستون‌های مانده و کارت مقصد به جدول reseller_transactions
         try:
             cursor.execute("ALTER TABLE reseller_transactions ADD COLUMN balance_after INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE reseller_transactions ADD COLUMN card_id INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE reseller_transactions ADD COLUMN card_balance_after INTEGER DEFAULT 0")
         except Exception:
             pass
 
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
+
+        # تضمین وجود حداقل یک کارت یا حساب بانکی پیش‌فرض برای تمام نمایندگان
+        try:
+            self.ensure_all_resellers_default_cards()
+        except Exception as e:
+            logger.warning(f"Initial ensure_all_resellers_default_cards check: {e}")
 
         # بازیابی جامع اطلاعات در صورت خالی بودن دیتابیس پس از دیپلوی
         try:
@@ -7758,7 +7772,7 @@ class Database:
             conn.close()
 
     def repair_reseller_transactions_balance_after(self):
-        """محاسبه و ترمیم مقدار balance_after برای تراکنش‌های پیشین نمایندگان در صورت خالی بودن"""
+        """محاسبه و ترمیم مقدار balance_after برای تراکنش‌های پیشین نمایندگان در صورت خالی بودن (بدون دستکاری رکوردهای دارای مقدار صحیح)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7772,8 +7786,8 @@ class Database:
                     ORDER BY id ASC
                 """, (r_id,))
                 rows = cursor.fetchall()
-                needs_update = any(r["balance_after"] is None or r["balance_after"] == 0 for r in rows)
-                if not needs_update:
+                null_rows = [r for r in rows if r["balance_after"] is None]
+                if not null_rows:
                     continue
 
                 running_bal = 0
@@ -7781,13 +7795,16 @@ class Database:
                     t_type = r["type"]
                     amt = int(r["amount"] or 0)
                     src = str(r["payment_source"] or "").lower()
-                    if t_type in ("deposit", "refund", "topup"):
-                        running_bal += amt
-                    elif t_type in ("purchase", "renewal", "renew") and src != "credit":
-                        running_bal = max(0, running_bal - amt)
-                    elif t_type in ("settlement",):
-                        running_bal = 0
-                    cursor.execute("UPDATE reseller_transactions SET balance_after = ? WHERE id = ?", (running_bal, r["id"]))
+                    if r["balance_after"] is not None:
+                        running_bal = int(r["balance_after"])
+                    else:
+                        if t_type in ("deposit", "refund", "topup"):
+                            running_bal += amt
+                        elif t_type in ("purchase", "renewal", "renew") and src != "credit":
+                            running_bal = max(0, running_bal - amt)
+                        elif t_type in ("settlement",):
+                            running_bal = 0
+                        cursor.execute("UPDATE reseller_transactions SET balance_after = ? WHERE id = ?", (running_bal, r["id"]))
             conn.commit()
         except Exception as e:
             logger.warning(f"Error repairing reseller balance_after: {e}")
@@ -8982,6 +8999,11 @@ class Database:
                 """, (reseller_id, initial_balance, initial_balance, now))
 
             conn.commit()
+            try:
+                self.ensure_reseller_default_card(reseller_id)
+            except Exception as e_card:
+                logger.warning(f"Could not auto-create default card for reseller {reseller_id}: {e_card}")
+
             return {"success": True, "reseller_id": reseller_id, "referral_code": final_ref_code}
         except sqlite3.IntegrityError:
             return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
@@ -10220,8 +10242,8 @@ class Database:
     def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str = "اشتراک", account_name: str = "",
                                 description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
                                 subscription_id: int = None, selling_price: int = None, profit_margin: int = None,
-                                created_by: str = None):
-        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)، ثبت صادرکننده و ثبت حاشیه سود"""
+                                created_by: str = None, target_card_id: int = None):
+        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)، ثبت صادرکننده، ثبت حاشیه سود و واریز به کارت مقصد مشتری"""
         if not account_name:
             account_name = str(description or "").strip() or f"reseller_{reseller_id}_user"
         if not plan_name:
@@ -10251,16 +10273,46 @@ class Database:
             profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(amount))
             creator_val = str(created_by).strip() if created_by else None
 
+            # تعیین کارت مقصد جهت واریز وجه دریافتی از مشتری
+            eff_card_id = target_card_id
+            if not eff_card_id or int(eff_card_id) <= 0:
+                def_card = self.get_customer_default_account("reseller", reseller_id)
+                if not def_card:
+                    c_res = self.ensure_reseller_default_card(reseller_id)
+                    def_card = c_res.get("card") or {}
+                eff_card_id = def_card.get("id", 0) if def_card else 0
+
+            card_bal_after = 0
+            if selling_val > 0 and eff_card_id and int(eff_card_id) > 0:
+                try:
+                    c_tx = self.add_card_transaction(
+                        card_id=int(eff_card_id),
+                        owner_type="reseller",
+                        reseller_id=reseller_id,
+                        amount=selling_val,
+                        tx_type="deposit",
+                        category="فروش اشتراک",
+                        title=f"فروش اشتراک {account_name} ({plan_name})",
+                        description=f"واریز بهای فروش اشتراک به مبلغ {selling_val:,} تومان",
+                        ref_type="subscription",
+                        ref_id=str(subscription_id or ""),
+                        actor=creator_val or "سیستم"
+                    )
+                    if c_tx.get("success"):
+                        card_bal_after = int(c_tx.get("new_balance") or 0)
+                except Exception as e_ctx:
+                    logger.error(f"Error crediting reseller card #{eff_card_id}: {e_ctx}")
+
             if is_partner:
                 profit_val = selling_val
                 desc_text = f"{description} (شریک سیستم - معاف از هزینه)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase', 0, ?, ?, ?, ?, ?, ?, 'partner', ?, ?, ?)
-                """, (reseller_id, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                    VALUES (?, 'purchase', 0, ?, ?, ?, ?, ?, ?, 'partner', ?, ?, ?, ?, ?)
+                """, (reseller_id, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, (eff_card_id or 0), card_bal_after, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
-                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "partner"}
+                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "partner", "card_id": eff_card_id, "card_balance_after": card_bal_after}
 
             if chosen_source == "wallet":
                 if balance < amount:
@@ -10272,12 +10324,12 @@ class Database:
                 cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                 desc_text = f"{description} (کسر از کیف پول نقدی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
-                """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?, ?, ?)
+                """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, (eff_card_id or 0), card_bal_after, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
-                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet", "card_id": eff_card_id, "card_balance_after": card_bal_after}
 
             elif chosen_source == "credit":
                 if not credit_enabled:
@@ -10290,12 +10342,12 @@ class Database:
                 cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
-                """, (reseller_id, amount, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?, ?, ?)
+                """, (reseller_id, amount, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, (eff_card_id or 0), card_bal_after, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
-                return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
+                return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit", "card_id": eff_card_id, "card_balance_after": card_bal_after}
 
             else:
                 # حالت هوشمند و خودکار (auto)
@@ -10310,12 +10362,12 @@ class Database:
                     bal_after = balance - amount
                     cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
-                    """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, description, subscription_id, creator_val, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?, ?, ?)
+                    """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, description, subscription_id, creator_val, (eff_card_id or 0), card_bal_after, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
-                    return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+                    return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet", "card_id": eff_card_id, "card_balance_after": card_bal_after}
                 else:
                     credit_used = amount - balance
                     cursor.execute("""
@@ -10328,12 +10380,12 @@ class Database:
 
                     desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                        VALUES (?, 'purchase_credit', ?, 0, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
-                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                        VALUES (?, 'purchase_credit', ?, 0, ?, ?, ?, ?, ?, 'credit', ?, ?, ?, ?, ?)
+                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, (eff_card_id or 0), card_bal_after, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
-                    return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
+                    return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": credit_used, "payment_source": "credit", "card_id": eff_card_id, "card_balance_after": card_bal_after}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -10449,9 +10501,12 @@ class Database:
         apply_limit = limit if limit is not None else (None if (year or month or day or date_str) else 100)
 
         query = """
-            SELECT rt.*, s.created_by as sub_creator, s.account_comment as sub_comment
+            SELECT rt.*, s.created_by as sub_creator, s.account_comment as sub_comment,
+                   rc.bank_name as card_bank_name, rc.card_number as card_num, rc.card_holder as card_holder_name,
+                   rc.account_type as card_acc_type
             FROM reseller_transactions rt
             LEFT JOIN subscriptions s ON (rt.subscription_id = s.id OR (rt.subscription_id IS NULL AND rt.account_name IS NOT NULL AND rt.account_name != '' AND rt.account_name = s.account_name))
+            LEFT JOIN reseller_cards rc ON (rt.card_id = rc.id)
             WHERE rt.reseller_id = ?
             ORDER BY rt.created_at DESC, rt.id DESC
         """
@@ -10494,6 +10549,24 @@ class Database:
             selling = int(tx.get("selling_price") or 0)
             profit = int(tx.get("profit_margin") or 0)
             tx["balance_after"] = int(tx.get("balance_after") or 0)
+
+            # استخراج حساب / کارت مقصد و مانده پس از تراکنش
+            c_id = tx.get("card_id") or 0
+            c_bal = tx.get("card_balance_after")
+            b_name = tx.get("card_bank_name")
+            c_num = str(tx.get("card_num") or "")
+            if c_id > 0:
+                card_lbl = b_name or "حساب بانکی"
+                if len(c_num) >= 4 and c_num != "---":
+                    card_lbl += f" (...{c_num[-4:]})"
+                tx["target_card_title"] = card_lbl
+                tx["target_card_balance"] = int(c_bal or 0)
+            elif ttype in ("purchase", "purchase_credit", "renewal", "renew"):
+                tx["target_card_title"] = "حساب پیش‌فرض / نقدی"
+                tx["target_card_balance"] = None
+            else:
+                tx["target_card_title"] = None
+                tx["target_card_balance"] = None
 
             # محاسبه پشتیبان حاشیه سود و قیمت فروش در صورت ثبت نشدن در سوابق
             if profit <= 0 and selling <= 0 and amount > 0 and ttype in ("purchase", "purchase_credit", "renewal", "renew"):
@@ -11608,8 +11681,8 @@ class Database:
                                     cost: int, data_limit: float, duration: int,
                                     instant_activate: bool = True, renewal_type: str = "reset_and_replaced",
                                     payment_source: str = "auto", selling_price: int = None, profit_margin: int = None,
-                                    created_by: str = None):
-        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت، ثبت صادرکننده و ثبت حاشیه سود"""
+                                    created_by: str = None, target_card_id: int = None):
+        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت، ثبت صادرکننده، ثبت حاشیه سود و واریز به کارت مقصد مشتری"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11642,6 +11715,36 @@ class Database:
                 selling_val = int(cost * 100 / (100 - discount_pct)) if discount_pct < 100 else int(cost)
             profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(cost))
             creator_val = str(created_by).strip() if created_by else None
+
+            # تعیین کارت مقصد جهت واریز وجه دریافتی از مشتری
+            eff_card_id = target_card_id
+            if not eff_card_id or int(eff_card_id) <= 0:
+                def_card = self.get_customer_default_account("reseller", reseller_id)
+                if not def_card:
+                    c_res = self.ensure_reseller_default_card(reseller_id)
+                    def_card = c_res.get("card") or {}
+                eff_card_id = def_card.get("id", 0) if def_card else 0
+
+            card_bal_after = 0
+            if selling_val > 0 and eff_card_id and int(eff_card_id) > 0:
+                try:
+                    c_tx = self.add_card_transaction(
+                        card_id=int(eff_card_id),
+                        owner_type="reseller",
+                        reseller_id=reseller_id,
+                        amount=selling_val,
+                        tx_type="deposit",
+                        category="تمدید اشتراک",
+                        title=f"تمدید اشتراک {sub['account_name']} ({plan_name})",
+                        description=f"واریز بهای تمدید اشتراک به مبلغ {selling_val:,} تومان",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        actor=creator_val or "سیستم"
+                    )
+                    if c_tx.get("success"):
+                        card_bal_after = int(c_tx.get("new_balance") or 0)
+                except Exception as e_ctx:
+                    logger.error(f"Error crediting reseller card #{eff_card_id} on renewal: {e_ctx}")
 
             if chosen_source == "wallet":
                 if balance < cost:
@@ -11681,11 +11784,11 @@ class Database:
                     actual_source = "credit"
                     bal_after = 0
 
-            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت، صادرکننده و حاشیه سود
+            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت، صادرکننده، حاشیه سود و کارت مقصد
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (reseller_id, cost, bal_after, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, card_id, card_balance_after, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, bal_after, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, (eff_card_id or 0), card_bal_after, now))
 
             if instant_activate:
                 # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
@@ -11700,7 +11803,7 @@ class Database:
                     WHERE id=? AND reseller_id=?
                 """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, now, now, sub_id, reseller_id))
                 conn.commit()
-                return {"success": True, "mode": "instant", "payment_source": actual_source}
+                return {"success": True, "mode": "instant", "payment_source": actual_source, "card_id": eff_card_id, "card_balance_after": card_bal_after}
             else:
                 # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار بدون لغو بسته‌های قبلی)
                 cursor.execute("SELECT COALESCE(MAX(queue_order), 0) + 1 FROM subscription_queue WHERE subscription_id=? AND status='pending'", (sub_id,))
@@ -13475,8 +13578,78 @@ class Database:
 
     # ─── مدیریت کارت‌های بانکی اختصاصی نماینده (Reseller Cards) ───
 
+    def ensure_reseller_default_card(self, reseller_id: int) -> dict:
+        """
+        تضمین وجود حداقل یک حساب/کارت بانکی پیش‌فرض برای نماینده.
+        اگر نماینده کارتی نداشته باشد، به صورت خودکار یک «حساب بانکی اصلی» ایجاد می‌گردد.
+        """
+        if not reseller_id or int(reseller_id) <= 0:
+            return {"success": False, "error": "شناسه نماینده نامعتبر است."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY is_default DESC, id ASC LIMIT 1", (reseller_id,))
+            card = cursor.fetchone()
+            if card:
+                return {"success": True, "card": dict(card), "created": False}
+
+            # در صورتی که هیچ کارتی وجود ندارد، حساب پیش‌فرض ایجاد می‌شود
+            cursor.execute("SELECT id, name, username, card_number, card_holder, bank_name FROM resellers WHERE id = ?", (reseller_id,))
+            res_row = cursor.fetchone()
+            if not res_row:
+                return {"success": False, "error": "نماینده یافت نشد."}
+
+            res_name = (res_row["name"] or res_row["username"] or f"نماینده #{reseller_id}").strip()
+            c_num = res_row["card_number"] or "---"
+            c_holder = res_row["card_holder"] or res_name
+            b_name = res_row["bank_name"] or "حساب بانکی اصلی"
+            now = get_now_iso()
+
+            cursor.execute("""
+                INSERT INTO reseller_cards (
+                    reseller_id, card_number, card_holder, bank_name,
+                    daily_limit, is_active, created_at, is_default, is_backup,
+                    balance, initial_balance, notes, account_type, is_default_customer
+                ) VALUES (
+                    ?, ?, ?, ?,
+                    50000000, 1, ?, 1, 0,
+                    0, 0, 'حساب پیش‌فرض سیستم جهت ثبت و واریز تراکنش‌های مشتریان (قابل ویرایش توسط نماینده)', 'main_account', 1
+                )
+            """, (reseller_id, c_num, c_holder, b_name, now))
+            card_id = cursor.lastrowid
+            conn.commit()
+
+            cursor.execute("SELECT * FROM reseller_cards WHERE id = ?", (card_id,))
+            new_card = cursor.fetchone()
+            logger.info(f"Auto-created default bank account #{card_id} for reseller {reseller_id} ({res_name})")
+            return {"success": True, "card": dict(new_card) if new_card else {}, "created": True}
+        except Exception as e:
+            logger.error(f"Error in ensure_reseller_default_card for reseller {reseller_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def ensure_all_resellers_default_cards(self):
+        """تضمین وجود کارت یا حساب پیش‌فرض برای تمام نمایندگان موجود در سیستم"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id FROM resellers")
+            r_ids = [r[0] for r in cursor.fetchall() if r[0]]
+            for r_id in r_ids:
+                self.ensure_reseller_default_card(r_id)
+        except Exception as e:
+            logger.warning(f"Error ensuring all resellers default cards: {e}")
+        finally:
+            conn.close()
+
     def get_reseller_cards(self, reseller_id: int) -> list:
-        """لیست تمام کارت‌های بانکی ثبت‌شده توسط نماینده"""
+        """لیست تمام کارت‌های بانکی ثبت‌شده توسط نماینده با اطمینان از وجود حداقل یک حساب پیش‌فرض"""
+        try:
+            self.ensure_reseller_default_card(reseller_id)
+        except Exception as e:
+            logger.warning(f"ensure_reseller_default_card warning for reseller {reseller_id}: {e}")
         conn = self.get_connection()
         cursor = conn.cursor()
         try:

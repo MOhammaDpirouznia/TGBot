@@ -13128,12 +13128,22 @@ def reseller_create_user():
         profit_margin = 0 if payment_status in ("unpaid", "debtor") else max(0, customer_selling_price - final_price)
         reseller_selling_price = 0 if payment_status in ("unpaid", "debtor") else customer_selling_price
         reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
+        
+        payment_dest = request.form.get("payment_destination", "cash").strip()
+        target_c_id = None
+        if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
+            try:
+                target_c_id = int(re.sub(r"\D", "", payment_dest))
+            except Exception:
+                target_c_id = None
+
         deduct_res = db.deduct_reseller_balance(
             reseller_id, final_price, plan_title, account_name,
             payment_source=payment_source,
             selling_price=reseller_selling_price,
             profit_margin=profit_margin,
-            created_by=reseller_creator
+            created_by=reseller_creator,
+            target_card_id=target_c_id
         )
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
@@ -13224,7 +13234,7 @@ def reseller_create_user():
                     reseller_id=reseller_id,
                     subscription_id=sub_id
                 )
-                if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
+                if not deduct_res.get("card_id") and (payment_dest.startswith("card_") or payment_dest.startswith("account_")):
                     try:
                         c_id = int(re.sub(r"\D", "", payment_dest))
                         db.add_card_transaction(
@@ -14661,6 +14671,11 @@ def reseller_transactions():
     current_j_day = now_j.day
 
     reseller_id = session.get("reseller_id")
+    if reseller_id:
+        try:
+            db.ensure_reseller_default_card(reseller_id)
+        except Exception:
+            pass
 
     req_year = request.args.get("year", "").strip()
     req_month = request.args.get("month", "").strip()

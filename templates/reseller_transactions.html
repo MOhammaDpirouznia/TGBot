@@ -689,13 +689,14 @@
                         <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                         <th class="sortable-th" data-column="1">نوع تراکنش</th>
                         <th class="sortable-th" data-column="2">خرید عمده (تراکنش)</th>
-                        <th class="sortable-th" data-column="3">مانده پس از تراکنش</th>
-                        <th class="sortable-th" data-column="4">نوع فروش</th>
-                        <th class="sortable-th" data-column="5">حاشیه سود</th>
-                        <th class="sortable-th" data-column="6">پلن / نام کاربری مشتری</th>
-                        <th class="sortable-th" data-column="7">صادر کننده</th>
-                        <th class="sortable-th" data-column="8">توضیحات</th>
-                        <th class="sortable-th" data-column="9">تاریخ و زمان</th>
+                        <th class="sortable-th" data-column="3"><i class="fas fa-wallet text-primary me-1"></i>مانده کیف پول پنل</th>
+                        <th class="sortable-th" data-column="4"><i class="fas fa-credit-card text-success me-1"></i>حساب مقصد و مانده</th>
+                        <th class="sortable-th" data-column="5">نوع فروش</th>
+                        <th class="sortable-th" data-column="6">حاشیه سود</th>
+                        <th class="sortable-th" data-column="7">پلن / نام کاربری مشتری</th>
+                        <th class="sortable-th" data-column="8">صادر کننده</th>
+                        <th class="sortable-th" data-column="9">توضیحات</th>
+                        <th class="sortable-th" data-column="10">تاریخ و زمان</th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
@@ -722,7 +723,27 @@
                             </strong>
                         </td>
                         <td data-value="{{ tx.get('balance_after') or 0 }}">
-                            <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</span>
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <i class="fas fa-wallet text-primary small"></i>
+                                <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} ت</span>
+                            </div>
+                        </td>
+                        <td data-value="{{ tx.get('target_card_balance') or 0 }}">
+                            {% if tx.get('target_card_title') %}
+                                <div class="small">
+                                    <span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1 mb-1">
+                                        <i class="fas fa-credit-card text-success"></i>
+                                        <span>{{ tx.get('target_card_title') }}</span>
+                                    </span>
+                                    {% if tx.get('target_card_balance') is not none %}
+                                    <div class="font-monospace text-success small fw-semibold">
+                                        مانده: {{ "{:,}".format(tx.get('target_card_balance')) }} ت
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <span class="text-muted small">—</span>
+                            {% endif %}
                         </td>
                         <td data-value="{{ tx.get('sale_type_title') or '' }}">
                             {% if tx.get('sale_type_title') and tx['sale_type_title'] != '-' %}
@@ -769,7 +790,7 @@
                     {% endfor %}
                     {% if not transactions %}
                     <tr id="txEmptyRow">
-                        <td colspan="11" class="text-center py-4 text-muted">تراکنشی در این دوره زمانی ثبت نشده است.</td>
+                        <td colspan="12" class="text-center py-4 text-muted">تراکنشی در این دوره زمانی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -854,7 +875,7 @@
         if (totalItems === 0 && allRows.length > 0) {
             const noRow = document.createElement('tr');
             noRow.className = 'tx-no-search-results';
-            noRow.innerHTML = '<td colspan="11" class="text-center py-4 text-muted"><i class="fas fa-search-minus fa-2x mb-2 d-block text-secondary"></i> موردی با این مشخصات در تراکنش‌ها یافت نشد.</td>';
+            noRow.innerHTML = '<td colspan="12" class="text-center py-4 text-muted"><i class="fas fa-search-minus fa-2x mb-2 d-block text-secondary"></i> موردی با این مشخصات در تراکنش‌ها یافت نشد.</td>';
             tbody.appendChild(noRow);
         }
 
@@ -1012,9 +1033,20 @@
                         </strong>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center bg-light">
-                        <span class="text-muted fw-semibold">مانده کیف پول پس از تراکنش:</span>
+                        <span class="text-muted fw-semibold"><i class="fas fa-wallet text-primary me-1"></i>مانده کیف پول پنل پس از تراکنش:</span>
                         <strong class="text-dark font-monospace">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</strong>
                     </div>
+                    {% if tx.get('target_card_title') %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                        <span class="text-muted fw-semibold"><i class="fas fa-credit-card text-success me-1"></i>حساب/کارت مقصد واریز:</span>
+                        <div class="text-end">
+                            <span class="badge bg-white text-dark border"><i class="fas fa-credit-card text-success me-1"></i>{{ tx.get('target_card_title') }}</span>
+                            {% if tx.get('target_card_balance') is not none %}
+                            <div class="font-monospace text-success small fw-bold mt-1">مانده کارت پس از واریز: {{ "{:,}".format(tx.get('target_card_balance')) }} تومان</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
                     {% if tx.get('selling_price') and tx['selling_price'] > 0 %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">قیمت فروش به مشتری (خرده‌فروشی):</span>
