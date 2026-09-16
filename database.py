@@ -5368,6 +5368,7 @@ class Database:
                     "title": str(b.get("title", "")).strip(),
                     "row": int(b.get("row", 0)),
                     "col": int(b.get("col", 0)),
+                    "style": str(b.get("style", "default")).strip(),
                     "is_enabled": bool(b.get("is_enabled", True)),
                     "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
                     "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
@@ -5417,6 +5418,7 @@ class Database:
                     "title": str(b.get("title", "")).strip(),
                     "row": int(b.get("row", 0)),
                     "col": int(b.get("col", 0)),
+                    "style": str(b.get("style", "default")).strip(),
                     "is_enabled": bool(b.get("is_enabled", True)),
                     "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
                     "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
@@ -5433,6 +5435,154 @@ class Database:
         defaults = copy.deepcopy(self.DEFAULT_RESELLER_BOT_MENU_BUTTONS)
         self.set_setting("reseller_bot_menu_buttons_config", defaults)
         return defaults
+
+    DEFAULT_BUNDLE_BOT_MENU_BUTTONS = [
+        {
+            "id": "bsb_bundles",
+            "title": "📦 مشاهده و خرید بسته‌های اعتباری",
+            "description": "مشاهده لیست بسته‌های اعتباری شارژ و بونوس‌ها و خرید بسته",
+            "row": 0,
+            "col": 0,
+            "style": "success",
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش خرید بسته‌ها موقتاً غیرفعال است.",
+        },
+        {
+            "id": "bsb_wallet",
+            "title": "💼 وضعیت موجودی و کیف پول",
+            "description": "مشاهده موجودی نقدی و اعتبار نمایندگی",
+            "row": 1,
+            "col": 0,
+            "style": "primary",
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش کیف پول موقتاً در دسترس نیست.",
+        },
+        {
+            "id": "bsb_history",
+            "title": "🧾 سوابق خریدهای من",
+            "description": "مشاهده تاریخچه تراکنش‌ها و بسته‌های خریداری شده",
+            "row": 1,
+            "col": 1,
+            "style": "default",
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ سوابق خرید موقتاً غیرفعال است.",
+        },
+        {
+            "id": "bsb_discount",
+            "title": "🎟️ ثبت کد تخفیف بسته",
+            "description": "اعمال کد تخفیف و پروموشن برای خرید بسته‌ها",
+            "row": 2,
+            "col": 0,
+            "style": "default",
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ ثبت کد تخفیف موقتاً غیرفعال است.",
+        },
+        {
+            "id": "bsb_support",
+            "title": "🎧 ارتباط و پشتیبانی مدیریت",
+            "description": "ارتباط مستقیم با مدیریت فروش بسته‌ها",
+            "row": 2,
+            "col": 1,
+            "style": "default",
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ پشتیبانی موقتاً غیرفعال است.",
+        },
+        {
+            "id": "bsb_admin_menu",
+            "title": "🔧 ورود به پنل مدیریت فروش بسته‌ها",
+            "description": "ورود به بخش مدیریت برای مدیران کل",
+            "row": 3,
+            "col": 0,
+            "style": "danger",
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ دسترسی محدود به ادمین.",
+        },
+    ]
+
+    def get_bundle_bot_menu_buttons(self) -> List[dict]:
+        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات فروش بسته نمایندگی"""
+        saved = self.get_setting("bundle_bot_menu_buttons_config")
+        if not saved or not isinstance(saved, list):
+            return copy.deepcopy(self.DEFAULT_BUNDLE_BOT_MENU_BUTTONS)
+
+        saved_dict = {b["id"]: b for b in saved if isinstance(b, dict) and "id" in b}
+        merged = []
+        for def_btn in self.DEFAULT_BUNDLE_BOT_MENU_BUTTONS:
+            b_id = def_btn["id"]
+            if b_id in saved_dict:
+                merged_btn = copy.deepcopy(def_btn)
+                merged_btn.update(saved_dict[b_id])
+                if "style" not in merged_btn:
+                    merged_btn["style"] = def_btn.get("style", "default")
+                merged.append(merged_btn)
+            else:
+                merged.append(copy.deepcopy(def_btn))
+
+        merged.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
+        return merged
+
+    def save_bundle_bot_menu_buttons(self, buttons: List[dict]) -> bool:
+        """ذخیره تنظیمات، رنگ و چیدمان دکمه‌های منوی ربات فروش بسته نمایندگی"""
+        try:
+            clean_buttons = []
+            for b in buttons:
+                if not isinstance(b, dict) or "id" not in b:
+                    continue
+                clean_buttons.append({
+                    "id": str(b.get("id")),
+                    "title": str(b.get("title", "")).strip(),
+                    "row": int(b.get("row", 0)),
+                    "col": int(b.get("col", 0)),
+                    "style": str(b.get("style", "default")).strip(),
+                    "is_enabled": bool(b.get("is_enabled", True)),
+                    "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
+                    "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
+                    "description": str(b.get("description", "")),
+                })
+            self.set_setting("bundle_bot_menu_buttons_config", clean_buttons)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving bundle bot menu buttons: {e}")
+            return False
+
+    def reset_bundle_bot_menu_buttons(self) -> List[dict]:
+        """بازنشانی تنظیمات دکمه‌های ربات فروش بسته به حالت پیش‌فرض اولیه"""
+        defaults = copy.deepcopy(self.DEFAULT_BUNDLE_BOT_MENU_BUTTONS)
+        self.set_setting("bundle_bot_menu_buttons_config", defaults)
+        return defaults
+
+    def get_bundle_bot_menu_keyboard_rows(self, is_admin: bool = False) -> List[List[dict]]:
+        """ساخت سطرهای چیدمان دکمه‌های منوی ربات فروش بسته بر اساس سطر، ستون و وضعیت فعال بودن"""
+        buttons = self.get_bundle_bot_menu_buttons()
+        visible_buttons = []
+        for b in buttons:
+            b_id = b.get("id")
+            if b_id == "bsb_admin_menu" and not is_admin:
+                continue
+
+            if b.get("is_enabled", True):
+                visible_buttons.append(copy.deepcopy(b))
+            elif b.get("disabled_behavior") == "show_disabled":
+                b_copy = copy.deepcopy(b)
+                visible_buttons.append(b_copy)
+
+        visible_buttons.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
+
+        rows_dict = {}
+        for b in visible_buttons:
+            r = int(b.get("row", 0))
+            if r not in rows_dict:
+                rows_dict[r] = []
+            rows_dict[r].append(b)
+
+        sorted_rows = [rows_dict[r] for r in sorted(rows_dict.keys())]
+        return sorted_rows
 
     def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False) -> List[List[dict]]:
         """ساخت سطرهای چیدمان دکمه‌های منو بر اساس سطر و ستون و وضعیت فعال بودن"""
@@ -15112,57 +15262,75 @@ class Database:
 
     DEFAULT_SUB_MENUS = {
         "payment": [
-            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1},
-            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2},
-            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3},
-            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4}
+            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
+            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"}
         ],
         "payment_methods": [
-            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1},
-            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2},
-            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3},
-            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4}
+            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
+            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"}
         ],
         "support": [
-            {"id": "ticket_new", "title": "📝 ارسال تیکت جدید", "enabled": True, "row": 0, "col": 0, "order": 1},
-            {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 0, "col": 1, "order": 2},
-            {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 1, "col": 0, "order": 3}
+            {"id": "ticket_new", "title": "📝 ارسال تیکت جدید", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"}
         ],
         "tutorials": [
-            {"id": "android", "title": "🤖 آموزش اندروید (v2rayNG)", "enabled": True, "row": 0, "col": 0, "order": 1},
-            {"id": "ios", "title": "🍏 آموزش آیفون (V2Box/Streisand)", "enabled": True, "row": 0, "col": 1, "order": 2},
-            {"id": "windows", "title": "💻 آموزش ویندوز (v2rayN)", "enabled": True, "row": 1, "col": 0, "order": 3},
-            {"id": "troubleshoot", "title": "🛠️ حل مشکلات و عیب‌یابی اتصال", "enabled": True, "row": 1, "col": 1, "order": 4}
+            {"id": "android", "title": "🤖 آموزش اندروید (v2rayNG)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "default"},
+            {"id": "ios", "title": "🍏 آموزش آیفون (V2Box/Streisand)", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "windows", "title": "💻 آموزش ویندوز (v2rayN)", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"},
+            {"id": "troubleshoot", "title": "🛠️ حل مشکلات و عیب‌یابی اتصال", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "danger"}
         ],
         "wallet": [
-            {"id": "charge_card", "title": "💳 شارژ با کارت به کارت", "enabled": True, "row": 0, "col": 0, "order": 1},
-            {"id": "charge_crypto", "title": "💎 شارژ با تتر و کریپتو", "enabled": True, "row": 0, "col": 1, "order": 2},
-            {"id": "wallet_history", "title": "🧾 سوابق و گردش کیف پول", "enabled": True, "row": 1, "col": 0, "order": 3}
+            {"id": "charge_card", "title": "💳 شارژ با کارت به کارت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "charge_crypto", "title": "💎 شارژ با تتر و کریپتو", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "wallet_history", "title": "🧾 سوابق و گردش کیف پول", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"}
+        ],
+        "bundle_payment": [
+            {"id": "copy_card", "title": "💳 کپی شماره کارت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "submit_receipt", "title": "📸 ارسال تصویر فیش واریزی", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "online_gateway", "title": "⚡ درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
+            {"id": "cancel", "title": "❌ انصراف و بازگشت", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "danger"}
+        ],
+        "bundle_support": [
+            {"id": "admin_chat", "title": "🎧 ارتباط مستقیم با مدیریت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "faq", "title": "❓ راهنما و سوالات متداول", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "back", "title": "🔙 بازگشت به منو", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "danger"}
         ]
     }
 
     def _parse_sub_menu_args(self, arg1, arg2=None, is_reseller=False, reseller_id=None):
-        if str(arg1).lower() in ("admin", "reseller"):
-            is_reseller = (str(arg1).lower() == "reseller")
-            menu_key = str(arg2 or "payment").strip().lower()
+        bot_raw = str(arg1 or "").strip().lower()
+        if bot_raw in ("admin", "reseller", "bundle", "bundle_bot"):
+            bot_kind = "bundle" if bot_raw in ("bundle", "bundle_bot") else bot_raw
+            menu_key = str(arg2 or ("bundle_payment" if bot_kind == "bundle" else "payment")).strip().lower()
+            return menu_key, bot_kind, reseller_id
         else:
             menu_key = str(arg1 or "payment").strip().lower()
-            if isinstance(arg2, bool):
-                is_reseller = arg2
+            bot_kind = "reseller" if is_reseller else "admin"
         if menu_key == "payment_methods":
             menu_key = "payment"
-        return menu_key, is_reseller, reseller_id
+        return menu_key, bot_kind, reseller_id
 
     def get_sub_menu_config(self, *args, **kwargs) -> list:
-        """دریافت تنظیمات و چیدمان یک زیرمنو برای ربات مدیریت یا نماینده"""
+        """دریافت تنظیمات، رنگ و چیدمان یک زیرمنو برای ربات مدیریت، نماینده یا ربات فروش بسته"""
         arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
         arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
         is_reseller = kwargs.get("is_reseller", False)
         reseller_id = kwargs.get("reseller_id", None)
-        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+        menu_key, bot_kind, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
 
         defaults = self.DEFAULT_SUB_MENUS.get(menu_key, [])
-        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        if bot_kind == "bundle":
+            prefix = f"sub_menu_{menu_key}_bundle"
+        elif bot_kind == "reseller":
+            prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if reseller_id else f"sub_menu_{menu_key}_reseller"
+        else:
+            prefix = f"sub_menu_{menu_key}_admin"
+
         saved_raw = self.get_setting(prefix)
         if saved_raw:
             try:
@@ -15173,13 +15341,17 @@ class Database:
                             it["row"] = idx // 2
                         if "col" not in it:
                             it["col"] = idx % 2
+                        if "style" not in it:
+                            # یافتن پیش‌فرض استایل
+                            matching_def = next((d for d in defaults if d.get("id") == it.get("id")), {})
+                            it["style"] = matching_def.get("style", "default")
                     return saved
             except Exception:
                 pass
         return copy.deepcopy(defaults)
 
     def save_sub_menu_config(self, *args, **kwargs) -> bool:
-        """ذخیره تنظیمات و ترتیب زیرمنوهای ربات"""
+        """ذخیره تنظیمات، رنگ و ترتیب زیرمنوهای ربات"""
         arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
         arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("config", []))
         config = args[2] if len(args) > 2 else kwargs.get("config", [])
@@ -15188,9 +15360,15 @@ class Database:
             arg2 = None
         is_reseller = kwargs.get("is_reseller", False)
         reseller_id = kwargs.get("reseller_id", None)
-        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+        menu_key, bot_kind, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
 
-        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        if bot_kind == "bundle":
+            prefix = f"sub_menu_{menu_key}_bundle"
+        elif bot_kind == "reseller":
+            prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if reseller_id else f"sub_menu_{menu_key}_reseller"
+        else:
+            prefix = f"sub_menu_{menu_key}_admin"
+
         try:
             self.set_setting(prefix, json.dumps(config, ensure_ascii=False))
             return True
@@ -15204,10 +15382,16 @@ class Database:
         arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
         is_reseller = kwargs.get("is_reseller", False)
         reseller_id = kwargs.get("reseller_id", None)
-        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+        menu_key, bot_kind, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
 
         defaults = copy.deepcopy(self.DEFAULT_SUB_MENUS.get(menu_key, []))
-        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        if bot_kind == "bundle":
+            prefix = f"sub_menu_{menu_key}_bundle"
+        elif bot_kind == "reseller":
+            prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if reseller_id else f"sub_menu_{menu_key}_reseller"
+        else:
+            prefix = f"sub_menu_{menu_key}_admin"
+
         self.set_setting(prefix, json.dumps(defaults, ensure_ascii=False))
         return defaults
 

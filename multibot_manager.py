@@ -407,25 +407,31 @@ class ResellerBotInstance:
                 for b in r:
                     b_id = b.get("id")
                     b_title = b.get("title") or t(f"btn_{b_id}", lang)
+                    b_style = b.get("style")
+                    style_arg = b_style if b_style in ("primary", "success", "danger") else None
+                    btn_kwargs = {}
+                    if style_arg:
+                        btn_kwargs["style"] = style_arg
+
                     if b_id in ("mini_app", "webapp"):
                         from telegram_menu_helper import get_miniapp_url
                         full_app_url = get_miniapp_url(reseller_id=r_id, user_id=user_id)
                         if full_app_url:
-                            row_btns.append(KeyboardButton(b_title, web_app=WebAppInfo(url=full_app_url)))
+                            row_btns.append(KeyboardButton(b_title, web_app=WebAppInfo(url=full_app_url), **btn_kwargs))
                         else:
-                            row_btns.append(KeyboardButton(b_title))
+                            row_btns.append(KeyboardButton(b_title, **btn_kwargs))
                     else:
-                        row_btns.append(KeyboardButton(b_title))
+                        row_btns.append(KeyboardButton(b_title, **btn_kwargs))
                 if row_btns:
                     kb_list.append(row_btns)
             if not kb_list:
                 kb_list = [
-                    [KeyboardButton("🛍️ خرید اشتراک"), KeyboardButton("👤 اشتراک‌های من")],
+                    [KeyboardButton("🛍️ خرید اشتراک", style="success"), KeyboardButton("👤 اشتراک‌های من", style="primary")],
                     [KeyboardButton("💳 کیف پول و شارژ"), KeyboardButton("🎧 پشتیبانی و تیکت")],
                     [KeyboardButton("📖 راهنمای اتصال"), KeyboardButton("🛠️ حل مشکلات اتصال")]
                 ]
             if is_reseller_admin:
-                kb_list.append([KeyboardButton("🔧 پنل مدیریت نماینده")])
+                kb_list.append([KeyboardButton("🔧 پنل مدیریت نماینده", style="danger")])
             return ReplyKeyboardMarkup(kb_list, resize_keyboard=True)
 
         async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -952,9 +958,9 @@ class ResellerBotInstance:
                 msg += "⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>"
 
                 buttons = [
-                    [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num))],
-                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)))],
-                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                    [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num), style="primary")],
+                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)), style="primary")],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style="danger")]
                 ]
 
                 kb = InlineKeyboardMarkup(buttons)
@@ -3993,7 +3999,7 @@ class ResellerBotInstance:
                         f"🔗 <b>لینک اتصال:</b>\n<code>{sub_url}</code>"
                     )
                     kb = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url))],
+                        [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url), style="primary")],
                         [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]
                     ])
                     qr_bytes = generate_qr_code_bytes(sub_url)

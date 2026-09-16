@@ -4336,16 +4336,18 @@ def bot_menu_settings():
                 title = request.form.get(f"title_{i_id}", it.get("title", ""))
                 row = int(request.form.get(f"row_{i_id}", it.get("row", 0)))
                 col = int(request.form.get(f"col_{i_id}", it.get("col", 0)))
+                style = request.form.get(f"style_{i_id}", it.get("style", "default")).strip()
                 enabled = request.form.get(f"enabled_{i_id}") == "1"
                 updated_items.append({
                     **it,
                     "title": title.strip(),
                     "row": row,
                     "col": col,
+                    "style": style,
                     "enabled": enabled
                 })
             db.save_sub_menu_config(sub_bot_type, menu_key, updated_items)
-            flash("چیدمان زیرمنو با موفقیت ذخیره شد.", "success")
+            flash("چیدمان و استایل زیرمنو با موفقیت ذخیره شد.", "success")
             return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
 
         elif action == "reset_sub_menu":
@@ -4355,14 +4357,15 @@ def bot_menu_settings():
             flash("چیدمان زیرمنو به حالت پیش‌فرض بازنشانی گردید.", "info")
             return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
 
-        elif bot_type == "reseller":
-            all_buttons = db.get_reseller_bot_menu_buttons()
+        elif bot_type in ("bundle", "bundle_bot"):
+            all_buttons = db.get_bundle_bot_menu_buttons()
             updated_list = []
             for btn in all_buttons:
                 b_id = btn["id"]
                 title = request.form.get(f"title_{b_id}", btn.get("title", ""))
                 row = int(request.form.get(f"row_{b_id}", btn.get("row", 0)))
                 col = int(request.form.get(f"col_{b_id}", btn.get("col", 0)))
+                style = request.form.get(f"style_{b_id}", btn.get("style", "default")).strip()
                 is_enabled = request.form.get(f"enabled_{b_id}") == "1"
                 disabled_behavior = request.form.get(f"behavior_{b_id}", btn.get("disabled_behavior", "show_disabled"))
                 disabled_msg = request.form.get(f"dis_msg_{b_id}", btn.get("disabled_message", ""))
@@ -4371,6 +4374,33 @@ def bot_menu_settings():
                     "title": title.strip(),
                     "row": row,
                     "col": col,
+                    "style": style,
+                    "is_enabled": is_enabled,
+                    "disabled_behavior": disabled_behavior,
+                    "disabled_message": disabled_msg.strip(),
+                    "description": btn.get("description", ""),
+                })
+            db.save_bundle_bot_menu_buttons(updated_list)
+            flash("تنظیمات و چیدمان دکمه‌های «ربات فروش بسته نمایندگی» با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab="bundle_menu"))
+        elif bot_type == "reseller":
+            all_buttons = db.get_reseller_bot_menu_buttons()
+            updated_list = []
+            for btn in all_buttons:
+                b_id = btn["id"]
+                title = request.form.get(f"title_{b_id}", btn.get("title", ""))
+                row = int(request.form.get(f"row_{b_id}", btn.get("row", 0)))
+                col = int(request.form.get(f"col_{b_id}", btn.get("col", 0)))
+                style = request.form.get(f"style_{b_id}", btn.get("style", "default")).strip()
+                is_enabled = request.form.get(f"enabled_{b_id}") == "1"
+                disabled_behavior = request.form.get(f"behavior_{b_id}", btn.get("disabled_behavior", "show_disabled"))
+                disabled_msg = request.form.get(f"dis_msg_{b_id}", btn.get("disabled_message", ""))
+                updated_list.append({
+                    "id": b_id,
+                    "title": title.strip(),
+                    "row": row,
+                    "col": col,
+                    "style": style,
                     "is_enabled": is_enabled,
                     "disabled_behavior": disabled_behavior,
                     "disabled_message": disabled_msg.strip(),
@@ -4387,6 +4417,7 @@ def bot_menu_settings():
                 title = request.form.get(f"title_{b_id}", btn.get("title", ""))
                 row = int(request.form.get(f"row_{b_id}", btn.get("row", 0)))
                 col = int(request.form.get(f"col_{b_id}", btn.get("col", 0)))
+                style = request.form.get(f"style_{b_id}", btn.get("style", "default")).strip()
                 is_enabled = request.form.get(f"enabled_{b_id}") == "1"
                 disabled_behavior = request.form.get(f"behavior_{b_id}", btn.get("disabled_behavior", "show_disabled"))
                 disabled_msg = request.form.get(f"dis_msg_{b_id}", btn.get("disabled_message", ""))
@@ -4395,6 +4426,7 @@ def bot_menu_settings():
                     "title": title.strip(),
                     "row": row,
                     "col": col,
+                    "style": style,
                     "is_enabled": is_enabled,
                     "disabled_behavior": disabled_behavior,
                     "disabled_message": disabled_msg.strip(),
@@ -4447,10 +4479,15 @@ def bot_menu_settings():
     except Exception:
         bundle_is_running = False
 
+    bundle_bot_buttons = db.get_bundle_bot_menu_buttons()
+    bundle_bot_menu_rows = db.get_bundle_bot_menu_keyboard_rows(is_admin=True)
+
     # زیرمنوها (روش‌های پرداخت، پشتیبانی، آموزش، کیف پول)
     sub_menu_keys = ["payment", "support", "tutorials", "wallet"]
     admin_sub_menus = {k: db.get_sub_menu_config("admin", k) for k in sub_menu_keys}
     reseller_sub_menus = {k: db.get_sub_menu_config("reseller", k) for k in sub_menu_keys}
+    bundle_sub_menu_keys = ["bundle_payment", "bundle_support"]
+    bundle_sub_menus = {k: db.get_sub_menu_config("bundle", k) for k in bundle_sub_menu_keys}
 
     return render_template(
         "bot_menu_settings.html",
@@ -4458,6 +4495,8 @@ def bot_menu_settings():
         admin_menu_rows=admin_menu_rows,
         reseller_buttons=reseller_buttons,
         reseller_menu_rows=reseller_menu_rows,
+        bundle_bot_buttons=bundle_bot_buttons,
+        bundle_bot_menu_rows=bundle_bot_menu_rows,
         tutorial_domain=tutorial_domain,
         troubleshoot_domain=troubleshoot_domain,
         active_tab=active_tab,
@@ -4469,7 +4508,8 @@ def bot_menu_settings():
         bundle_bot_admins=bundle_bot_admins,
         bundle_is_running=bundle_is_running,
         admin_sub_menus=admin_sub_menus,
-        reseller_sub_menus=reseller_sub_menus
+        reseller_sub_menus=reseller_sub_menus,
+        bundle_sub_menus=bundle_sub_menus
     )
 
 
@@ -4478,7 +4518,11 @@ def bot_menu_settings():
 def admin_bot_menu_reset():
     """بازنشانی دکمه‌های منوی ربات به چیدمان و نام‌های پیش‌فرض"""
     reset_type = request.args.get("type") or request.form.get("type", "admin")
-    if reset_type == "reseller":
+    if reset_type in ("bundle", "bundle_bot"):
+        db.reset_bundle_bot_menu_buttons()
+        flash("چیدمان و دکمه‌های «ربات فروش بسته نمایندگی» با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
+        return redirect(url_for("bot_menu_settings", tab="bundle_menu"))
+    elif reset_type == "reseller":
         db.reset_reseller_bot_menu_buttons()
         flash("چیدمان و دکمه‌های منوی ربات نمایندگان با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
         return redirect(url_for("bot_menu_settings", tab="reseller"))

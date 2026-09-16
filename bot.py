@@ -2171,9 +2171,9 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 ⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>
 """
             keyboard = [
-                [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_number))],
-                [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_amount)))],
-                [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+                [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_number), style="primary")],
+                [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_amount)), style="primary")],
+                [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
@@ -5303,7 +5303,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"`{sub_url}`"
             )
             kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url))],
+                [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url), style="primary")],
                 [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]
             ])
             if qr_bytes:
@@ -7034,7 +7034,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"🔗 **لینک اتصال:**\n`{sub_url}`"
                 )
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url))],
+                    [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url), style="primary")],
                     [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]
                 ])
                 qr_bytes = generate_qr_code_bytes(sub_url)

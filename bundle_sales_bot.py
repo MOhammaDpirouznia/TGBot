@@ -85,20 +85,52 @@ def get_reseller_for_user(user_id: int) -> Optional[dict]:
 
 
 def get_bundle_sales_main_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """کیبورد اصلی صفحه اول برای نماینده"""
-    keyboard = [
-        [InlineKeyboardButton("📦 مشاهده و خرید بسته‌های اعتباری", callback_data="bsb_bundles")],
-        [
-            InlineKeyboardButton("💼 وضعیت موجودی و کیف پول", callback_data="bsb_wallet"),
-            InlineKeyboardButton("🧾 سوابق خریدهای من", callback_data="bsb_history")
-        ],
-        [
-            InlineKeyboardButton("🎟️ ثبت کد تخفیف بسته", callback_data="bsb_discount"),
-            InlineKeyboardButton("🎧 ارتباط و پشتیبانی مدیریت", callback_data="bsb_support")
+    """کیبورد اصلی صفحه اول برای نماینده با چیدمان و رنگ‌های داینامیک از پنل مدیریت"""
+    is_admin = is_user_super_admin(user_id)
+    try:
+        menu_rows = db.get_bundle_bot_menu_keyboard_rows(is_admin=is_admin)
+    except Exception:
+        menu_rows = None
+
+    keyboard = []
+    if menu_rows:
+        cb_map = {
+            "bsb_bundles": "bsb_bundles",
+            "bsb_wallet": "bsb_wallet",
+            "bsb_history": "bsb_history",
+            "bsb_discount": "bsb_discount",
+            "bsb_support": "bsb_support",
+            "bsb_admin_menu": "bsb_admin_menu",
+        }
+        for row in menu_rows:
+            row_btns = []
+            for b in row:
+                b_id = b.get("id")
+                title = b.get("title")
+                cb = cb_map.get(b_id, b_id)
+                b_style = b.get("style")
+                style_arg = b_style if b_style in ("primary", "success", "danger") else None
+                btn_kwargs = {}
+                if style_arg:
+                    btn_kwargs["style"] = style_arg
+                row_btns.append(InlineKeyboardButton(title, callback_data=cb, **btn_kwargs))
+            if row_btns:
+                keyboard.append(row_btns)
+
+    if not keyboard:
+        keyboard = [
+            [InlineKeyboardButton("📦 مشاهده و خرید بسته‌های اعتباری", callback_data="bsb_bundles", style="success")],
+            [
+                InlineKeyboardButton("💼 وضعیت موجودی و کیف پول", callback_data="bsb_wallet", style="primary"),
+                InlineKeyboardButton("🧾 سوابق خریدهای من", callback_data="bsb_history")
+            ],
+            [
+                InlineKeyboardButton("🎟️ ثبت کد تخفیف بسته", callback_data="bsb_discount"),
+                InlineKeyboardButton("🎧 ارتباط و پشتیبانی مدیریت", callback_data="bsb_support")
+            ]
         ]
-    ]
-    if is_user_super_admin(user_id):
-        keyboard.append([InlineKeyboardButton("🔧 ورود به پنل مدیریت فروش بسته‌ها", callback_data="bsb_admin_menu")])
+        if is_admin:
+            keyboard.append([InlineKeyboardButton("🔧 ورود به پنل مدیریت فروش بسته‌ها", callback_data="bsb_admin_menu", style="danger")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -319,9 +351,9 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 """
         context.user_data["pending_bundle_id"] = bundle_id
         buttons = [
-            [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_card))],
-            [InlineKeyboardButton("📸 ارسال تصویر فیش واریزی", callback_data=f"bsb_submit_receipt_{bundle_id}")],
-            [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data="bsb_bundles")]
+            [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_card), style="primary")],
+            [InlineKeyboardButton("📸 ارسال تصویر فیش واریزی", callback_data=f"bsb_submit_receipt_{bundle_id}", style="success")],
+            [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data="bsb_bundles", style="danger")]
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
@@ -332,7 +364,7 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["awaiting_bundle_receipt"] = bundle_id
         await query.edit_message_text(
             "📸 **لطفاً تصویر فیش واریزی یا شماره پیگیری خود را ارسال فرمایید:**\n\n(عکس یا متن حاوی کد پیگیری را در چت بفرستید)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ انصراف", callback_data="bsb_bundles")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ انصراف", callback_data="bsb_bundles", style="danger")]])
         )
         return
 

@@ -432,16 +432,16 @@
         <!-- تب‌های فرعی چیدمان: ربات مدیریت و ربات نمایندگان -->
         <ul class="nav nav-tabs mb-4 nav-justified gap-2 p-1 bg-white rounded-3 shadow-sm border" id="mainMenuSubTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab != 'reseller' %}active{% endif %}" 
+                <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab not in ['reseller', 'bundle_menu'] %}active{% endif %}" 
                         id="admin-bot-tab" 
                         data-bs-toggle="tab" 
                         data-bs-target="#admin-bot-panel" 
                         type="button" 
                         role="tab" 
                         aria-controls="admin-bot-panel" 
-                        aria-selected="{% if active_tab != 'reseller' %}true{% else %}false{% endif %}">
+                        aria-selected="{% if active_tab not in ['reseller', 'bundle_menu'] %}true{% else %}false{% endif %}">
                     <i class="fas fa-shield-halved fa-lg"></i>
-                    <span>🤖 چیدمان دکمه‌های منوی ربات مدیریت (اصلی)</span>
+                    <span>🤖 چیدمان و رنگ ربات مدیریت</span>
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -454,13 +454,26 @@
                         aria-controls="reseller-bot-panel" 
                         aria-selected="{% if active_tab == 'reseller' %}true{% else %}false{% endif %}">
                     <i class="fas fa-users-gear fa-lg"></i>
-                    <span>👥 چیدمان دکمه‌های منوی ربات‌های نمایندگان (White-Label)</span>
+                    <span>👥 چیدمان و رنگ ربات‌های نمایندگان</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'bundle_menu' %}active{% endif %}" 
+                        id="bundle-menu-tab" 
+                        data-bs-toggle="tab" 
+                        data-bs-target="#bundle-menu-panel" 
+                        type="button" 
+                        role="tab" 
+                        aria-controls="bundle-menu-panel" 
+                        aria-selected="{% if active_tab == 'bundle_menu' %}true{% else %}false{% endif %}">
+                    <i class="fas fa-cubes-stacked fa-lg text-success"></i>
+                    <span>📦 چیدمان و رنگ ربات فروش بسته</span>
                 </button>
             </li>
         </ul>
 
         <div class="tab-content" id="mainMenuSubTabsContent">
-            <div class="tab-pane fade {% if active_tab != 'reseller' %}show active{% endif %}" id="admin-bot-panel" role="tabpanel" aria-labelledby="admin-bot-tab">
+            <div class="tab-pane fade {% if active_tab not in ['reseller', 'bundle_menu'] %}show active{% endif %}" id="admin-bot-panel" role="tabpanel" aria-labelledby="admin-bot-tab">
         
         <!-- ردیف پیش‌نمایش تلگرام و کارت اطلاعات برای ربات مدیریت -->
         <div class="row g-4 mb-4">
@@ -495,7 +508,14 @@
                                 <div class="row g-2">
                                     {% for btn in row %}
                                     <div class="col">
-                                        <div class="btn btn-outline-secondary w-100 py-2 text-truncate fw-medium text-dark bg-light shadow-sm border {% if not btn.get('is_enabled', True) %}opacity-75 border-warning{% endif %}" style="font-size: 0.85rem;">
+                                        {% set b_style = btn.get('style', 'default') %}
+                                        <div class="btn w-100 py-2 text-truncate fw-medium shadow-sm border 
+                                            {% if b_style == 'primary' %}btn-primary text-white border-primary
+                                            {% elif b_style == 'success' %}btn-success text-white border-success
+                                            {% elif b_style == 'danger' %}btn-danger text-white border-danger
+                                            {% else %}btn-outline-secondary text-dark bg-light
+                                            {% endif %}
+                                            {% if not btn.get('is_enabled', True) %}opacity-50 border-warning{% endif %}" style="font-size: 0.85rem;">
                                             {% if not btn.get('is_enabled', True) %}<i class="fas fa-lock text-warning me-1 small"></i>{% endif %}
                                             {{ btn.get('title') }}
                                         </div>
@@ -586,9 +606,10 @@
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 50px;" class="text-center">#</th>
-                                    <th style="min-width: 220px;">عنوان و آیکون دکمه</th>
-                                    <th style="min-width: 140px;">شناسه و کاربرد</th>
-                                    <th style="width: 120px;" class="text-center">سطر (Row)</th>
+                                    <th style="min-width: 200px;">عنوان و آیکون دکمه</th>
+                                    <th style="min-width: 130px;">شناسه و کاربرد</th>
+                                    <th style="width: 140px;" class="text-center">رنگ دکمه (Style)</th>
+                                    <th style="width: 110px;" class="text-center">سطر (Row)</th>
                                     <th style="width: 120px;" class="text-center">ترتیب در سطر (Col)</th>
                                     <th style="width: 110px;" class="text-center">وضعیت</th>
                                     <th style="min-width: 200px;">رفتار در حالت غیرفعال</th>
@@ -616,6 +637,15 @@
                                     <td>
                                         <span class="badge bg-secondary font-monospace d-block mb-1 text-truncate" style="max-width: 130px;">{{ btn.id }}</span>
                                         <small class="text-muted d-block" style="font-size: 0.75rem;">{{ btn.get('description', '') }}</small>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <select name="style_{{ btn.id }}" class="form-select form-select-sm text-center fw-bold admin-btn-style-select" data-id="{{ btn.id }}" style="border-radius: 8px;">
+                                            <option value="default" {% if not btn.get('style') or btn.get('style') == 'default' %}selected{% endif %}>⚪ پیش‌فرض (تم)</option>
+                                            <option value="primary" {% if btn.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی (اقدام اصلی)</option>
+                                            <option value="success" {% if btn.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز (تایید / خرید)</option>
+                                            <option value="danger" {% if btn.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز (لغو / حذف)</option>
+                                        </select>
                                     </td>
 
                                     <td class="text-center">
@@ -720,7 +750,14 @@
                                 <div class="row g-2">
                                     {% for btn in row %}
                                     <div class="col">
-                                        <div class="btn btn-outline-secondary w-100 py-2 text-truncate fw-medium text-dark bg-light shadow-sm border {% if not btn.get('is_enabled', True) %}opacity-75 border-warning{% endif %}" style="font-size: 0.85rem;">
+                                        {% set b_style = btn.get('style', 'default') %}
+                                        <div class="btn w-100 py-2 text-truncate fw-medium shadow-sm border 
+                                            {% if b_style == 'primary' %}btn-primary text-white border-primary
+                                            {% elif b_style == 'success' %}btn-success text-white border-success
+                                            {% elif b_style == 'danger' %}btn-danger text-white border-danger
+                                            {% else %}btn-outline-secondary text-dark bg-light
+                                            {% endif %}
+                                            {% if not btn.get('is_enabled', True) %}opacity-50 border-warning{% endif %}" style="font-size: 0.85rem;">
                                             {% if not btn.get('is_enabled', True) %}<i class="fas fa-lock text-warning me-1 small"></i>{% endif %}
                                             {{ btn.get('title') }}
                                         </div>
@@ -812,9 +849,10 @@
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 50px;" class="text-center">#</th>
-                                    <th style="min-width: 220px;">عنوان و آیکون دکمه</th>
-                                    <th style="min-width: 140px;">شناسه و کاربرد</th>
-                                    <th style="width: 120px;" class="text-center">سطر (Row)</th>
+                                    <th style="min-width: 200px;">عنوان و آیکون دکمه</th>
+                                    <th style="min-width: 130px;">شناسه و کاربرد</th>
+                                    <th style="width: 140px;" class="text-center">رنگ دکمه (Style)</th>
+                                    <th style="width: 110px;" class="text-center">سطر (Row)</th>
                                     <th style="width: 120px;" class="text-center">ترتیب در سطر (Col)</th>
                                     <th style="width: 110px;" class="text-center">وضعیت</th>
                                     <th style="min-width: 200px;">رفتار در حالت غیرفعال</th>
@@ -842,6 +880,15 @@
                                     <td>
                                         <span class="badge bg-secondary font-monospace d-block mb-1 text-truncate" style="max-width: 130px;">{{ btn.id }}</span>
                                         <small class="text-muted d-block" style="font-size: 0.75rem;">{{ btn.get('description', '') }}</small>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <select name="style_{{ btn.id }}" class="form-select form-select-sm text-center fw-bold reseller-btn-style-select" data-id="{{ btn.id }}" style="border-radius: 8px;">
+                                            <option value="default" {% if not btn.get('style') or btn.get('style') == 'default' %}selected{% endif %}>⚪ پیش‌فرض (تم)</option>
+                                            <option value="primary" {% if btn.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی (اقدام اصلی)</option>
+                                            <option value="success" {% if btn.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز (تایید / خرید)</option>
+                                            <option value="danger" {% if btn.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز (لغو / حذف)</option>
+                                        </select>
                                     </td>
 
                                     <td class="text-center">
@@ -907,6 +954,242 @@
             </div>
         </form>
     </div>
+    <!-- پنل ۳: چیدمان و رنگ دکمه‌های ربات فروش بسته نمایندگی -->
+    <div class="tab-pane fade {% if active_tab == 'bundle_menu' %}show active{% endif %}" id="bundle-menu-panel" role="tabpanel" aria-labelledby="bundle-menu-tab">
+        <div class="row g-4 mb-4">
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 d-flex align-items-center gap-2">
+                            <i class="fab fa-telegram text-success"></i>
+                            پیش‌نمایش زنده ربات فروش بسته
+                        </h5>
+                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">کیبورد شیشه‌ای</span>
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-between p-4 bg-light rounded-bottom">
+                        <div class="telegram-chat-mockup p-3 bg-white rounded-3 shadow-sm border mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2 pb-2 border-bottom text-muted small">
+                                <i class="fas fa-cubes-stacked text-success"></i>
+                                <span>سامانه فروش بسته نمایندگی (همکاران)</span>
+                            </div>
+                            <div class="bg-success bg-opacity-10 p-2 rounded-3 text-dark small mb-2">
+                                🤝 سلام نماینده گرامی! به ربات فروش بسته نمایندگی خوش آمدید.<br>
+                                جهت خرید بسته، بررسی کیف پول یا ثبت فیش، گزینه‌های زیر را لمس نمایید:
+                            </div>
+                        </div>
+
+                        <!-- شبیه‌ساز کیبورد اینلاین ربات فروش بسته -->
+                        <div class="telegram-keyboard-preview bg-white p-3 rounded-3 shadow-sm border" id="bundleTelegramKeyboardPreview">
+                            <div class="text-center text-muted small mb-2">
+                                <i class="fas fa-cubes-stacked me-1"></i> دکمه‌های شیشه‌ای ربات فروش بسته
+                            </div>
+                            <div class="d-flex flex-column gap-2" id="bundlePreviewRowsContainer">
+                                {% for row in bundle_bot_menu_rows %}
+                                <div class="row g-2">
+                                    {% for btn in row %}
+                                    <div class="col">
+                                        {% set b_style = btn.get('style', 'default') %}
+                                        <div class="btn w-100 py-2 text-truncate fw-medium shadow-sm border 
+                                            {% if b_style == 'primary' %}btn-primary text-white border-primary
+                                            {% elif b_style == 'success' %}btn-success text-white border-success
+                                            {% elif b_style == 'danger' %}btn-danger text-white border-danger
+                                            {% else %}btn-outline-secondary text-dark bg-light
+                                            {% endif %}
+                                            {% if not btn.get('is_enabled', True) %}opacity-50 border-warning{% endif %}" style="font-size: 0.85rem;">
+                                            {% if not btn.get('is_enabled', True) %}<i class="fas fa-lock text-warning me-1 small"></i>{% endif %}
+                                            {{ btn.get('title') }}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="mt-3 text-muted small">
+                            <i class="fas fa-info-circle text-success me-1"></i>
+                            <strong>راهنما:</strong> دکمه‌های با سطر یکسان به صورت افقی (کنار هم) و دکمه‌های با سطر مجزا به صورت عمودی نمایش داده می‌شوند. همچنین استایل رنگی هر دکمه (سبز، قرمز، آبی، پیش‌فرض) در تلگرام کلاینت کاربر اعمال می‌شود.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-sliders-h text-success"></i>
+                            اطلاعات و رفتارهای ربات فروش بسته
+                        </h5>
+                        <div class="d-flex gap-2">
+                            <form method="POST" action="{{ url_for('admin_bot_menu_reset') }}?type=bundle_bot" onsubmit="return confirm('آیا از بازنشانی کلیه دکمه‌های ربات فروش بسته به حالت اولیه مطمئن هستید؟');">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm shadow-sm">
+                                    <i class="fas fa-undo me-1"></i> بازنشانی به پیش‌فرض
+                                </button>
+                            </form>
+                            <button type="submit" form="bundleMenuForm" class="btn btn-success btn-sm shadow-sm fw-bold">
+                                <i class="fas fa-save me-1"></i> ذخیره تغییرات ربات فروش بسته
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-sm-4">
+                                <div class="p-3 bg-success bg-opacity-10 rounded-3 text-center border border-success border-opacity-25">
+                                    <span class="text-muted d-block small mb-1">کلیدهای ربات</span>
+                                    <h4 class="fw-bold text-success mb-0 font-monospace">{{ bundle_bot_buttons|length }} دکمه</h4>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="p-3 bg-primary bg-opacity-10 rounded-3 text-center border border-primary border-opacity-25">
+                                    <span class="text-muted d-block small mb-1">کلیدهای فعال</span>
+                                    <h4 class="fw-bold text-primary mb-0 font-monospace">{{ bundle_bot_buttons|selectattr('is_enabled')|list|length }} فعال</h4>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="p-3 bg-warning bg-opacity-10 rounded-3 text-center border border-warning border-opacity-25">
+                                    <span class="text-muted d-block small mb-1">تعداد سطرهای چیدمان</span>
+                                    <h4 class="fw-bold text-warning mb-0 font-monospace">{{ bundle_bot_menu_rows|length }} سطر</h4>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-success border-0 shadow-sm mb-0">
+                            <h6 class="alert-heading fw-bold mb-2">
+                                <i class="fas fa-cubes-stacked me-1"></i> امکانات اختصاصی ربات فروش بسته نمایندگی:
+                            </h6>
+                            <ul class="mb-0 small ps-3">
+                                <li class="mb-1"><strong>دکمه‌های رنگی:</strong> خرید بسته‌ها به صورت سبز 🟢 (Success)، ورود به پنل به صورت قرمز 🔴 (Danger) یا آبی 🔵 (Primary) تنظیم می‌گردند.</li>
+                                <li class="mb-1"><strong>کپی سریع با یک لمس:</strong> قابلیت CopyTextButton روی شماره کارت و اطلاعات پرداخت جهت کپی فوری در کلیپ‌بورد تلگرام بدون نیاز به باز کردن سایت پیاده‌سازی شده است.</li>
+                                <li><strong>انعطاف در چیدمان:</strong> می‌توانید ترتیب و سطرهای دکمه‌های بسته‌ها، کیف پول، سوابق و پشتیبانی را به دلخواه تغییر دهید.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول ویرایش دکمه‌های ربات فروش بسته -->
+        <form id="bundleMenuForm" method="POST" action="{{ url_for('bot_menu_settings') }}">
+            <input type="hidden" name="bot_type" value="bundle_bot">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0 d-flex align-items-center gap-2">
+                        <i class="fas fa-list-check text-success"></i>
+                        لیست و تنظیمات دکمه‌های «ربات فروش بسته نمایندگی»
+                    </h5>
+                    <span class="text-muted small">برای تغییر موقعیت و رنگ دکمه‌ها، تنظیمات زیر را مشخص کنید</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="bundleBotButtonsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;" class="text-center">#</th>
+                                    <th style="min-width: 200px;">عنوان و آیکون دکمه</th>
+                                    <th style="min-width: 130px;">شناسه و کاربرد</th>
+                                    <th style="width: 140px;" class="text-center">رنگ دکمه (Style)</th>
+                                    <th style="width: 110px;" class="text-center">سطر (Row)</th>
+                                    <th style="width: 110px;" class="text-center">ترتیب در سطر (Col)</th>
+                                    <th style="width: 80px;" class="text-center">وضعیت</th>
+                                    <th style="min-width: 180px;">رفتار در حالت غیرفعال</th>
+                                    <th style="min-width: 220px;">پیام هشدار غیرفعال بودن</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for btn in bundle_bot_buttons %}
+                                <tr class="{% if not btn.get('is_enabled', True) %}table-light text-muted{% endif %}" id="bundle_btn_row_{{ btn.id }}">
+                                    <td class="text-center font-monospace text-muted">{{ loop.index }}</td>
+                                    
+                                    <td>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-white"><i class="fas fa-pencil-alt text-muted"></i></span>
+                                            <input type="text" 
+                                                   name="title_{{ btn.id }}" 
+                                                   id="bundle_input_title_{{ btn.id }}"
+                                                   class="form-control fw-bold bundle-btn-title-input" 
+                                                   value="{{ btn.get('title', '') }}" 
+                                                   required 
+                                                   data-id="{{ btn.id }}">
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <span class="badge bg-secondary font-monospace d-block mb-1 text-truncate" style="max-width: 130px;">{{ btn.id }}</span>
+                                        <small class="text-muted d-block" style="font-size: 0.75rem;">{{ btn.get('description', '') }}</small>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <select name="style_{{ btn.id }}" class="form-select form-select-sm text-center fw-bold bundle-btn-style-select" data-id="{{ btn.id }}" style="border-radius: 8px;">
+                                            <option value="default" {% if not btn.get('style') or btn.get('style') == 'default' %}selected{% endif %}>⚪ پیش‌فرض (تم)</option>
+                                            <option value="primary" {% if btn.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی (اقدام اصلی)</option>
+                                            <option value="success" {% if btn.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز (تایید / خرید)</option>
+                                            <option value="danger" {% if btn.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز (لغو / حذف)</option>
+                                        </select>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <select name="row_{{ btn.id }}" class="form-select form-select-sm text-center bundle-btn-row-select" data-id="{{ btn.id }}">
+                                            {% for r in range(0, 10) %}
+                                            <option value="{{ r }}" {% if btn.get('row', 0) == r %}selected{% endif %}>سطر {{ r + 1 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <select name="col_{{ btn.id }}" class="form-select form-select-sm text-center bundle-btn-col-select" data-id="{{ btn.id }}">
+                                            {% for c in range(0, 6) %}
+                                            <option value="{{ c }}" {% if btn.get('col', 0) == c %}selected{% endif %}>موقعیت {{ c + 1 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <div class="form-check form-switch d-inline-block">
+                                            <input class="form-check-input bundle-btn-enable-toggle" 
+                                                   type="checkbox" 
+                                                   name="enabled_{{ btn.id }}" 
+                                                   id="bundle_enabled_{{ btn.id }}" 
+                                                   value="1" 
+                                                   {% if btn.get('is_enabled', True) %}checked{% endif %}
+                                                   data-id="{{ btn.id }}">
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <select name="behavior_{{ btn.id }}" 
+                                                class="form-select form-select-sm" 
+                                                id="bundle_behavior_{{ btn.id }}">
+                                            <option value="show_disabled" {% if btn.get('disabled_behavior', 'show_disabled') == 'show_disabled' %}selected{% endif %}>🔒 نمایش دکمه با قفل و هشدار</option>
+                                            <option value="hide" {% if btn.get('disabled_behavior') == 'hide' %}selected{% endif %}>🚫 مخفی کردن کامل از منو</option>
+                                        </select>
+                                    </td>
+
+                                    <td>
+                                        <input type="text" 
+                                               name="dis_msg_{{ btn.id }}" 
+                                               id="bundle_dis_msg_{{ btn.id }}"
+                                               class="form-control form-control-sm text-muted" 
+                                               value="{{ btn.get('disabled_message', '') }}" 
+                                               placeholder="پیام در صورت لمس دکمه...">
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="text-muted small">
+                        <i class="fas fa-check-circle text-success me-1"></i> پس از ذخیره، منوی ربات فروش بسته فوراً بروزرسانی خواهد شد.
+                    </span>
+                    <button type="submit" class="btn btn-success px-4 fw-bold shadow-sm">
+                        <i class="fas fa-save me-1"></i> ذخیره تنظیمات ربات فروش بسته
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
 </div><!-- /mainMenuSubTabsContent -->
     </div><!-- /main-menu-panel -->
 
@@ -937,6 +1220,11 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link py-2 fw-bold" id="sub-reseller-tab" data-bs-toggle="pill" data-bs-target="#sub-reseller-panel" type="button" role="tab">
                             <i class="fas fa-users-gear me-1 text-success"></i> زیرمنوهای ربات‌های نمایندگان
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-2 fw-bold" id="sub-bundle-tab" data-bs-toggle="pill" data-bs-target="#sub-bundle-panel" type="button" role="tab">
+                            <i class="fas fa-cubes-stacked me-1 text-info"></i> زیرمنوهای «ربات فروش بسته نمایندگی»
                         </button>
                     </li>
                 </ul>
@@ -976,8 +1264,9 @@
                                                     <thead class="table-light small">
                                                         <tr>
                                                             <th class="ps-3">عنوان دکمه</th>
-                                                            <th class="text-center" style="width: 85px;">سطر</th>
-                                                            <th class="text-center" style="width: 85px;">ستون</th>
+                                                            <th class="text-center" style="width: 125px;">رنگ (Style)</th>
+                                                            <th class="text-center" style="width: 75px;">سطر</th>
+                                                            <th class="text-center" style="width: 75px;">ستون</th>
                                                             <th class="text-center" style="width: 60px;">فعال</th>
                                                         </tr>
                                                     </thead>
@@ -987,6 +1276,14 @@
                                                             <td class="ps-3">
                                                                 <input type="text" name="title_{{ it.id }}" class="form-control form-control-sm fw-bold" value="{{ it.title }}" required>
                                                                 <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                    <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                </select>
                                                             </td>
                                                             <td class="text-center">
                                                                 <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
@@ -1055,8 +1352,9 @@
                                                     <thead class="table-light small">
                                                         <tr>
                                                             <th class="ps-3">عنوان دکمه</th>
-                                                            <th class="text-center" style="width: 85px;">سطر</th>
-                                                            <th class="text-center" style="width: 85px;">ستون</th>
+                                                            <th class="text-center" style="width: 125px;">رنگ (Style)</th>
+                                                            <th class="text-center" style="width: 75px;">سطر</th>
+                                                            <th class="text-center" style="width: 75px;">ستون</th>
                                                             <th class="text-center" style="width: 60px;">فعال</th>
                                                         </tr>
                                                     </thead>
@@ -1066,6 +1364,14 @@
                                                             <td class="ps-3">
                                                                 <input type="text" name="title_{{ it.id }}" class="form-control form-control-sm fw-bold" value="{{ it.title }}" required>
                                                                 <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                    <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                </select>
                                                             </td>
                                                             <td class="text-center">
                                                                 <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
@@ -1094,6 +1400,96 @@
                                         </div>
                                         <div class="card-footer bg-white py-2 text-end">
                                             <button type="submit" class="btn btn-sm btn-success fw-bold">
+                                                <i class="fas fa-save me-1"></i>ذخیره این زیرمنو
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <!-- زیرمنوهای ربات فروش بسته نمایندگی -->
+                    <div class="tab-pane fade" id="sub-bundle-panel" role="tabpanel">
+                        <div class="row g-4">
+                            {% set b_sub_titles = {'bundle_payment': 'مراحل و گزینه‌های پرداخت و خرید بسته', 'bundle_support': 'گزینه‌های پشتیبانی و ارتباط با مدیریت'} %}
+                            {% set b_sub_icons = {'bundle_payment': 'fas fa-money-bill-wave text-success', 'bundle_support': 'fas fa-headset text-info'} %}
+                            
+                            {% for m_key, items in bundle_sub_menus.items() %}
+                            <div class="col-lg-6">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0 fw-bold">
+                                            <i class="{{ b_sub_icons.get(m_key, 'fas fa-list') }} me-2"></i>{{ b_sub_titles.get(m_key, m_key) }}
+                                        </h6>
+                                        <form method="POST" action="{{ url_for('bot_menu_settings') }}" onsubmit="return confirm('آیا از بازنشانی این زیرمنو به پیش‌فرض مطمئن هستید؟');" class="d-inline">
+                                            <input type="hidden" name="action" value="reset_sub_menu">
+                                            <input type="hidden" name="sub_bot_type" value="bundle">
+                                            <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary py-1 px-2" title="بازنشانی به پیش‌فرض">
+                                                <i class="fas fa-undo me-1"></i>پیش‌فرض
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                                        <input type="hidden" name="action" value="save_sub_menu">
+                                        <input type="hidden" name="sub_bot_type" value="bundle">
+                                        <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                        
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-hover align-middle mb-0">
+                                                    <thead class="table-light small">
+                                                        <tr>
+                                                            <th class="ps-3">عنوان دکمه</th>
+                                                            <th class="text-center" style="width: 125px;">رنگ (Style)</th>
+                                                            <th class="text-center" style="width: 75px;">سطر</th>
+                                                            <th class="text-center" style="width: 75px;">ستون</th>
+                                                            <th class="text-center" style="width: 60px;">فعال</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for it in items %}
+                                                        <tr>
+                                                            <td class="ps-3">
+                                                                <input type="text" name="title_{{ it.id }}" class="form-control form-control-sm fw-bold" value="{{ it.title }}" required>
+                                                                <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                    <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for r in range(0, 6) %}
+                                                                    <option value="{{ r }}" {% if it.row == r %}selected{% endif %}>{{ r + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="col_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for c in range(0, 4) %}
+                                                                    <option value="{{ c }}" {% if it.col == c %}selected{% endif %}>{{ c + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <div class="form-check form-switch d-inline-block">
+                                                                    <input class="form-check-input" type="checkbox" name="enabled_{{ it.id }}" value="1" {% if it.enabled %}checked{% endif %}>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer bg-white py-2 text-end">
+                                            <button type="submit" class="btn btn-sm btn-primary fw-bold">
                                                 <i class="fas fa-save me-1"></i>ذخیره این زیرمنو
                                             </button>
                                         </div>
@@ -1158,6 +1554,13 @@ function addTelegramAdminRow(tbodyId, prefix) {
 
 document.addEventListener("DOMContentLoaded", function() {
     
+    function getStyleClass(style) {
+        if (style === "primary") return "btn-primary text-white border-primary";
+        if (style === "success") return "btn-success text-white border-success";
+        if (style === "danger") return "btn-danger text-white border-danger";
+        return "btn-outline-secondary text-dark bg-light";
+    }
+
     // ۱. تابع بروزرسانی پیش‌نمایش کیبورد ربات مدیریت
     function updateAdminLivePreview() {
         const rowsContainer = document.getElementById("adminPreviewRowsContainer");
@@ -1171,18 +1574,20 @@ document.addEventListener("DOMContentLoaded", function() {
             const title = input.value.trim() || id;
             const rowSelect = document.querySelector(`.admin-btn-row-select[data-id="${id}"]`);
             const colSelect = document.querySelector(`.admin-btn-col-select[data-id="${id}"]`);
+            const styleSelect = document.querySelector(`.admin-btn-style-select[data-id="${id}"]`);
             const enableSwitch = document.querySelector(`.admin-btn-enable-toggle[data-id="${id}"]`);
             const behaviorSelect = document.getElementById(`admin_behavior_${id}`);
 
             const row = rowSelect ? parseInt(rowSelect.value) : 0;
             const col = colSelect ? parseInt(colSelect.value) : 0;
+            const style = styleSelect ? styleSelect.value : "default";
             const isEnabled = enableSwitch ? enableSwitch.checked : true;
             const behavior = behaviorSelect ? behaviorSelect.value : "show_disabled";
 
             if (!isEnabled && behavior === "hide") return;
 
             if (!rowsMap[row]) rowsMap[row] = [];
-            rowsMap[row].push({ id: id, title: title, col: col, isEnabled: isEnabled });
+            rowsMap[row].push({ id: id, title: title, col: col, style: style, isEnabled: isEnabled });
         });
 
         rowsContainer.innerHTML = "";
@@ -1202,7 +1607,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 const colDiv = document.createElement("div");
                 colDiv.className = "col";
                 const btnDiv = document.createElement("div");
-                btnDiv.className = `btn btn-outline-secondary w-100 py-2 text-truncate fw-medium text-dark bg-light shadow-sm border ${!b.isEnabled ? 'opacity-75 border-warning' : ''}`;
+                const styleCls = getStyleClass(b.style);
+                btnDiv.className = `btn w-100 py-2 text-truncate fw-medium shadow-sm border ${styleCls} ${!b.isEnabled ? 'opacity-50 border-warning' : ''}`;
                 btnDiv.style.fontSize = "0.85rem";
                 
                 let lockIcon = !b.isEnabled ? '<i class="fas fa-lock text-warning me-1 small"></i> ' : '';
@@ -1228,18 +1634,20 @@ document.addEventListener("DOMContentLoaded", function() {
             const title = input.value.trim() || id;
             const rowSelect = document.querySelector(`.reseller-btn-row-select[data-id="${id}"]`);
             const colSelect = document.querySelector(`.reseller-btn-col-select[data-id="${id}"]`);
+            const styleSelect = document.querySelector(`.reseller-btn-style-select[data-id="${id}"]`);
             const enableSwitch = document.querySelector(`.reseller-btn-enable-toggle[data-id="${id}"]`);
             const behaviorSelect = document.getElementById(`reseller_behavior_${id}`);
 
             const row = rowSelect ? parseInt(rowSelect.value) : 0;
             const col = colSelect ? parseInt(colSelect.value) : 0;
+            const style = styleSelect ? styleSelect.value : "default";
             const isEnabled = enableSwitch ? enableSwitch.checked : true;
             const behavior = behaviorSelect ? behaviorSelect.value : "show_disabled";
 
             if (!isEnabled && behavior === "hide") return;
 
             if (!rowsMap[row]) rowsMap[row] = [];
-            rowsMap[row].push({ id: id, title: title, col: col, isEnabled: isEnabled });
+            rowsMap[row].push({ id: id, title: title, col: col, style: style, isEnabled: isEnabled });
         });
 
         rowsContainer.innerHTML = "";
@@ -1259,7 +1667,68 @@ document.addEventListener("DOMContentLoaded", function() {
                 const colDiv = document.createElement("div");
                 colDiv.className = "col";
                 const btnDiv = document.createElement("div");
-                btnDiv.className = `btn btn-outline-secondary w-100 py-2 text-truncate fw-medium text-dark bg-light shadow-sm border ${!b.isEnabled ? 'opacity-75 border-warning' : ''}`;
+                const styleCls = getStyleClass(b.style);
+                btnDiv.className = `btn w-100 py-2 text-truncate fw-medium shadow-sm border ${styleCls} ${!b.isEnabled ? 'opacity-50 border-warning' : ''}`;
+                btnDiv.style.fontSize = "0.85rem";
+                
+                let lockIcon = !b.isEnabled ? '<i class="fas fa-lock text-warning me-1 small"></i> ' : '';
+                btnDiv.innerHTML = lockIcon + b.title;
+                colDiv.appendChild(btnDiv);
+                rowDiv.appendChild(colDiv);
+            });
+
+            rowsContainer.appendChild(rowDiv);
+        });
+    }
+
+    // ۳. تابع بروزرسانی پیش‌نمایش کیبورد ربات فروش بسته نمایندگی
+    function updateBundleLivePreview() {
+        const rowsContainer = document.getElementById("bundlePreviewRowsContainer");
+        if (!rowsContainer) return;
+
+        const rowsMap = {};
+        const titleInputs = document.querySelectorAll(".bundle-btn-title-input");
+
+        titleInputs.forEach(input => {
+            const id = input.dataset.id;
+            const title = input.value.trim() || id;
+            const rowSelect = document.querySelector(`.bundle-btn-row-select[data-id="${id}"]`);
+            const colSelect = document.querySelector(`.bundle-btn-col-select[data-id="${id}"]`);
+            const styleSelect = document.querySelector(`.bundle-btn-style-select[data-id="${id}"]`);
+            const enableSwitch = document.querySelector(`.bundle-btn-enable-toggle[data-id="${id}"]`);
+            const behaviorSelect = document.getElementById(`bundle_behavior_${id}`);
+
+            const row = rowSelect ? parseInt(rowSelect.value) : 0;
+            const col = colSelect ? parseInt(colSelect.value) : 0;
+            const style = styleSelect ? styleSelect.value : "default";
+            const isEnabled = enableSwitch ? enableSwitch.checked : true;
+            const behavior = behaviorSelect ? behaviorSelect.value : "show_disabled";
+
+            if (!isEnabled && behavior === "hide") return;
+
+            if (!rowsMap[row]) rowsMap[row] = [];
+            rowsMap[row].push({ id: id, title: title, col: col, style: style, isEnabled: isEnabled });
+        });
+
+        rowsContainer.innerHTML = "";
+        const sortedRowKeys = Object.keys(rowsMap).map(Number).sort((a, b) => a - b);
+
+        if (sortedRowKeys.length === 0) {
+            rowsContainer.innerHTML = '<div class="text-center text-muted small p-2">هیچ دکمه‌ای برای نمایش وجود ندارد.</div>';
+            return;
+        }
+
+        sortedRowKeys.forEach(rKey => {
+            const btns = rowsMap[rKey].sort((a, b) => a.col - b.col);
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "row g-2";
+
+            btns.forEach(b => {
+                const colDiv = document.createElement("div");
+                colDiv.className = "col";
+                const btnDiv = document.createElement("div");
+                const styleCls = getStyleClass(b.style);
+                btnDiv.className = `btn w-100 py-2 text-truncate fw-medium shadow-sm border ${styleCls} ${!b.isEnabled ? 'opacity-50 border-warning' : ''}`;
                 btnDiv.style.fontSize = "0.85rem";
                 
                 let lockIcon = !b.isEnabled ? '<i class="fas fa-lock text-warning me-1 small"></i> ' : '';
@@ -1273,15 +1742,21 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // گوش دادن به رویدادهای فیلدهای ربات مدیریت
-    document.querySelectorAll(".admin-btn-title-input, .admin-btn-row-select, .admin-btn-col-select, .admin-btn-enable-toggle, select[id^='admin_behavior_']").forEach(el => {
+    document.querySelectorAll(".admin-btn-title-input, .admin-btn-row-select, .admin-btn-col-select, .admin-btn-style-select, .admin-btn-enable-toggle, select[id^='admin_behavior_']").forEach(el => {
         el.addEventListener("input", updateAdminLivePreview);
         el.addEventListener("change", updateAdminLivePreview);
     });
 
     // گوش دادن به رویدادهای فیلدهای ربات نمایندگان
-    document.querySelectorAll(".reseller-btn-title-input, .reseller-btn-row-select, .reseller-btn-col-select, .reseller-btn-enable-toggle, select[id^='reseller_behavior_']").forEach(el => {
+    document.querySelectorAll(".reseller-btn-title-input, .reseller-btn-row-select, .reseller-btn-col-select, .reseller-btn-style-select, .reseller-btn-enable-toggle, select[id^='reseller_behavior_']").forEach(el => {
         el.addEventListener("input", updateResellerLivePreview);
         el.addEventListener("change", updateResellerLivePreview);
+    });
+
+    // گوش دادن به رویدادهای فیلدهای ربات فروش بسته
+    document.querySelectorAll(".bundle-btn-title-input, .bundle-btn-row-select, .bundle-btn-col-select, .bundle-btn-style-select, .bundle-btn-enable-toggle, select[id^='bundle_behavior_']").forEach(el => {
+        el.addEventListener("input", updateBundleLivePreview);
+        el.addEventListener("change", updateBundleLivePreview);
     });
 });
 </script>

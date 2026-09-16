@@ -591,15 +591,21 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
                 for btn in row:
                     b_id = btn.get("id")
                     b_title = btn.get("title") or t(f"btn_{b_id}", lang)
+                    b_style = btn.get("style")
+                    style_arg = b_style if b_style in ("primary", "success", "danger") else None
+                    btn_kwargs = {}
+                    if style_arg:
+                        btn_kwargs["style"] = style_arg
+
                     if b_id in ("mini_app", "webapp"):
                         from telegram_menu_helper import get_miniapp_url
                         app_url = get_miniapp_url(reseller_id=0, user_id=user_id)
                         if app_url:
-                            kb_row.append(KeyboardButton(b_title, web_app=WebAppInfo(url=app_url)))
+                            kb_row.append(KeyboardButton(b_title, web_app=WebAppInfo(url=app_url), **btn_kwargs))
                         else:
-                            kb_row.append(KeyboardButton(b_title))
+                            kb_row.append(KeyboardButton(b_title, **btn_kwargs))
                     else:
-                        kb_row.append(KeyboardButton(b_title))
+                        kb_row.append(KeyboardButton(b_title, **btn_kwargs))
                 if kb_row:
                     keyboard.append(kb_row)
     except Exception as e:
@@ -630,7 +636,7 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
         pass
 
     if (is_admin_user or is_reseller_user) and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
-        keyboard.append([KeyboardButton(t("btn_admin", lang))])
+        keyboard.append([KeyboardButton(t("btn_admin", lang), style="danger")])
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
