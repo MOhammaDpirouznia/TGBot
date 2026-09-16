@@ -350,10 +350,24 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 پس از انتقال وجه به شماره کارت بالا، دکمه **«📸 ارسال تصویر فیش»** را لمس نموده و عکس رسید خود را ارسال نمایید.
 """
         context.user_data["pending_bundle_id"] = bundle_id
+
+        copy_style = db.get_sub_menu_item_style("bundle", "bundle_payment", "copy_card", default="primary")
+        receipt_style = db.get_sub_menu_item_style("bundle", "bundle_payment", "submit_receipt", default="success")
+        cancel_style = db.get_sub_menu_item_style("bundle", "bundle_payment", "cancel", default="danger")
+
+        b_cfg = db.get_sub_menu_dict("bundle", "bundle_payment")
+        copy_title = b_cfg.get("copy_card", {}).get("title") or "📋 کپی شماره کارت"
+        receipt_title = b_cfg.get("submit_receipt", {}).get("title") or "📸 ارسال تصویر فیش واریزی"
+        cancel_title = b_cfg.get("cancel", {}).get("title") or "🔙 بازگشت به لیست بسته‌ها"
+
+        btn_copy_kwargs = {"style": copy_style} if copy_style else {}
+        btn_receipt_kwargs = {"style": receipt_style} if receipt_style else {}
+        btn_cancel_kwargs = {"style": cancel_style} if cancel_style else {}
+
         buttons = [
-            [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_card), style="primary")],
-            [InlineKeyboardButton("📸 ارسال تصویر فیش واریزی", callback_data=f"bsb_submit_receipt_{bundle_id}", style="success")],
-            [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data="bsb_bundles", style="danger")]
+            [InlineKeyboardButton(copy_title, copy_text=CopyTextButton(raw_card), **btn_copy_kwargs)],
+            [InlineKeyboardButton(receipt_title, callback_data=f"bsb_submit_receipt_{bundle_id}", **btn_receipt_kwargs)],
+            [InlineKeyboardButton(cancel_title, callback_data="bsb_bundles", **btn_cancel_kwargs)]
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
@@ -441,9 +455,18 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 جهت پیگیری سفارشات، هماهنگی واریز مبالغ بالا یا دریافت راهنمایی می‌توانید مستقیماً با مدیریت در ارتباط باشید:
 """
+        adm_chat_style = db.get_sub_menu_item_style("bundle", "bundle_support", "admin_chat", default="primary")
+        back_style = db.get_sub_menu_item_style("bundle", "bundle_support", "back", default=None)
+        bsup_cfg = db.get_sub_menu_dict("bundle", "bundle_support")
+        adm_chat_title = bsup_cfg.get("admin_chat", {}).get("title") or "💬 پیام مستقیم به مدیریت"
+        back_title = bsup_cfg.get("back", {}).get("title") or "🔙 بازگشت به منوی اصلی"
+
+        btn_chat_kw = {"style": adm_chat_style} if adm_chat_style else {}
+        btn_back_kw = {"style": back_style} if back_style else {}
+
         buttons = [
-            [InlineKeyboardButton("💬 پیام مستقیم به مدیریت", url=f"https://t.me/{supp_user.lstrip('@')}")],
-            [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="bsb_main_menu")]
+            [InlineKeyboardButton(adm_chat_title, url=f"https://t.me/{supp_user.lstrip('@')}", **btn_chat_kw)],
+            [InlineKeyboardButton(back_title, callback_data="bsb_main_menu", **btn_back_kw)]
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return

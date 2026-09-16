@@ -309,3 +309,46 @@ async def setup_telegram_chat_menu_button(
     except Exception as e:
         logger.warning(f"setup_telegram_chat_menu_button failed: {e}")
         return False
+
+
+def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_reseller: bool = False, reseller_id: Optional[int] = None) -> list:
+    """ساخت دکمه‌های شیشه‌ای منوی آموزش و عیب‌یابی بر اساس تنظیمات دیتابیس با رنگ‌های جذاب"""
+    from telegram import InlineKeyboardButton
+    bot_type = "reseller" if is_reseller else "admin"
+    t_cfg = db.get_sub_menu_dict(bot_type, "tutorials", is_reseller=is_reseller, reseller_id=reseller_id)
+
+    cfg_tb = t_cfg.get("wiz_tb_start") or t_cfg.get("troubleshoot") or {}
+    cfg_conn = t_cfg.get("wiz_conn_start") or t_cfg.get("android") or {}
+    cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
+    cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
+
+    tb_title = cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)"
+    tb_style = cfg_tb.get("style") or "primary"
+
+    conn_title = cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)"
+    conn_style = cfg_conn.get("style") or "success"
+
+    web_title = cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)"
+    web_style = cfg_web.get("style") or "primary"
+
+    ts_web_title = cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)"
+    ts_web_style = cfg_ts_web.get("style") or "danger"
+
+    keyboard = []
+    if cfg_tb.get("enabled", True):
+        kw = {"style": tb_style} if tb_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(tb_title, callback_data="wiz_tb_start", **kw)])
+
+    if cfg_conn.get("enabled", True):
+        kw = {"style": conn_style} if conn_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(conn_title, callback_data="wiz_conn_start", **kw)])
+
+    if cfg_web.get("enabled", True):
+        kw = {"style": web_style} if web_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(web_title, url=tutorial_url, **kw)])
+
+    if cfg_ts_web.get("enabled", True):
+        kw = {"style": ts_web_style} if ts_web_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(ts_web_title, url=troubleshoot_url, **kw)])
+
+    return keyboard

@@ -743,42 +743,57 @@ def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optiona
 """
     keyboard = []
     
-    # دریافت ترتیب و وضعیت فعال بودن روش‌های پرداخت به صورت پویا از دیتابیس
+    # دریافت ترتیب، استایل رنگی و وضعیت فعال بودن روش‌های پرداخت به صورت پویا از دیتابیس
+    bot_kind = "reseller" if reseller_id else "admin"
+    sub_p_cfg = db.get_sub_menu_dict(bot_kind, "payment", is_reseller=bool(reseller_id), reseller_id=reseller_id)
     ordered_methods = db.get_payment_methods(reseller_id=reseller_id)
-    
+
     for m in ordered_methods:
         m_id = m.get("id")
-        if not m.get("enabled", True):
+        cfg_item = sub_p_cfg.get(m_id, {})
+        # اگر در هر یک از دو کانفیگ غیرفعال شده بود رد شود
+        if not m.get("enabled", True) or not cfg_item.get("enabled", True):
             continue
-            
+
+        style_val = db.get_sub_menu_item_style(bot_kind, "payment", m_id, is_reseller=bool(reseller_id), reseller_id=reseller_id)
+        btn_kw = {"style": style_val} if style_val in ("primary", "success", "danger") else {}
+
         if m_id == "card_to_card":
-            keyboard.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data="pay_card")])
-            
+            btn_title = cfg_item.get("title") or "💵 کارت به کارت (بانکی)"
+            if not btn_kw:
+                btn_kw["style"] = "primary"
+            keyboard.append([InlineKeyboardButton(btn_title, callback_data="pay_card", **btn_kw)])
+
         elif m_id == "wallet":
+            if not btn_kw:
+                btn_kw["style"] = "success"
             if user_wallet >= price:
-                keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet")])
+                keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet", **btn_kw)])
             else:
-                keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient")])
-                
+                keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient", **btn_kw)])
+
         elif m_id == "online_gateway":
+            if not btn_kw:
+                btn_kw["style"] = "success"
             if gw_cfg.get("enabled") and gw_cfg.get("key"):
                 if gw_cfg.get("type") == "blupal":
                     gw_btn_text = "💳 پرداخت کارت به کارت هوشمند (بلوپال)"
                 else:
                     gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
                     gw_btn_text = f"💳 درگاه پرداخت آنلاین ({gw_label})"
-                keyboard.append([InlineKeyboardButton(gw_btn_text, callback_data="pay_online_gateway")])
+                keyboard.append([InlineKeyboardButton(gw_btn_text, callback_data="pay_online_gateway", **btn_kw)])
             else:
                 keyboard.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon_gateway")])
-                
+
         elif m_id == "crypto":
             if crypto_cfg.get("enabled"):
-                keyboard.append([InlineKeyboardButton(f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)", callback_data="pay_crypto")])
+                crypto_title = cfg_item.get("title") or f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)"
+                keyboard.append([InlineKeyboardButton(crypto_title, callback_data="pay_crypto", **btn_kw)])
 
     # دکمه‌های بازگشت و انصراف
     keyboard.append([
         InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"),
-        InlineKeyboardButton("❌ انصراف", callback_data="cancel")
+        InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")
     ])
 
     return text, InlineKeyboardMarkup(keyboard)
@@ -963,14 +978,56 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
 • پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
     keyboard = [
-        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number_clean}")],
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number_clean}", style="primary")],
         [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
         [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{plan.get('price', 0)}")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return ENTERING_TRACKING_CODE
+
+
+def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_reseller: bool = False, reseller_id: Optional[int] = None) -> list:
+    """ساخت دکمه‌های شیشه‌ای منوی آموزش و عیب‌یابی بر اساس تنظیمات دیتابیس با رنگ‌های جذاب"""
+    bot_type = "reseller" if is_reseller else "admin"
+    t_cfg = db.get_sub_menu_dict(bot_type, "tutorials", is_reseller=is_reseller, reseller_id=reseller_id)
+
+    cfg_tb = t_cfg.get("wiz_tb_start") or t_cfg.get("troubleshoot") or {}
+    cfg_conn = t_cfg.get("wiz_conn_start") or t_cfg.get("android") or {}
+    cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
+    cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
+
+    tb_title = cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)"
+    tb_style = cfg_tb.get("style") or "primary"
+
+    conn_title = cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)"
+    conn_style = cfg_conn.get("style") or "success"
+
+    web_title = cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)"
+    web_style = cfg_web.get("style") or "primary"
+
+    ts_web_title = cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)"
+    ts_web_style = cfg_ts_web.get("style") or "danger"
+
+    keyboard = []
+    if cfg_tb.get("enabled", True):
+        kw = {"style": tb_style} if tb_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(tb_title, callback_data="wiz_tb_start", **kw)])
+
+    if cfg_conn.get("enabled", True):
+        kw = {"style": conn_style} if conn_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(conn_title, callback_data="wiz_conn_start", **kw)])
+
+    if cfg_web.get("enabled", True):
+        kw = {"style": web_style} if web_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(web_title, url=tutorial_url, **kw)])
+
+    if cfg_ts_web.get("enabled", True):
+        kw = {"style": ts_web_style} if ts_web_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(ts_web_title, url=troubleshoot_url, **kw)])
+
+    return keyboard
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1000,12 +1057,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📺 <b>تلویزیون هوشمند:</b> Android TV, Spark\n"
         "🌐 <b>مودم و روتر:</b> OpenWrt, MikroTik"
     )
-    keyboard = [
-        [InlineKeyboardButton("🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", callback_data="wiz_tb_start")],
-        [InlineKeyboardButton("🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", callback_data="wiz_conn_start")],
-        [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری جامع (وب)", url=tutorial_url)],
-        [InlineKeyboardButton("🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", url=troubleshoot_url)]
-    ]
+    keyboard = get_tutorial_inline_buttons(tutorial_url, troubleshoot_url)
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.message:
@@ -1015,7 +1067,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت ویزاردهای تعاملی قدم‌به‌قدم عیب‌یابی و راهنمای اتصال درون تلگرام"""
+    """مدیریت ویزاردهای تعاملی قدم‌به‌قدم عیب‌یابی و راهنمای اتصال درون تلگرام با رنگ‌های جذاب"""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -1040,12 +1092,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "📖 <b>مرکز آموزش تصویری و راهنمای اتصال</b>\n\n"
             "برای مشاهده آموزش مرحله‌به‌مرحله و رفع سریع هرگونه مشکل، روش مورد نظر خود را انتخاب نمایید:"
         )
-        buttons = [
-            [InlineKeyboardButton("🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", callback_data="wiz_tb_start")],
-            [InlineKeyboardButton("🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", callback_data="wiz_conn_start")],
-            [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری جامع (وب)", url=tutorial_url)],
-            [InlineKeyboardButton("🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", url=troubleshoot_url)]
-        ]
+        buttons = get_tutorial_inline_buttons(tutorial_url, troubleshoot_url)
         return await query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
     # ─── ویزارد حل مشکلات اتصال (Troubleshoot) ───
@@ -1055,11 +1102,11 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "لطفاً دستگاهی که در اتصال آن مشکل دارید را انتخاب فرمایید:"
         )
         buttons = [
-            [InlineKeyboardButton("📱 گوشی اندروید (Samsung, Xiaomi, ...)", callback_data="wiz_tb_dev_android")],
-            [InlineKeyboardButton("🍏 آیفون یا آیپد (iOS)", callback_data="wiz_tb_dev_ios")],
-            [InlineKeyboardButton("💻 کامپیوتر یا لپ‌تاپ ویندوز", callback_data="wiz_tb_dev_windows")],
-            [InlineKeyboardButton("🖥️ مک‌بوک و مک (macOS)", callback_data="wiz_tb_dev_macos")],
-            [InlineKeyboardButton("📺 تلویزیون هوشمند (Android TV)", callback_data="wiz_tb_dev_tv")],
+            [InlineKeyboardButton("📱 گوشی اندروید (Samsung, Xiaomi, ...)", callback_data="wiz_tb_dev_android", style="primary")],
+            [InlineKeyboardButton("🍏 آیفون یا آیپد (iOS)", callback_data="wiz_tb_dev_ios", style="primary")],
+            [InlineKeyboardButton("💻 کامپیوتر یا لپ‌تاپ ویندوز", callback_data="wiz_tb_dev_windows", style="primary")],
+            [InlineKeyboardButton("🖥️ مک‌بوک و مک (macOS)", callback_data="wiz_tb_dev_macos", style="primary")],
+            [InlineKeyboardButton("📺 تلویزیون هوشمند (Android TV)", callback_data="wiz_tb_dev_tv", style="primary")],
             [InlineKeyboardButton("◀️ بازگشت", callback_data="wiz_menu")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1079,8 +1126,8 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "وضعیت بسته اینترنت خود را مشخص کنید:"
         )
         buttons = [
-            [InlineKeyboardButton("بسته اینترنت من فعال است و حجم دارد 🟢", callback_data=f"wiz_tb_pkg_ok_{device}")],
-            [InlineKeyboardButton("بسته‌ام تمام شده / نیاز به شارژ دارم 🔴", callback_data=f"wiz_tb_pkg_empty_{device}")],
+            [InlineKeyboardButton("بسته اینترنت من فعال است و حجم دارد 🟢", callback_data=f"wiz_tb_pkg_ok_{device}", style="success")],
+            [InlineKeyboardButton("بسته‌ام تمام شده / نیاز به شارژ دارم 🔴", callback_data=f"wiz_tb_pkg_empty_{device}", style="danger")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data="wiz_tb_start")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1092,7 +1139,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "لطفاً ابتدا بسته اینترنت جدید برای سیم‌کارت یا مودم خود خریداری فرمایید. پس از فعال‌سازی بسته، یک بار دستگاه را به مدت ۱۰ ثانیه روی <b>حالت پرواز (Airplane Mode)</b> قرار داده و خارج نمایید تا اتصال تازه شود."
         )
         buttons = [
-            [InlineKeyboardButton("بسته را شارژ کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_pkg_ok_{device}")],
+            [InlineKeyboardButton("بسته را شارژ کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_pkg_ok_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_dev_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1106,8 +1153,8 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "وضعیت اشتراک شما:"
         )
         buttons = [
-            [InlineKeyboardButton("اشتراکم معتبر است و زمان و حجم دارد ✅", callback_data=f"wiz_tb_sub_ok_{device}")],
-            [InlineKeyboardButton("حجم یا زمان اشتراکم به پایان رسیده 🔄", callback_data=f"wiz_tb_sub_empty_{device}")],
+            [InlineKeyboardButton("اشتراکم معتبر است و زمان و حجم دارد ✅", callback_data=f"wiz_tb_sub_ok_{device}", style="success")],
+            [InlineKeyboardButton("حجم یا زمان اشتراکم به پایان رسیده 🔄", callback_data=f"wiz_tb_sub_empty_{device}", style="danger")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_dev_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1119,7 +1166,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه <b>«تمدید اشتراک»</b> یا خرید اشتراک جدید را انتخاب کنید تا سرویس شما فوراً متصل گردد."
         )
         buttons = [
-            [InlineKeyboardButton("اشتراک را تمدید کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_sub_ok_{device}")],
+            [InlineKeyboardButton("اشتراک را تمدید کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_sub_ok_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_pkg_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1135,7 +1182,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "• <b>ویندوز:</b> روی ساعت راست‌کلیک کرده، Adjust Date/Time را بزنید و روی <b>Sync now</b> کلیک کنید."
         )
         buttons = [
-            [InlineKeyboardButton("ساعت و تاریخ دقیقاً با ساعت رسمی همگام است ⏱️", callback_data=f"wiz_tb_time_ok_{device}")],
+            [InlineKeyboardButton("ساعت و تاریخ دقیقاً با ساعت رسمی همگام است ⏱️", callback_data=f"wiz_tb_time_ok_{device}", style="success")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_pkg_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1147,9 +1194,9 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "در حال حاضر به کدام شبکه اینترنت متصل هستید؟"
         )
         buttons = [
-            [InlineKeyboardButton("همراه اول یا ایرانسل (سیم‌کارت) 📶", callback_data=f"wiz_tb_op_mci_{device}")],
-            [InlineKeyboardButton("اینترنت خانگی / وای‌فای (مخابرات، شاتل و...) 🌐", callback_data=f"wiz_tb_op_wifi_{device}")],
-            [InlineKeyboardButton("رایتل یا سایرین 📱", callback_data=f"wiz_tb_op_other_{device}")],
+            [InlineKeyboardButton("همراه اول یا ایرانسل (سیم‌کارت) 📶", callback_data=f"wiz_tb_op_mci_{device}", style="primary")],
+            [InlineKeyboardButton("اینترنت خانگی / وای‌فای (مخابرات، شاتل و...) 🌐", callback_data=f"wiz_tb_op_wifi_{device}", style="primary")],
+            [InlineKeyboardButton("رایتل یا سایرین 📱", callback_data=f"wiz_tb_op_other_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_sub_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1164,7 +1211,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "• در <b>Streisand:</b> در Settings گزینه <code>Fragment</code> را روشن کنید."
         )
         buttons = [
-            [InlineKeyboardButton("تنظیمات Fragment را اعمال کردم 🛡️", callback_data=f"wiz_tb_done_{device}")],
+            [InlineKeyboardButton("تنظیمات Fragment را اعمال کردم 🛡️", callback_data=f"wiz_tb_done_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1178,7 +1225,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "۲. بخش <b>Remote DNS</b> را روی <code>https://1.1.1.1/dns-query</code> یا <code>https://dns.google/dns-query</code> قرار دهید."
         )
         buttons = [
-            [InlineKeyboardButton("تنظیمات DNS و IPv6 را اعمال کردم 🌐", callback_data=f"wiz_tb_done_{device}")],
+            [InlineKeyboardButton("تنظیمات DNS و IPv6 را اعمال کردم 🌐", callback_data=f"wiz_tb_done_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1190,7 +1237,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "گوشی را ۱۰ ثانیه روی حالت پرواز (Airplane Mode) قرار دهید تا آی‌پی رنج جدید دریافت شود."
         )
         buttons = [
-            [InlineKeyboardButton("انجام دادم و آماده تستم ✈️", callback_data=f"wiz_tb_done_{device}")],
+            [InlineKeyboardButton("انجام دادم و آماده تستم ✈️", callback_data=f"wiz_tb_done_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1204,9 +1251,9 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "آیا اتصال شما با موفقیت برقرار شد؟"
         )
         buttons = [
-            [InlineKeyboardButton("مشکل حل شد و با موفقیت متصلم! 🎉", callback_data="wiz_tb_solved")],
-            [InlineKeyboardButton("هنوز متصل نیستم / پیام به پشتیبانی 🎧", callback_data="wiz_tb_support")],
-            [InlineKeyboardButton("◀️ شروع مجدد عیب‌یابی", callback_data="wiz_tb_start")]
+            [InlineKeyboardButton("مشکل حل شد و با موفقیت متصلم! 🎉", callback_data="wiz_tb_solved", style="success")],
+            [InlineKeyboardButton("هنوز متصل نیستم / پیام به پشتیبانی 🎧", callback_data="wiz_tb_support", style="danger")],
+            [InlineKeyboardButton("◀️ شروع مجدد عیب‌یابی", callback_data="wiz_tb_start", style="primary")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
@@ -1216,7 +1263,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "خوشحالیم که مشکل اتصال شما با موفقیت برطرف گردید.\n"
             "هر زمان که نیاز به راهنمایی داشتید مجدداً در خدمت شما هستیم."
         )
-        buttons = [[InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="back_to_menu")]]
+        buttons = [[InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="back_to_menu", style="success")]]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
     if data == "wiz_tb_support":
@@ -1228,7 +1275,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         )
         buttons = []
         if support_username:
-            buttons.append([InlineKeyboardButton("ارسال پیام به پشتیبانی تلگرام", url=f"https://t.me/{support_username.lstrip('@')}")])
+            buttons.append([InlineKeyboardButton("ارسال پیام به پشتیبانی تلگرام", url=f"https://t.me/{support_username.lstrip('@')}", style="primary")])
         buttons.append([InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="back_to_menu")])
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
@@ -1239,11 +1286,11 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "سیستم‌عامل یا دستگاه خود را انتخاب فرمایید:"
         )
         buttons = [
-            [InlineKeyboardButton("📱 اندروید (Samsung, Xiaomi, ...)", callback_data="wiz_conn_dev_android")],
-            [InlineKeyboardButton("🍏 آیفون یا آیپد (iOS)", callback_data="wiz_conn_dev_ios")],
-            [InlineKeyboardButton("💻 کامپیوتر ویندوز", callback_data="wiz_conn_dev_windows")],
-            [InlineKeyboardButton("🖥️ مک‌بوک (macOS)", callback_data="wiz_conn_dev_macos")],
-            [InlineKeyboardButton("📺 تلویزیون هوشمند", callback_data="wiz_conn_dev_tv")],
+            [InlineKeyboardButton("📱 اندروید (Samsung, Xiaomi, ...)", callback_data="wiz_conn_dev_android", style="primary")],
+            [InlineKeyboardButton("🍏 آیفون یا آیپد (iOS)", callback_data="wiz_conn_dev_ios", style="primary")],
+            [InlineKeyboardButton("💻 کامپیوتر ویندوز", callback_data="wiz_conn_dev_windows", style="primary")],
+            [InlineKeyboardButton("🖥️ مک‌بوک (macOS)", callback_data="wiz_conn_dev_macos", style="primary")],
+            [InlineKeyboardButton("📺 تلویزیون هوشمند", callback_data="wiz_conn_dev_tv", style="primary")],
             [InlineKeyboardButton("◀️ بازگشت", callback_data="wiz_menu")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1272,8 +1319,8 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "لطفاً نرم‌افزار را از لینک زیر دانلود و روی دستگاه خود نصب فرمایید:"
         )
         buttons = [
-            [InlineKeyboardButton(f"دانلود {app_name}", url=dl_url)],
-            [InlineKeyboardButton("برنامه را نصب کردم، مرحله بعد 📲", callback_data=f"wiz_conn_imp_{device}")],
+            [InlineKeyboardButton(f"دانلود {app_name}", url=dl_url, style="primary")],
+            [InlineKeyboardButton("برنامه را نصب کردم، مرحله بعد 📲", callback_data=f"wiz_conn_imp_{device}", style="success")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data="wiz_conn_start")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1287,7 +1334,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "۳. گزینه <b>Import from clipboard</b> (وارد کردن از کلیپ‌بورد) را انتخاب نمایید تا کلیه سرورها اضافه شوند."
         )
         buttons = [
-            [InlineKeyboardButton("لینک را وارد کردم، مرحله بعد 📥", callback_data=f"wiz_conn_upd_{device}")],
+            [InlineKeyboardButton("لینک را وارد کردم، مرحله بعد 📥", callback_data=f"wiz_conn_upd_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_conn_dev_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1301,7 +1348,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "۳. سروری که کمترین عدد پینگ سبز را دارد لمس کنید."
         )
         buttons = [
-            [InlineKeyboardButton("سرورها آپدیت شدند و پینگ سبز دیدم 🔄", callback_data=f"wiz_conn_con_{device}")],
+            [InlineKeyboardButton("سرورها آپدیت شدند و پینگ سبز دیدم 🔄", callback_data=f"wiz_conn_con_{device}", style="primary")],
             [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_conn_imp_{device}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -1313,9 +1360,9 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             "با سبز شدن دکمه یا ظاهر شدن کلید بالای گوشی، اینترنت بدون فیلتر فعال است!"
         )
         buttons = [
-            [InlineKeyboardButton("با موفقیت متصل شدم! 🎉", callback_data="wiz_tb_solved")],
-            [InlineKeyboardButton("متصل نشد، رفتن به عیب‌یابی 🛠️", callback_data="wiz_tb_start")],
-            [InlineKeyboardButton("◀️ شروع مجدد راهنما", callback_data="wiz_conn_start")]
+            [InlineKeyboardButton("با موفقیت متصل شدم! 🎉", callback_data="wiz_tb_solved", style="success")],
+            [InlineKeyboardButton("متصل نشد، رفتن به عیب‌یابی 🛠️", callback_data="wiz_tb_start", style="danger")],
+            [InlineKeyboardButton("◀️ شروع مجدد راهنما", callback_data="wiz_conn_start", style="primary")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
@@ -3765,15 +3812,19 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     from telegram_menu_helper import get_miniapp_url
     full_app_url = get_miniapp_url(reseller_id=0, user_id=user.id)
-    if full_app_url:
-        keyboard.append([InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))])
+    w_cfg = db.get_sub_menu_dict("admin", "wallet")
+    card_style = db.get_sub_menu_item_style("admin", "wallet", "charge_card", default="primary")
+    crypto_style = db.get_sub_menu_item_style("admin", "wallet", "charge_crypto", default=None)
+
+    card_kw = {"style": card_style} if card_style else {}
+    crypto_kw = {"style": crypto_style} if crypto_style else {}
 
     crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
-    charge_row = [InlineKeyboardButton("💳 افزایش موجودی (کارت بانکی)", callback_data="charge_wallet_card")]
+    charge_row = [InlineKeyboardButton("💳 افزایش موجودی (کارت بانکی)", callback_data="charge_wallet_card", **card_kw)]
     if crypto_cfg.get("enabled"):
-        charge_row.append(InlineKeyboardButton("💎 شارژ با تتر/کریپتو", callback_data="charge_wallet_crypto"))
+        charge_row.append(InlineKeyboardButton("💎 شارژ با تتر/کریپتو", callback_data="charge_wallet_crypto", **crypto_kw))
     keyboard.append(charge_row)
-    keyboard.append([InlineKeyboardButton("🛒 خرید پلن جدید", callback_data="buy_plan_from_wallet")])
+    keyboard.append([InlineKeyboardButton("🛒 خرید پلن جدید", callback_data="buy_plan_from_wallet", style="success")])
     keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -3845,8 +3896,8 @@ async def charge_wallet_card_callback(update: Update, context: ContextTypes.DEFA
 ⚠️ <i>پس از واریز، شماره پیگیری یا تصویر رسید را به همراه شناسه کاربری (<code>{query.from_user.id}</code>) به پشتیبانی ارسال فرمایید تا شارژ اعمال شود.</i>
 """
     keyboard = [
-        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
-        [InlineKeyboardButton("✍️ ارسال فیش به پشتیبانی", callback_data="ticket_new")],
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}", style="primary")],
+        [InlineKeyboardButton("✍️ ارسال فیش به پشتیبانی", callback_data="ticket_new", style="success")],
         [InlineKeyboardButton("◀️ بازگشت به کیف پول", callback_data="back_to_wallet")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -3873,7 +3924,7 @@ async def charge_wallet_crypto_callback(update: Update, context: ContextTypes.DE
 ⚠️ <i>پس از واریز، شناسه هش تراکنش (TXID) را به همراه شناسه کاربری (<code>{query.from_user.id}</code>) به پشتیبانی ارسال فرمایید.</i>
 """
     keyboard = [
-        [InlineKeyboardButton("✍️ ثبت هش در پشتیبانی", callback_data="ticket_new")],
+        [InlineKeyboardButton("✍️ ثبت هش در پشتیبانی", callback_data="ticket_new", style="success")],
         [InlineKeyboardButton("◀️ بازگشت به کیف پول", callback_data="back_to_wallet")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -3945,12 +3996,32 @@ async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💬 <b>مرکز پشتیبانی و ارتباط با مدیریت</b>\n\n"
         "در صورتی که سوال، مشکل در اتصال، نیاز به کانفیگ اختصاصی یا راهنمایی دارید، می‌توانید تیکت ثبت کنید یا مستقیماً با مدیریت در ارتباط باشید:"
     )
-    keyboard = [
-        [InlineKeyboardButton("✍️ ارسال پیام به پشتیبانی (ثبت تیکت)", callback_data="ticket_new")],
-    ]
-    if ADMIN_ID and ADMIN_ID != 0:
-        keyboard.append([InlineKeyboardButton("💬 گفتگو مستقیم با ادمین", url=f"tg://user?id={ADMIN_ID}")])
-    keyboard.append([InlineKeyboardButton("📋 تیکت‌های قبلی من", callback_data="ticket_list")])
+    s_cfg = db.get_sub_menu_dict("admin", "support")
+    cfg_tn = s_cfg.get("ticket_new", {})
+    cfg_tl = s_cfg.get("ticket_list", {})
+    cfg_ds = s_cfg.get("direct_support", {})
+
+    tn_style = db.get_sub_menu_item_style("admin", "support", "ticket_new", default="primary")
+    tl_style = db.get_sub_menu_item_style("admin", "support", "ticket_list", default=None)
+    ds_style = db.get_sub_menu_item_style("admin", "support", "direct_support", default="success")
+
+    tn_title = cfg_tn.get("title") or "✍️ ارسال پیام به پشتیبانی (ثبت تیکت)"
+    tl_title = cfg_tl.get("title") or "📋 تیکت‌های قبلی من"
+    ds_title = cfg_ds.get("title") or "💬 گفتگو مستقیم با ادمین"
+
+    keyboard = []
+    if cfg_tn.get("enabled", True):
+        kw = {"style": tn_style} if tn_style else {}
+        keyboard.append([InlineKeyboardButton(tn_title, callback_data="ticket_new", **kw)])
+
+    if ADMIN_ID and ADMIN_ID != 0 and cfg_ds.get("enabled", True):
+        kw = {"style": ds_style} if ds_style else {}
+        keyboard.append([InlineKeyboardButton(ds_title, url=f"tg://user?id={ADMIN_ID}", **kw)])
+
+    if cfg_tl.get("enabled", True):
+        kw = {"style": tl_style} if tl_style else {}
+        keyboard.append([InlineKeyboardButton(tl_title, callback_data="ticket_list", **kw)])
+
     keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -4009,7 +4080,7 @@ async def enter_ticket_message(update: Update, context: ContextTypes.DEFAULT_TYP
             f"⏰ زمان: {get_now_shamsi()}"
         )
         keyboard = [
-            [InlineKeyboardButton("✍️ پاسخ به این تیکت", callback_data=f"admin_reply_ticket_{ticket_id}")],
+            [InlineKeyboardButton("✍️ پاسخ به این تیکت", callback_data=f"admin_reply_ticket_{ticket_id}", style="primary")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -4057,7 +4128,7 @@ async def ticket_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "──────────────\n"
 
     keyboard = [
-        [InlineKeyboardButton("✍️ ثبت تیکت جدید", callback_data="ticket_new")],
+        [InlineKeyboardButton("✍️ ثبت تیکت جدید", callback_data="ticket_new", style="primary")],
         [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -6384,8 +6455,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             o_id = tx.get("order_id")
             kb = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"adm_pay_app_{o_id}"),
-                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"adm_pay_rej_{o_id}"),
+                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"adm_pay_app_{o_id}", style="success"),
+                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"adm_pay_rej_{o_id}", style="danger"),
                 ],
                 [InlineKeyboardButton("🔙 بازگشت به پرداخت‌ها", callback_data="adm_adv_payments")]
             ])
@@ -6779,8 +6850,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             o_id = tx.get("order_id")
             kb = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"res_pay_app_{o_id}"),
-                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"res_pay_rej_{o_id}"),
+                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"res_pay_app_{o_id}", style="success"),
+                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"res_pay_rej_{o_id}", style="danger"),
                 ],
                 [InlineKeyboardButton("🔙 بازگشت به پرداخت‌ها", callback_data="res_adm_payments")]
             ])
@@ -8579,12 +8650,7 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
                 "📺 <b>تلویزیون هوشمند:</b> Android TV, Spark\n"
                 "🌐 <b>مودم و روتر:</b> OpenWrt, MikroTik"
             )
-            buttons = [
-                [InlineKeyboardButton("🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", callback_data="wiz_tb_start")],
-                [InlineKeyboardButton("🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", callback_data="wiz_conn_start")],
-                [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها (وب)", url=tutorial_url)],
-                [InlineKeyboardButton("🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", url=troubleshoot_url)]
-            ]
+            buttons = get_tutorial_inline_buttons(tutorial_url, troubleshoot_url)
             await update.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             return CHOOSING
         elif b_id == "referral":

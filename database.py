@@ -15279,10 +15279,10 @@ class Database:
             {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"}
         ],
         "tutorials": [
-            {"id": "android", "title": "🤖 آموزش اندروید (v2rayNG)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "default"},
-            {"id": "ios", "title": "🍏 آموزش آیفون (V2Box/Streisand)", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
-            {"id": "windows", "title": "💻 آموزش ویندوز (v2rayN)", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"},
-            {"id": "troubleshoot", "title": "🛠️ حل مشکلات و عیب‌یابی اتصال", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "danger"}
+            {"id": "wiz_tb_start", "title": "🧭 عیب‌یابی قدم‌به‌قدم اتصال (تلگرام)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "wiz_conn_start", "title": "🚀 راهنمای قدم‌به‌قدم اتصال (تلگرام)", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "tutorial_url", "title": "🌐 مشاهده آموزش‌های تصویری جامع (وب)", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "primary"},
+            {"id": "troubleshoot_url", "title": "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "danger"}
         ],
         "wallet": [
             {"id": "charge_card", "title": "💳 شارژ با کارت به کارت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
@@ -15336,19 +15336,68 @@ class Database:
             try:
                 saved = json.loads(saved_raw) if isinstance(saved_raw, str) else saved_raw
                 if isinstance(saved, list) and saved:
+                    saved_ids = {it.get("id") for it in saved if isinstance(it, dict)}
+                    for def_it in defaults:
+                        if def_it.get("id") not in saved_ids:
+                            alt_matched = False
+                            if def_it.get("id") == "wiz_tb_start" and "troubleshoot" in saved_ids:
+                                alt_matched = True
+                            elif def_it.get("id") == "wiz_conn_start" and "android" in saved_ids:
+                                alt_matched = True
+                            if not alt_matched:
+                                saved.append(copy.deepcopy(def_it))
                     for idx, it in enumerate(saved):
+                        if not isinstance(it, dict):
+                            continue
                         if "row" not in it:
                             it["row"] = idx // 2
                         if "col" not in it:
                             it["col"] = idx % 2
                         if "style" not in it:
-                            # یافتن پیش‌فرض استایل
                             matching_def = next((d for d in defaults if d.get("id") == it.get("id")), {})
                             it["style"] = matching_def.get("style", "default")
                     return saved
             except Exception:
                 pass
         return copy.deepcopy(defaults)
+
+    def get_sub_menu_dict(self, *args, **kwargs) -> dict:
+        """دریافت تنظیمات زیرمنو به صورت دیکشنری کلید-مقدار بر اساس id دکمه"""
+        items = self.get_sub_menu_config(*args, **kwargs)
+        res = {}
+        for it in items:
+            if isinstance(it, dict) and "id" in it:
+                res[it["id"]] = it
+        return res
+
+    def get_sub_menu_item_style(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> Optional[str]:
+        """استخراج استایل رنگی دکمه تلگرام (primary, success, danger یا None) با در نظر گرفتن تنظیمات دیتابیس"""
+        try:
+            cfg = self.get_sub_menu_dict(bot_type, menu_key, is_reseller=is_reseller, reseller_id=reseller_id)
+            item = cfg.get(item_id)
+            if not item:
+                alias_map = {
+                    "troubleshoot": ["wiz_tb_start", "troubleshoot_url"],
+                    "troubleshoot_url": ["troubleshoot", "wiz_tb_start"],
+                    "wiz_tb_start": ["troubleshoot", "troubleshoot_url"],
+                    "wiz_conn_start": ["android", "tutorial_url"],
+                    "tutorial_url": ["windows", "wiz_conn_start"],
+                    "cancel": ["back", "bsb_bundles"],
+                    "back": ["cancel"],
+                }
+                for alt in alias_map.get(item_id, []):
+                    if alt in cfg:
+                        item = cfg[alt]
+                        break
+            if item:
+                st = item.get("style")
+                if st in ("primary", "success", "danger"):
+                    return st
+                elif st in ("default", "none", "", None):
+                    return None
+        except Exception:
+            pass
+        return default if default in ("primary", "success", "danger") else None
 
     def save_sub_menu_config(self, *args, **kwargs) -> bool:
         """ذخیره تنظیمات، رنگ و ترتیب زیرمنوهای ربات"""
