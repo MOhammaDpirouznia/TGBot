@@ -384,6 +384,7 @@
         .icon-v2ray { background: linear-gradient(135deg, #e11d48, #be123c); }
         .icon-streisand { background: linear-gradient(135deg, #0284c7, #0369a1); }
         .icon-hiddify { background: linear-gradient(135deg, #059669, #047857); }
+        .icon-happ { background: linear-gradient(135deg, #10b981, #059669); }
         .icon-v2box { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
         .icon-foxray { background: linear-gradient(135deg, #ea580c, #c2410c); }
         .icon-nekobox { background: linear-gradient(135deg, #0891b2, #0e7490); }
@@ -681,6 +682,18 @@
                         <div class="app-meta">
                             <div class="app-name">Hiddify App</div>
                             <div class="app-os">ویندوز و گوشی</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
+
+                <!-- ۴. Happ Proxy (iOS / Android) -->
+                <a href="{{ sub_url|happ_url(sub.get('account_name') or 'HiddiPlus') }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-happ"><i class="fas fa-play"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">Happ Proxy</div>
+                            <div class="app-os">آیفون و اندروید</div>
                         </div>
                     </div>
                     <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>

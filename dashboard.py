@@ -684,6 +684,35 @@ def filter_gateway_name(gateway):
     return gateway
 
 
+@app.template_filter("happ_url")
+@app.template_global("format_happ_url")
+def filter_happ_url(sub_url, name="HiddiPlus"):
+    """
+    تولید دیپ‌لینک کاملاً استاندارد و بدون نقص برای برنامه Happ Proxy Utility
+    استفاده از پروتکل استاندارد happ://add?url= به همراه آدرس مستقیم کانفیگ‌ها (all.txt) و انکود اصولی
+    """
+    if not sub_url:
+        return ""
+    clean = str(sub_url).strip()
+    if clean.startswith("happ://"):
+        return clean
+    if clean.startswith(("vless://", "vmess://", "trojan://", "ss://", "hysteria2://")):
+        enc = urllib.parse.quote(clean, safe="")
+        return f"happ://add?url={enc}"
+    if clean.endswith("/"):
+        config_url = f"{clean}all.txt"
+    elif not clean.endswith(".txt") and not clean.endswith("/sub/"):
+        config_url = f"{clean}/all.txt"
+    else:
+        config_url = clean
+
+    enc_url = urllib.parse.quote(config_url, safe="")
+    if name:
+        enc_name = urllib.parse.quote(str(name).strip(), safe="")
+        return f"happ://add?url={enc_url}&name={enc_name}"
+    return f"happ://add?url={enc_url}"
+
+
 @app.template_filter("reviewer_name")
 @app.template_global("format_reviewer")
 def filter_reviewer_name(reviewer):
@@ -1117,6 +1146,7 @@ def smart_subscription_proxy(sub_uuid: str, sub_path: str = ""):
     ثبت بلادرنگ مشخصات واقعی دستگاه، سیستم‌عامل، برنامه کلاینت و IP اینترنت کاربر
     """
     ua = request.headers.get("User-Agent", "")
+    ua_lower = ua.lower()
     client_ip = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
     
     # ثبت مشخصات نشست در دیتابیس
@@ -1130,11 +1160,22 @@ def smart_subscription_proxy(sub_uuid: str, sub_path: str = ""):
     target_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/"
     if sub_path:
         target_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/{sub_path}"
+    elif "happ" in ua_lower:
+        # کلاینت Happ نیاز به دریافت مستقیم سابسکریپشن بدون واسطه صفحه HTML دارد
+        target_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/all.txt"
 
     try:
         req_headers = {k: v for k, v in request.headers if k.lower() not in ["host", "content-length"]}
+        if "happ" in ua_lower:
+            req_headers["User-Agent"] = "v2rayNG/1.8.12"
+
         with httpx.Client(verify=False, follow_redirects=True, timeout=10.0) as client:
             resp = client.get(target_url, headers=req_headers)
+            # اگر سرور هیدیفای صفحه وب HTML برگرداند در حالی که کلاینت Happ است، سابسکریپشن خام را واکشی کنیم
+            if "happ" in ua_lower and resp.headers.get("content-type", "").startswith("text/html"):
+                fallback_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/all.txt"
+                resp = client.get(fallback_url, headers=req_headers)
+
             excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
             resp_headers = [(k, v) for k, v in resp.headers.items() if k.lower() not in excluded_headers]
             return Response(resp.content, status=resp.status_code, headers=resp_headers)

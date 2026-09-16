@@ -806,7 +806,7 @@
                                 <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
                                     <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
                                     <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
-                                    <a href="happ://add/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i> Happ</a>
+                                    <a href="{{ sub_url|happ_url(sub.get('account_name') or 'HiddiPlus') }}" class="btn btn-xs btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i> Happ</a>
                                     <a href="v2box://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i> V2box</a>
                                 </div>
                             </div>
