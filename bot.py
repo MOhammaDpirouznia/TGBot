@@ -2464,6 +2464,11 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as dl_err:
                 logger.warning(f"Could not download telegram receipt to disk: {dl_err}")
 
+        actor_title = f"{user.full_name or user.first_name}"
+        if user.username:
+            actor_title += f" (@{user.username})"
+        actor_title += f" [شناسه {user.id}] (ربات تلگرام)"
+
         db.save_transaction(
             order_id=order_id,
             user_id=user.id,
@@ -2479,8 +2484,24 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             renew_sub_id=renew_sub_id,
             discount_code=discount_code,
             receipt_image=saved_receipt_filename or receipt_photo,
-            receipt_file_type="web_upload" if saved_receipt_filename else receipt_type
+            receipt_photo_id=receipt_photo,
+            receipt_file_type="web_upload" if saved_receipt_filename else receipt_type,
+            created_by=actor_title
         )
+
+        if saved_receipt_filename:
+            conn = db.get_connection()
+            last_t = conn.execute("SELECT id FROM transactions WHERE order_id = ?", (order_id,)).fetchone()
+            conn.close()
+            t_id = last_t[0] if last_t else 0
+            if t_id:
+                import threading
+                def _bot_ocr_bg(f_name, txid):
+                    try:
+                        db.extract_receipt_text_ai(f_name, tx_id=txid)
+                    except Exception as e_bg:
+                        logger.warning(f"Background OCR error in bot.py: {e_bg}")
+                threading.Thread(target=_bot_ocr_bg, args=(saved_receipt_filename, t_id), daemon=True).start()
 
         logger.info(f"Transaction saved for user {user.id} (renewal={is_renewal})")
     except Exception as e:

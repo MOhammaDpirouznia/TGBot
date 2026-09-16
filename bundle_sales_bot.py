@@ -17,6 +17,7 @@ import asyncio
 import threading
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
+from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -603,10 +604,26 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order_id = f"R_BUNDLE_{r_id}_{get_now_naive().strftime('%Y%m%d%H%M%S')}"
 
         photo_id = None
+        local_saved_fn = None
+        receipts_dir = Path("data/receipts")
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+
         if msg.photo:
             photo_id = msg.photo[-1].file_id
+            try:
+                tg_file = await msg.photo[-1].get_file()
+                saved_filename = f"receipt_{order_id}.jpg"
+                save_dest = receipts_dir / saved_filename
+                await tg_file.download_to_drive(custom_path=save_dest)
+                local_saved_fn = saved_filename
+            except Exception as e_dl:
+                logger.warning(f"Error downloading bundle receipt photo to disk: {e_dl}")
 
         caption_text = msg.caption or msg.text or ""
+        actor_name = f"{user.full_name or user.first_name}"
+        if user.username:
+            actor_name += f" (@{user.username})"
+        actor_title = f"{actor_name} [شناسه {user.id}] (ربات تلگرام بسته‌ها)"
 
         # ثبت در جدول تراکنش‌ها
         db.save_transaction(
@@ -616,15 +633,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plan_name=bundle_title,
             amount=price,
             gateway="bundle_reseller",
-            receipt_image=photo_id or "text_tracking",
+            receipt_image=local_saved_fn or photo_id or "text_tracking",
+            receipt_photo_id=photo_id,
             tracking_code=caption_text[:50] if caption_text else f"BUNDLE_{r_id}",
             status="pending",
             account_name=reseller.get("username"),
             source="bundle_sales_bot",
-            reseller_id=r_id
+            reseller_id=r_id,
+            created_by=actor_title,
+            receipt_file_type="web_upload" if local_saved_fn else "telegram_photo"
         )
 
         context.user_data.pop("awaiting_bundle_receipt", None)
+
+        conn = db.get_connection()
+        last_tx = conn.execute("SELECT id FROM transactions WHERE order_id = ?", (order_id,)).fetchone()
+        conn.close()
+        tx_row_id = last_tx[0] if last_tx else 0
+
+        # استخراج خودکار متن فیش (OCR) در پس‌زمینه در صورت وجود فایل محلی
+        if local_saved_fn and tx_row_id:
+            def _async_ocr_task(fn_str, t_id):
+                try:
+                    db.extract_receipt_text_ai(fn_str, tx_id=t_id)
+                except Exception as ex_ocr:
+                    logger.warning(f"Bundle receipt OCR error: {ex_ocr}")
+            threading.Thread(target=_async_ocr_task, args=(local_saved_fn, tx_row_id), daemon=True).start()
 
         await msg.reply_text(
             f"✅ **فیش واریزی بسته «{bundle_title}» با موفقیت ثبت گردید.**\n"
@@ -644,11 +678,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for adm in bundle_admins:
             if adm.get("telegram_id"):
                 target_admin_ids.add(int(adm["telegram_id"]))
-
-        conn = db.get_connection()
-        last_tx = conn.execute("SELECT id FROM transactions WHERE order_id = ?", (order_id,)).fetchone()
-        conn.close()
-        tx_row_id = last_tx[0] if last_tx else 0
 
         admin_kb = InlineKeyboardMarkup([
             [

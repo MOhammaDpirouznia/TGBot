@@ -15,6 +15,9 @@ import logging
 import io
 import csv
 import time
+import base64
+import urllib.request
+import urllib.error
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta, timezone
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
@@ -681,6 +684,16 @@ class Database:
 
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN subscription_id INTEGER")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN created_by TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN receipt_ocr_text TEXT")
         except Exception:
             pass
 
@@ -2931,8 +2944,8 @@ class Database:
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, source="telegram", **kwargs):
-        """ذخیره تراکنش"""
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, source="telegram", created_by=None, receipt_ocr_text=None, **kwargs):
+        """ذخیره تراکنش با پشتیبانی از مشخصات اقدام‌کننده و متن OCR فیش"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2943,14 +2956,17 @@ class Database:
         if not source:
             source = "portal" if (str(order_id).startswith("INV") or gateway == "bank_sms" or renew_sub_id) else "telegram"
 
+        created_by_val = created_by or kwargs.get("created_by")
+        receipt_ocr_val = receipt_ocr_text or kwargs.get("receipt_ocr_text")
+
         try:
             cursor.execute("""
                 INSERT OR REPLACE INTO transactions
-                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, reseller_id, source, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, reseller_id, source, now, now))
+                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, reseller_id, source, created_by, receipt_ocr_text, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, reseller_id, source, created_by_val, receipt_ocr_val, now, now))
             conn.commit()
-            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id}, source={source})")
+            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id}, source={source}, created_by={created_by_val})")
             
             # ذخیره بک‌آپ فوری
             try:
@@ -3068,6 +3084,142 @@ class Database:
             return None
         finally:
             conn.close()
+
+    def update_transaction_ocr(self, tx_id: int, ocr_text: str) -> bool:
+        """بروزرسانی متن استخراج‌شده فیش بانکی (OCR) در تراکنش"""
+        if not tx_id or not ocr_text:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE transactions SET receipt_ocr_text = ?, updated_at = ? WHERE id = ?", (ocr_text, get_now_iso(), int(tx_id)))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating transaction #{tx_id} OCR text: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def extract_receipt_text_ai(self, image_path_or_bytes: Union[str, Path, bytes], tx_id: int = None, api_key: str = None) -> dict:
+        """
+        استخراج متن و جزئیات فارسی فیش واریزی با استفاده از مدل بینایی Google Gemini Vision
+        و ذخیره دائمی آن در رکورد تراکنش
+        """
+        raw_bytes = None
+        mime_type = "image/jpeg"
+
+        if isinstance(image_path_or_bytes, bytes):
+            raw_bytes = image_path_or_bytes
+        else:
+            p = Path(str(image_path_or_bytes))
+            if not p.is_file():
+                # جستجو در مسیر پیش‌فرض فیش‌ها
+                p_receipts = Path("data/receipts") / p.name
+                if p_receipts.is_file():
+                    p = p_receipts
+            
+            if not p.is_file():
+                return {"success": False, "error": f"فایل تصویر فیش یافت نشد: {image_path_or_bytes}"}
+
+            ext = p.suffix.lower()
+            if ext == ".png":
+                mime_type = "image/png"
+            elif ext == ".webp":
+                mime_type = "image/webp"
+            elif ext == ".pdf":
+                mime_type = "application/pdf"
+            else:
+                mime_type = "image/jpeg"
+
+            try:
+                with open(p, "rb") as f:
+                    raw_bytes = f.read()
+            except Exception as e_read:
+                return {"success": False, "error": f"خطا در خواندن فایل فیش: {e_read}"}
+
+        if not raw_bytes:
+            return {"success": False, "error": "داده‌های تصویر خالی است."}
+
+        # تعیین کلید API
+        eff_key = api_key
+        if not eff_key:
+            eff_key = self.get_setting("gemini_api_key") or ""
+        if not eff_key or eff_key == "WEB_SAVED_KEY":
+            ai_s = self.get_ai_marketing_settings("admin", 0)
+            eff_key = ai_s.get("api_key") or ""
+        if not eff_key or eff_key == "WEB_SAVED_KEY":
+            eff_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY") or ""
+
+        if not eff_key or eff_key == "WEB_SAVED_KEY":
+            return {
+                "success": False,
+                "error": "کلید API معتبر هوش مصنوعی جِمینای (Gemini) تنظیم نشده است. لطفاً در استودیو هوش مصنوعی کلید اختصاصی Google Gemini را ثبت کنید."
+            }
+
+        b64_str = base64.b64encode(raw_bytes).decode("utf-8")
+        prompt = (
+            "تو یک دستیار هوشمند و فوق‌العاده دقیق برای استخراج و بازخوانی اطلاعات فیش‌ها و رسیدهای بانکی کارت‌به‌کارت و درگاه‌های ایران هستی.\n"
+            "لطفاً تصویر این رسید پرداخت را به دقت بررسی کرده و جزئیات آن را دقیق، کامل و به زبان فارسی در قالب ساختاریافته زیر استخراج کن:\n\n"
+            "📌 **اطلاعات تفکیک‌شده رسید بانکی:**\n"
+            "- **کد رهگیری / شماره پیگیری / ارجاع:** \n"
+            "- **مبلغ واریزی:** (به تومان و ریال)\n"
+            "- **کارت یا حساب مبدأ:** (شماره کارت و در صورت درج، نام واریزکننده)\n"
+            "- **کارت یا حساب مقصد:** (شماره کارت و در صورت درج، نام پذیرنده/بانک مقصد)\n"
+            "- **نام واریزکننده:** \n"
+            "- **نام دریافت‌کننده / پذیرنده:** \n"
+            "- **تاریخ و زمان پرداخت:** (تاریخ دقیق شمسی و ساعت)\n"
+            "- **بانک یا برنامه صادرکننده:** (مثلاً آپ، بلو، سامان، ملت، سپه، رسالت و ...)\n"
+            "- **وضعیت انتقال:** (موفق / ناموفق / در حال پردازش)\n\n"
+            "🔍 **متن کامل بازخوانی‌شده از تصویر فیش (OCR):**\n"
+            "(کلیه کلمات و نوشته‌های موجود روی فیش را عیناً یادداشت کن)\n\n"
+            "نکته: در صورتی که موردی روی تصویر رسید وجود ندارد، بنویس «درج نشده»."
+        )
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={eff_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64_str
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 2048
+            }
+        }
+
+        try:
+            req_data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=35) as resp:
+                if resp.status == 200:
+                    resp_json = json.loads(resp.read().decode("utf-8"))
+                    candidates = resp_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            text_out = parts[0].get("text", "").strip()
+                            if text_out:
+                                if tx_id:
+                                    self.update_transaction_ocr(tx_id, text_out)
+                                return {"success": True, "text": text_out}
+            return {"success": False, "error": "پاسخی از سرور هوش مصنوعی دریافت نشد."}
+        except urllib.error.HTTPError as e_http:
+            err_body = e_http.read().decode("utf-8", errors="ignore")
+            logger.error(f"Gemini Vision OCR HTTP {e_http.code}: {err_body}")
+            return {"success": False, "error": f"خطای ارتباط با هوش مصنوعی جِمینای (کد {e_http.code}): {err_body[:200]}"}
+        except Exception as e_api:
+            logger.error(f"Gemini Vision OCR error: {e_api}")
+            return {"success": False, "error": f"خطا در اجرای بازخوانی فیش: {e_api}"}
 
     def get_pending_transactions(self):
         """دریافت تراکنش‌های در انتظار"""

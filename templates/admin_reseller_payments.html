@@ -703,11 +703,61 @@
                         <code dir="ltr">{{ r['card_number'] }}</code>
                     </div>
                     {% endif %}
+                    {% if r.get('created_by') %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-purple-subtle bg-opacity-25">
+                        <span class="text-muted"><i class="fas fa-user-pen me-1 text-primary"></i>اقدام‌کننده / ثبت‌کننده:</span>
+                        <span class="badge bg-purple-subtle text-purple border font-monospace">{{ r['created_by'] }}</span>
+                    </div>
+                    {% endif %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">تاریخ ثبت فیش:</span>
                         <span class="font-monospace text-muted">{{ r['created_at'][:19].replace('T', ' ') if r['created_at'] else '-' }}</span>
                     </div>
                 </div>
+
+                <!-- تصویر فیش واریزی -->
+                {% if r.get('receipt_image') or r.get('receipt_photo_id') or r.get('photo_id') %}
+                <div class="card border p-3 text-center mb-3 mt-3">
+                    <h6 class="fw-bold mb-3"><i class="fas fa-image me-2 text-primary"></i>تصویر فیش واریزی:</h6>
+                    <div class="d-inline-block border rounded p-2 bg-white shadow-sm" style="max-height: 350px; overflow: hidden;">
+                        <img src="{{ url_for('admin_payment_receipt', payment_id=r['id']) }}" 
+                             alt="فیش واریزی" 
+                             class="img-fluid rounded" 
+                             style="max-height: 330px; object-fit: contain; cursor: pointer;"
+                             onclick="window.open('{{ url_for('admin_payment_receipt', payment_id=r['id']) }}', '_blank')">
+                    </div>
+                    <div class="mt-2">
+                        <a href="{{ url_for('admin_payment_receipt', payment_id=r['id']) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-magnifying-glass-plus me-1"></i> مشاهده و باز کردن تصویر در اندازه اصلی
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- بخش استخراج هوشمند متن رسید (OCR) -->
+                {% if r.get('receipt_image') or r.get('receipt_photo_id') or r.get('photo_id') or r.get('receipt_ocr_text') %}
+                <div class="card border mb-3 shadow-xs mt-3" id="ocrCardReseller{{ r['id'] }}" style="background: #f8fafc;">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                        <span class="fw-bold text-dark small">
+                            <i class="fas fa-robot text-primary me-1"></i> اطلاعات استخراج‌شده از فیش توسط هوش مصنوعی (OCR)
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" onclick="triggerResellerReceiptOCR({{ r['id'] }})" id="ocrBtnReseller{{ r['id'] }}" title="بازخوانی یا به‌روزرسانی متن فیش با مدل بینایی Google Gemini">
+                            <i class="fas fa-wand-magic-sparkles me-1 text-warning"></i> بازخوانی هوشمند (Gemini)
+                        </button>
+                    </div>
+                    <div class="card-body p-3">
+                        <div id="ocrContentReseller{{ r['id'] }}">
+                            {% if r.get('receipt_ocr_text') %}
+                                <div class="bg-white p-3 rounded border font-monospace text-wrap small" style="white-space: pre-wrap; line-height: 1.8; max-height: 250px; overflow-y: auto;">{{ r['receipt_ocr_text'] }}</div>
+                            {% else %}
+                                <div class="text-muted small text-center py-2">
+                                    <i class="fas fa-file-invoice me-1"></i> متن رسید هنوز استخراج نشده است. با کلیک روی «بازخوانی هوشمند»، مشخصات کامل فیش (کد پیگیری، مبالغ، شماره کارت) توسط هوش مصنوعی استخراج و به صورت دائمی در دیتابیس ثبت می‌گردد.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
@@ -1072,4 +1122,48 @@
         </div>
     </div>
 </div>
+
+<script>
+function triggerResellerReceiptOCR(paymentId) {
+    const btn = document.getElementById('ocrBtnReseller' + paymentId);
+    const content = document.getElementById('ocrContentReseller' + paymentId);
+    if (!btn || !content) return;
+
+    const originalBtnHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> در حال خواندن فیش...';
+    content.innerHTML = '<div class="text-center py-3 text-primary"><div class="spinner-border spinner-border-sm mb-2" role="status"></div><div class="small fw-bold">هوش مصنوعی در حال تحلیل تصویر فیش و استخراج مشخصات بانکی است...</div></div>';
+
+    fetch('/api/admin/payment/' + paymentId + '/ocr', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+        if (data.success && data.text) {
+            content.innerHTML = '<div class="bg-white p-3 rounded border font-monospace text-wrap small" style="white-space: pre-wrap; line-height: 1.8; max-height: 250px; overflow-y: auto;">' + escapeResellerHtml(data.text) + '</div>';
+            if (typeof showToast === 'function') {
+                showToast('متن رسید با موفقیت توسط هوش مصنوعی استخراج و ذخیره شد.', 'success');
+            }
+        } else {
+            content.innerHTML = '<div class="alert alert-warning small mb-0"><i class="fas fa-triangle-exclamation me-1"></i> ' + (data.error || 'خطا در استخراج متن فیش') + '</div>';
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+        content.innerHTML = '<div class="alert alert-danger small mb-0"><i class="fas fa-times-circle me-1"></i> خطا در برقراری ارتباط با سرور: ' + err + '</div>';
+    });
+}
+
+function escapeResellerHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
 {% endblock %}

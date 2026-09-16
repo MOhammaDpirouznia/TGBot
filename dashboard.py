@@ -594,62 +594,93 @@ def avatar_url_helper(identifier=None):
 @app.template_filter("gateway_name")
 @app.template_global("format_gateway_name")
 def filter_gateway_name(gateway):
-    """تبدیل شناسه انگلیسی درگاه به نام فارسی روان و استاندارد"""
-    if not gateway or str(gateway).strip() in ["", "None", "null"]:
+    """تبدیل شناسه انگلیسی درگاه یا کارت به نام فارسی روان و کاملاً استاندارد"""
+    if not gateway or str(gateway).strip() in ["", "None", "null", "-"]:
         return "کارت به کارت"
     g = str(gateway).strip().lower()
+
+    # کارت‌های مشخص شده با شناسه عددی (مانند card_1, card_3, card_5)
+    m_card = re.match(r"^card_(\d+)$", g)
+    if m_card:
+        card_id = int(m_card.group(1))
+        try:
+            c_row = db.get_bank_card(card_id)
+            if c_row and (c_row.get("bank_name") or c_row.get("holder_name")):
+                b_name = (c_row.get("bank_name") or "بانک").strip()
+                h_name = (c_row.get("holder_name") or "").strip()
+                return f"کارت به کارت ({b_name}{' - ' + h_name if h_name else ''})"
+        except Exception:
+            pass
+        return f"کارت به کارت (کارت {card_id})"
     
-    # درگاه بلوپال
-    if g in ("blupal", "blupal_gateway"):
+    # درگاه بلوپال (BluPal)
+    if "blupal" in g or "bluepal" in g:
+        if "bundle" in g:
+            return "درگاه هوشمند بلوپال (بسته نماینده)"
+        elif "portal" in g:
+            return "درگاه هوشمند بلوپال (پرتال)"
+        elif "reseller" in g:
+            return "درگاه هوشمند بلوپال (نماینده)"
         return "درگاه هوشمند بلوپال"
-    elif g in ("blupal_portal", "portal_blupal"):
-        return "درگاه هوشمند بلوپال (پرتال)"
-    elif g.startswith("blupal_reseller") or "blupal_reseller" in g:
-        return "درگاه هوشمند بلوپال (نماینده)"
-    elif "blupal" in g:
-        return "درگاه پرداخت بلوپال"
+
+    # حساب‌ها و پلن‌های رایگان و معافیت‌ها
+    if g in ("free_admin", "free_panel", "admin_free"):
+        return "رایگان (مدیریت)"
+    elif g in ("free_reseller", "reseller_free"):
+        return "رایگان (نماینده)"
+    elif g in ("free", "gift", "trial", "free_discount"):
+        return "تست رایگان / هدیه"
 
     # کارت به کارت و پرداخت‌های بانکی
-    if g in ("cash_admin", "card_admin", "manual_cash", "cash", "c2c_admin") or g.startswith("cash_"):
+    if g in ("cash_admin", "card_admin", "manual_cash", "c2c_admin") or g.startswith("cash_admin"):
         return "کارت به کارت (مدیریت)"
     elif g in ("card_reseller", "c2c_reseller") or g.startswith("card_reseller_") or g.startswith("cash_reseller_"):
         return "کارت به کارت (نماینده)"
+    elif g in ("bundle_reseller", "r_bundle") or g.startswith("r_bundle_"):
+        return "کارت به کارت (شارژ بسته)"
     elif g in ("card_to_bank", "c2b"):
         return "کارت به کارت (واریز مستقیم بانکی)"
     elif g in ("bank_sms", "sms_c2c", "auto_sms"):
         return "کارت به کارت (تأیید خودکار پیامکی)"
     elif g in ("card_to_card", "card", "kart", "c2c"):
         return "کارت به کارت"
-    elif g == "bundle_reseller" or g.startswith("r_bundle"):
-        return "شارژ بسته اعتباری نماینده"
-    elif g in ("wallet", "wal", "pwal", "wallet_balance", "portal_wallet", "miniapp_wallet"):
+    elif g in ("cash", "cash_payment"):
+        return "پرداخت نقدی"
+
+    # کیف پول و شارژ اعتباری
+    if g in ("wallet", "wal", "pwal", "wallet_balance", "portal_wallet", "miniapp_wallet"):
         return "کیف پول هوشمند"
-    elif g in ("zarinpal_portal", "portal_zarinpal"):
-        return "درگاه آنلاین شاپرک (زرین‌پال پرتال)"
-    elif g in ("zarinpal", "zarin_pal") or g.startswith("zarinpal_"):
+
+    # درگاه‌های بانکی شاپرک
+    if "zarinpal" in g or "zarin_pal" in g:
         return "درگاه آنلاین شاپرک (زرین‌پال)"
-    elif g in ("idpay_portal", "portal_idpay"):
-        return "درگاه آنلاین شاپرک (آیدی‌پی پرتال)"
-    elif g in ("idpay", "id_pay") or g.startswith("idpay_"):
+    elif "idpay" in g or "id_pay" in g:
         return "درگاه آنلاین شاپرک (آیدی‌پی)"
-    elif g in ("nextpay_portal", "portal_nextpay"):
-        return "درگاه آنلاین شاپرک (نکست‌پی پرتال)"
-    elif g in ("nextpay", "next_pay") or g.startswith("nextpay_"):
+    elif "nextpay" in g or "next_pay" in g:
         return "درگاه آنلاین شاپرک (نکست‌پی)"
     elif g in ("gateway", "online", "online_gateway", "shaparak", "portal_online") or g.startswith("online_"):
         return "درگاه پرداخت آنلاین شاپرک"
-    elif g in ("crypto", "nowpayments", "usdt", "oxapay", "trx", "ton"):
-        return "ارز دیجیتال (تتر / کریپتو)"
+
+    # ارزهای دیجیتال و بین‌الملل
+    if g in ("crypto", "nowpayments", "usdt", "oxapay", "trx", "ton") or "crypto" in g:
+        return "ارز دیجیتال (کریپتو)"
     elif g in ("perfect_money", "perfectmoney", "pm"):
         return "پرفکت مانی"
-    elif g in ("admin_manual", "manual", "panel_manual"):
+
+    # ثبت‌های دستی پنل
+    if g in ("admin_manual", "manual", "panel_manual"):
         return "ثبت دستی مدیریت"
     elif g in ("reseller_manual", "manual_reseller"):
         return "ثبت دستی نماینده"
     elif g in ("cashback", "vip_cashback"):
         return "پاداش کش‌بک VIP"
-    elif g in ("free", "gift", "trial", "free_discount"):
-        return "تست رایگان / هدیه"
+
+    # بررسی نام‌های عمومی
+    if "card" in g:
+        return "کارت به کارت"
+    elif "free" in g:
+        return "رایگان"
+
     return gateway
 
 
@@ -4701,6 +4732,10 @@ def payments():
     revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {scope_cond}").fetchone()[0]
     deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {scope_cond}").fetchone()[0]
 
+    # نقشه شناسه‌ها به نام‌های نمایشی نمایندگان جهت عدم نمایش شناسه خشک
+    all_res_rows = db.get_all_resellers()
+    resellers_map = {r["id"]: (r.get("name") or r.get("username") or f"نماینده #{r['id']}").strip() for r in all_res_rows}
+
     # اضافه کردن لاگ‌های حسابرسی و غنی‌سازی مبدأ و نام مشتری برای هر تراکنش با تابع هوشمند
     payment_list = []
     for p in raw_payment_list:
@@ -4713,15 +4748,20 @@ def payments():
         renew_sub_id = p_dict.get("renew_sub_id")
         user_id = p_dict.get("user_id") or 0
 
+        r_id = p_dict.get("reseller_id")
+        res_name = resellers_map.get(r_id) if r_id else None
+        p_dict["reseller_name"] = res_name or (f"نماینده #{r_id}" if r_id else None)
+
         # استخراج نام و عنوان مشتری جهت نمایش
         if origin == "admin":
             cust_name = p_dict.get("account_name") or p_dict.get("username") or "مشتری پنل مدیریت"
             p_dict["customer_name"] = cust_name
         elif origin == "reseller":
-            cust_name = p_dict.get("account_name") or p_dict.get("username") or f"مشتری نماینده #{p_dict.get('reseller_id') or '-'}"
+            fallback_res = f"نماینده #{r_id}" if r_id else "نماینده"
+            cust_name = p_dict.get("account_name") or p_dict.get("username") or f"مشتری {res_name or fallback_res}"
             p_dict["customer_name"] = cust_name
         elif origin == "bundle":
-            p_dict["customer_name"] = f"نماینده #{p_dict.get('reseller_id') or '-'}"
+            p_dict["customer_name"] = res_name or f"نماینده #{r_id or '-'}"
         elif origin == "portal":
             cust_name = p_dict.get("account_name") or p_dict.get("username")
             if not cust_name or cust_name in ("None", "null", "", "کاربر"):
@@ -6114,21 +6154,9 @@ RECEIPTS_DIR = Path("data/receipts")
 RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def prune_receipt_cache(max_files: int = 50):
-    """مدیریت فضای ذخیره‌سازی: نگهداری فقط ۵۰ تصویر آخر رسیدها و حذف فایل‌های قدیمی‌تر"""
-    try:
-        files = [f for f in RECEIPTS_DIR.glob("receipt_*.*") if f.is_file()]
-        if len(files) > max_files:
-            # مرتب‌سازی بر اساس تاریخ ویرایش/ساخت نزولی (جدیدترین اول)
-            files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-            # حذف فایل‌های قدیمی‌تر از ۵۰ مورد
-            for old_file in files[max_files:]:
-                try:
-                    old_file.unlink()
-                except Exception:
-                    pass
-    except Exception as e:
-        logger.warning(f"Error pruning receipt cache: {e}")
+def prune_receipt_cache(max_files: int = 5000):
+    """مدیریت فضای ذخیره‌سازی: رسیدها سند مالی هستند و هرگز به صورت خودکار حذف نمی‌شوند"""
+    pass
 
 
 def get_receipt_placeholder_svg(order_id: str = "", plan_name: str = "", amount: int = 0, tracking_code: str = "") -> str:
@@ -6160,13 +6188,14 @@ def get_receipt_placeholder_svg(order_id: str = "", plan_name: str = "", amount:
 @app.route("/admin/payment-receipt/<int:payment_id>")
 @app.route("/reseller/payment-receipt/<int:payment_id>")
 def admin_payment_receipt(payment_id):
-    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت (پشتیبانی از ادمین و نماینده)"""
+    """سرو امن تصویر فیش واریزی کاربران و نمایندگان با کش محلی دائمی و فال‌بک تلگرام"""
     conn = db.get_connection()
-    tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE id = ?", (payment_id,)).fetchone()
     conn.close()
 
     if not tx_row:
-        return Response(get_receipt_placeholder_svg(f"#{payment_id}", "تراکنش یافت نشد"), mimetype="image/svg+xml")
+        svg = get_receipt_placeholder_svg(f"#{payment_id}", "یافت نشد", 0, "")
+        return Response(svg, mimetype="image/svg+xml")
 
     tx = dict(tx_row)
     order_id = tx.get("order_id", "")
@@ -6206,16 +6235,21 @@ def admin_payment_receipt(payment_id):
     # ۲. در صورتی که فایل محلی نبود و مقدار receipt_image مانند file_id تلگرام است:
     file_id = tx.get("receipt_image") or tx.get("receipt_photo_id")
     if file_id and not ("." in str(file_id) or "/" in str(file_id) or "\\" in str(file_id)):
-        # تعیین توکن ربات
-        bot_token = None
+        candidate_tokens = []
+        bundle_tok = db.get_setting("bundle_bot_token") or os.getenv("BUNDLE_BOT_TOKEN")
+        if bundle_tok and (str(order_id).startswith("R_BUNDLE") or tx.get("source") in ("bundle", "bundle_sales_bot", "reseller_bundle")):
+            candidate_tokens.append(bundle_tok)
         if tx.get("reseller_id"):
             r_info = db.get_reseller(tx["reseller_id"])
             if r_info and r_info.get("bot_token"):
-                bot_token = r_info["bot_token"]
-        if not bot_token:
-            bot_token = get_bot_token()
+                candidate_tokens.append(r_info["bot_token"])
+        main_tok = get_bot_token()
+        if main_tok:
+            candidate_tokens.append(main_tok)
+        if bundle_tok and bundle_tok not in candidate_tokens:
+            candidate_tokens.append(bundle_tok)
 
-        if bot_token:
+        for bot_token in candidate_tokens:
             try:
                 get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
                 with httpx.Client(timeout=8.0) as client:
@@ -6239,11 +6273,83 @@ def admin_payment_receipt(payment_id):
                                 resp.headers["Cache-Control"] = "public, max-age=86400"
                                 return resp
             except Exception as e:
-                logger.warning(f"Failed to fetch receipt from telegram: {e}")
+                logger.warning(f"Failed to fetch receipt from telegram using token {bot_token[:8]}...: {e}")
 
     # ۳. در صورتی که فایل تصویر فیزیکی نبود، بازگرداندن SVG با کیفیت بالا (Status 200)
     svg = get_receipt_placeholder_svg(order_id, plan_name, amount, tracking_code)
     return Response(svg, mimetype="image/svg+xml")
+
+
+@app.route("/api/admin/payment/<int:payment_id>/ocr", methods=["POST"])
+@admin_required
+def api_admin_payment_ocr(payment_id):
+    """بازخوانی هوشمند رسید فیش بانکی (OCR) با مدل بینایی Google Gemini Vision و ذخیره دائمی"""
+    conn = db.get_connection()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE id = ?", (payment_id,)).fetchone()
+    conn.close()
+    if not tx_row:
+        return jsonify({"success": False, "error": "تراکنش مورد نظر یافت نشد."}), 404
+
+    tx = dict(tx_row)
+    order_id = tx.get("order_id", "")
+    
+    # یافتن فایل فیزیکی رسید
+    receipt_file_path = None
+    possible_names = []
+    if tx.get("receipt_image"):
+        possible_names.append(tx["receipt_image"])
+        possible_names.append(Path(tx["receipt_image"]).name)
+    possible_names.extend([
+        f"receipt_{payment_id}.jpg", f"receipt_{payment_id}.png", f"receipt_{payment_id}.jpeg",
+        f"receipt_{order_id}.jpg", f"receipt_{order_id}.png", f"receipt_{order_id}.jpeg",
+        f"{order_id}.jpg", f"{order_id}.png"
+    ])
+
+    for fname in possible_names:
+        p = RECEIPTS_DIR / fname
+        if p.exists() and p.is_file():
+            receipt_file_path = p
+            break
+
+    # اگر روی دیسک نبود، سعی کن از تلگرام دانلود کنی
+    if not receipt_file_path:
+        file_id = tx.get("receipt_image") or tx.get("receipt_photo_id")
+        if file_id and not ("." in str(file_id) or "/" in str(file_id) or "\\" in str(file_id)):
+            candidate_tokens = []
+            bundle_tok = db.get_setting("bundle_bot_token") or os.getenv("BUNDLE_BOT_TOKEN")
+            if bundle_tok:
+                candidate_tokens.append(bundle_tok)
+            if tx.get("reseller_id"):
+                r_info = db.get_reseller(tx["reseller_id"])
+                if r_info and r_info.get("bot_token"):
+                    candidate_tokens.append(r_info["bot_token"])
+            main_tok = get_bot_token()
+            if main_tok:
+                candidate_tokens.append(main_tok)
+
+            for b_tok in candidate_tokens:
+                try:
+                    with httpx.Client(timeout=8.0) as client:
+                        resp = client.get(f"https://api.telegram.org/bot{b_tok}/getFile?file_id={file_id}")
+                        if resp.status_code == 200:
+                            f_path = resp.json().get("result", {}).get("file_path")
+                            if f_path:
+                                dl_resp = client.get(f"https://api.telegram.org/file/bot{b_tok}/{f_path}")
+                                if dl_resp.status_code == 200:
+                                    ext = ".png" if f_path.lower().endswith(".png") else ".jpg"
+                                    save_dest = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
+                                    with open(save_dest, "wb") as f:
+                                        f.write(dl_resp.content)
+                                    receipt_file_path = save_dest
+                                    break
+                except Exception:
+                    pass
+
+    if not receipt_file_path or not receipt_file_path.exists():
+        return jsonify({"success": False, "error": "تصویر رسید در حافظه سرور یافت نشد."}), 400
+
+    ocr_res = db.extract_receipt_text_ai(receipt_file_path, tx_id=payment_id)
+    return jsonify(ocr_res)
 
 
 @app.route("/data/receipts/<path:filename>")
@@ -15058,17 +15164,20 @@ def reseller_bundles_online_pay(bundle_id: str):
             err_msg = res.get("error")
 
     if pay_url:
+        effective_gw = f"{gw_type}_bundle" if gw_type else "bundle_reseller"
+        creator_name = (reseller.get("name") or username or f"نماینده #{reseller_id}").strip()
         db.save_transaction(
             order_id=order_id,
             user_id=reseller.get("telegram_id") or reseller_id,
-            username=username,
+            username=creator_name,
             plan_name=f"بسته {bundle['title']}",
             amount=price,
-            gateway="bundle_reseller",
+            gateway=effective_gw,
             tracking_code=str(invoice_id or order_id),
             status="pending",
             reseller_id=reseller_id,
-            source="reseller_bundle"
+            source="reseller_bundle",
+            created_by=f"{creator_name} (پنل نماینده)"
         )
         return redirect(pay_url)
     else:
