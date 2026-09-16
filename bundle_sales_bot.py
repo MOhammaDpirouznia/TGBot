@@ -301,18 +301,58 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         text = "📦 **لیست بسته‌های شارژ و اعتبار نمایندگی:**\n\nبرای مشاهده جزئیات پرداخت روی بسته مورد نظر کلیک نمایید:\n"
-        buttons = []
+        sub_cfg = db.get_sub_menu_config("bundle", "bundle_packages")
+        sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
+
+        row_map = {}
         for b in bundles:
             b_id = b.get("id")
-            title = b.get("title", "بسته اعتباری")
-            price = b.get("price", 0)
-            credit = b.get("credit", price)
-            bonus = b.get("bonus_percent", 0)
-            bonus_badge = f" (+{bonus}٪ هدیه)" if bonus > 0 else ""
-            btn_txt = f"💎 {title}: {price:,} ت ⬅️ {credit:,} ت اعتبار{bonus_badge}"
-            buttons.append([InlineKeyboardButton(btn_txt, callback_data=f"bsb_buy_bdl_{b_id}")])
+            item_id = str(b_id) if str(b_id).startswith("bundle_") else f"bundle_{b_id}"
+            cfg_it = sub_dict.get(item_id, {})
+            if not cfg_it.get("enabled", True):
+                continue
 
-        buttons.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="bsb_main_menu")])
+            st = cfg_it.get("style")
+            st_arg = st if st in ("primary", "success", "danger") else None
+            kw = {"style": st_arg} if st_arg else {}
+
+            if cfg_it.get("title"):
+                btn_txt = cfg_it["title"]
+            else:
+                title = b.get("title", "بسته اعتباری")
+                price = b.get("price", 0)
+                credit = b.get("credit", price)
+                bonus = b.get("bonus_percent", 0)
+                bonus_badge = f" (+{bonus}٪ هدیه)" if bonus > 0 else ""
+                btn_txt = f"💎 {title}: {price:,} ت ⬅️ {credit:,} ت اعتبار{bonus_badge}"
+
+            r = cfg_it.get("row", len(row_map))
+            c = cfg_it.get("col", 0)
+            if r not in row_map:
+                row_map[r] = []
+            row_map[r].append((c, InlineKeyboardButton(btn_txt, callback_data=f"bsb_buy_bdl_{b_id}", **kw)))
+
+        back_it = sub_dict.get("back_to_main", {})
+        if back_it.get("enabled", True):
+            b_st = back_it.get("style", "danger")
+            b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
+            b_kw = {"style": b_st_arg} if b_st_arg else {}
+            b_title = back_it.get("title") or "🔙 بازگشت به منوی اصلی"
+            r_back = back_it.get("row", 99)
+            c_back = back_it.get("col", 0)
+            if r_back not in row_map:
+                row_map[r_back] = []
+            row_map[r_back].append((c_back, InlineKeyboardButton(b_title, callback_data="bsb_main_menu", **b_kw)))
+
+        buttons = []
+        for r in sorted(row_map.keys()):
+            row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+            if row_btns:
+                buttons.append(row_btns)
+
+        if not buttons:
+            buttons = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="bsb_main_menu")]]
+
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
 
@@ -404,10 +444,26 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 برای افزایش موجودی و دریافت بونوس هدیه، روی خرید بسته‌های اعتباری کلیک نمایید.
 """
-        buttons = [
-            [InlineKeyboardButton("📦 خرید و شارژ بسته", callback_data="bsb_bundles")],
-            [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="bsb_main_menu")]
-        ]
+        wal_cfg = db.get_sub_menu_dict("bundle", "bundle_wallet")
+        buy_it = wal_cfg.get("buy_bundle", {})
+        back_it = wal_cfg.get("back_to_main", {})
+
+        buy_st = buy_it.get("style")
+        buy_kw = {"style": buy_st} if buy_st in ("primary", "success", "danger") else {}
+        buy_title = buy_it.get("title") or "📦 خرید و شارژ بسته"
+
+        back_st = back_it.get("style")
+        back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
+        back_title = back_it.get("title") or "🔙 بازگشت به منوی اصلی"
+
+        buttons = []
+        if buy_it.get("enabled", True):
+            buttons.append([InlineKeyboardButton(buy_title, callback_data="bsb_bundles", **buy_kw)])
+        if back_it.get("enabled", True):
+            buttons.append([InlineKeyboardButton(back_title, callback_data="bsb_main_menu", **back_kw)])
+        if not buttons:
+            buttons = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="bsb_main_menu")]]
+
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
 

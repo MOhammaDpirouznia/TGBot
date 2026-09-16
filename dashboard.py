@@ -4564,11 +4564,39 @@ def bot_menu_settings():
     bundle_bot_buttons = db.get_bundle_bot_menu_buttons()
     bundle_bot_menu_rows = db.get_bundle_bot_menu_keyboard_rows(is_admin=True)
 
-    # زیرمنوها (روش‌های پرداخت، پشتیبانی، آموزش، کیف پول)
-    sub_menu_keys = ["payment", "support", "tutorials", "wallet"]
-    admin_sub_menus = {k: db.get_sub_menu_config("admin", k) for k in sub_menu_keys}
-    reseller_sub_menus = {k: db.get_sub_menu_config("reseller", k) for k in sub_menu_keys}
-    bundle_sub_menu_keys = ["bundle_payment", "bundle_support"]
+    # زیرمنوها به تفکیک مراحل خرید، پرداخت، پشتیبانی و تنظیمات پایه
+    admin_sub_menu_keys = [
+        "plans",
+        "account_naming",
+        "confirm_subscription",
+        "payment",
+        "card_payment",
+        "language",
+        "wallet",
+        "support",
+        "tutorials",
+    ]
+    admin_sub_menus = {k: db.get_sub_menu_config("admin", k) for k in admin_sub_menu_keys}
+
+    reseller_sub_menu_keys = [
+        "plans",
+        "account_naming",
+        "confirm_subscription",
+        "payment",
+        "card_payment",
+        "language",
+        "wallet",
+        "support",
+        "tutorials",
+    ]
+    reseller_sub_menus = {k: db.get_sub_menu_config("reseller", k) for k in reseller_sub_menu_keys}
+
+    bundle_sub_menu_keys = [
+        "bundle_packages",
+        "bundle_payment",
+        "bundle_wallet",
+        "bundle_support",
+    ]
     bundle_sub_menus = {k: db.get_sub_menu_config("bundle", k) for k in bundle_sub_menu_keys}
 
     return render_template(

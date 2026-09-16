@@ -15598,6 +15598,30 @@ class Database:
             {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
             {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"}
         ],
+        "account_naming": [
+            {"id": "name_auto_tg", "title": "🔄 انتخاب خودکار (آیدی تلگرام)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "name_smart", "title": "🧠 نام هوشمند / تصادفی", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "default"},
+            {"id": "name_custom", "title": "✏️ نام دلخواه", "enabled": True, "row": 2, "col": 0, "order": 3, "style": "default"},
+            {"id": "back_to_plans", "title": "◀️ بازگشت به لیست پلن‌ها", "enabled": True, "row": 3, "col": 0, "order": 4, "style": "danger"}
+        ],
+        "confirm_subscription": [
+            {"id": "confirm_pay", "title": "✅ تایید و انتخاب روش پرداخت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "success"},
+            {"id": "change_name", "title": "◀️ تغییر نام اکانت", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "default"},
+            {"id": "cancel_order", "title": "❌ انصراف از خرید", "enabled": True, "row": 1, "col": 1, "order": 3, "style": "danger"}
+        ],
+        "language": [
+            {"id": "lang_fa", "title": "🇮🇷 فارسی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "lang_en", "title": "🇬🇧 English", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "lang_ru", "title": "🇷🇺 Русский", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"},
+            {"id": "lang_zh", "title": "🇨🇳 中文", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"}
+        ],
+        "card_payment": [
+            {"id": "copy_card", "title": "📋 کپی شماره کارت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "copy_rial", "title": "💰 کپی مبلغ به ریال", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "primary"},
+            {"id": "copy_toman", "title": "💵 کپی مبلغ به تومان", "enabled": True, "row": 1, "col": 1, "order": 3, "style": "default"},
+            {"id": "back_payment", "title": "◀️ بازگشت به روش‌های پرداخت", "enabled": True, "row": 2, "col": 0, "order": 4, "style": "default"},
+            {"id": "cancel_payment", "title": "❌ انصراف", "enabled": True, "row": 2, "col": 1, "order": 5, "style": "danger"}
+        ],
         "support": [
             {"id": "ticket_new", "title": "📝 ارسال تیکت جدید", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
             {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
@@ -15620,6 +15644,10 @@ class Database:
             {"id": "online_gateway", "title": "⚡ درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
             {"id": "cancel", "title": "❌ انصراف و بازگشت", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "danger"}
         ],
+        "bundle_wallet": [
+            {"id": "buy_bundle", "title": "📦 خرید و شارژ بسته", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "success"},
+            {"id": "back_to_main", "title": "🔙 بازگشت به منوی اصلی", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "danger"}
+        ],
         "bundle_support": [
             {"id": "admin_chat", "title": "🎧 ارتباط مستقیم با مدیریت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
             {"id": "faq", "title": "❓ راهنما و سوالات متداول", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
@@ -15640,15 +15668,115 @@ class Database:
             menu_key = "payment"
         return menu_key, bot_kind, reseller_id
 
+    def get_default_sub_menu(self, menu_key: str, bot_kind: str = "admin", reseller_id: Optional[int] = None) -> list:
+        """تولید تنظیمات پیش‌فرض زیرمنوها با پشتیبانی کامل از همگام‌سازی داینامیک پلن‌ها و بسته‌ها"""
+        if menu_key in ("plans", "bot_plans"):
+            items = []
+            try:
+                from admin_manager import get_plan_telegram_emoji
+            except Exception:
+                get_plan_telegram_emoji = lambda p, pid: "📦"
+
+            all_plans = {}
+            if bot_kind == "reseller" and reseller_id:
+                try:
+                    r_plans = self.get_reseller_active_plans(reseller_id)
+                    for rp in r_plans:
+                        all_plans[rp["plan_id"]] = {
+                            "name": rp.get("display_name") or rp.get("master_name", "پلن"),
+                            "price": rp.get("display_price", 0),
+                            "data_limit": rp.get("data_limit", 0),
+                            "duration": rp.get("duration", 30),
+                        }
+                except Exception:
+                    pass
+            if not all_plans:
+                try:
+                    all_plans = self.get_all_plans()
+                except Exception:
+                    all_plans = {}
+
+            for idx, (pid, p) in enumerate(all_plans.items()):
+                vol = p.get("data_limit", 0)
+                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                days = p.get("duration", 30)
+                price = p.get("price", 0)
+                name = p.get("name") or "پلن"
+                emoji = get_plan_telegram_emoji(p, pid)
+                title = f"{emoji} {name} | {vol_str} - {days} روز ({price:,} تومان)"
+                style = "primary" if idx == 0 else ("success" if idx == 1 else "default")
+                item_id = pid if str(pid).startswith("plan_") else f"plan_{pid}"
+                items.append({
+                    "id": item_id,
+                    "title": title,
+                    "enabled": bool(p.get("is_active", True) if "is_active" in p else True),
+                    "row": idx,
+                    "col": 0,
+                    "order": idx + 1,
+                    "style": style
+                })
+
+            back_title = "◀️ بازگشت به منوی اصلی" if bot_kind == "admin" else "◀️ بازگشت"
+            back_id = "back_to_menu" if bot_kind == "admin" else "r_back_plans"
+            items.append({
+                "id": back_id,
+                "title": back_title,
+                "enabled": True,
+                "row": len(items),
+                "col": 0,
+                "order": len(items) + 1,
+                "style": "danger"
+            })
+            return items
+
+        elif menu_key in ("bundle_packages", "bundle_plans"):
+            items = []
+            try:
+                bundles = self.get_reseller_credit_bundles(active_only=False)
+            except Exception:
+                bundles = []
+
+            for idx, b in enumerate(bundles):
+                b_id = b.get("id")
+                title = b.get("title", "بسته اعتباری")
+                price = b.get("price", 0)
+                credit = b.get("credit", price)
+                bonus = b.get("bonus_percent", 0)
+                bonus_badge = f" (+{bonus}٪ هدیه)" if bonus > 0 else ""
+                btn_txt = f"💎 {title} | {credit:,} تومان اعتبار{bonus_badge} - {price:,} تومان"
+                item_id = str(b_id) if str(b_id).startswith("bundle_") else f"bundle_{b_id}"
+                items.append({
+                    "id": item_id,
+                    "title": btn_txt,
+                    "enabled": bool(b.get("is_active", True)),
+                    "row": idx,
+                    "col": 0,
+                    "order": idx + 1,
+                    "style": "primary" if idx == 0 else ("success" if idx == 1 else "default")
+                })
+
+            items.append({
+                "id": "back_to_main",
+                "title": "🔙 بازگشت به منوی اصلی",
+                "enabled": True,
+                "row": len(items),
+                "col": 0,
+                "order": len(items) + 1,
+                "style": "danger"
+            })
+            return items
+
+        return copy.deepcopy(self.DEFAULT_SUB_MENUS.get(menu_key, []))
+
     def get_sub_menu_config(self, *args, **kwargs) -> list:
-        """دریافت تنظیمات، رنگ و چیدمان یک زیرمنو برای ربات مدیریت، نماینده یا ربات فروش بسته"""
+        """دریافت تنظیمات، رنگ و چیدمان یک زیرمنو برای ربات مدیریت، نماینده یا ربات فروش بسته با همگام‌سازی داینامیک"""
         arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
         arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
         is_reseller = kwargs.get("is_reseller", False)
         reseller_id = kwargs.get("reseller_id", None)
         menu_key, bot_kind, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
 
-        defaults = self.DEFAULT_SUB_MENUS.get(menu_key, [])
+        defaults = self.get_default_sub_menu(menu_key, bot_kind, reseller_id)
         if bot_kind == "bundle":
             prefix = f"sub_menu_{menu_key}_bundle"
         elif bot_kind == "reseller":
@@ -15661,29 +15789,53 @@ class Database:
             try:
                 saved = json.loads(saved_raw) if isinstance(saved_raw, str) else saved_raw
                 if isinstance(saved, list) and saved:
-                    saved_ids = {it.get("id") for it in saved if isinstance(it, dict)}
-                    for def_it in defaults:
-                        if def_it.get("id") not in saved_ids:
-                            alt_matched = False
-                            if def_it.get("id") == "wiz_tb_start" and "troubleshoot" in saved_ids:
-                                alt_matched = True
-                            elif def_it.get("id") == "wiz_conn_start" and "android" in saved_ids:
-                                alt_matched = True
-                            if not alt_matched:
-                                saved.append(copy.deepcopy(def_it))
-                    for idx, it in enumerate(saved):
-                        if not isinstance(it, dict):
-                            continue
-                        if "row" not in it:
-                            it["row"] = idx // 2
-                        if "col" not in it:
-                            it["col"] = idx % 2
-                        if "style" not in it:
-                            matching_def = next((d for d in defaults if d.get("id") == it.get("id")), {})
-                            it["style"] = matching_def.get("style", "default")
-                    return saved
-            except Exception:
-                pass
+                    saved_dict = {it.get("id"): it for it in saved if isinstance(it, dict)}
+                    is_dynamic = menu_key in ("plans", "bot_plans", "bundle_packages", "bundle_plans")
+
+                    if is_dynamic:
+                        result_items = []
+                        for def_it in defaults:
+                            d_id = def_it.get("id")
+                            if d_id in saved_dict:
+                                s_item = saved_dict[d_id]
+                                merged = copy.deepcopy(def_it)
+                                if s_item.get("title"):
+                                    merged["title"] = s_item["title"]
+                                merged["style"] = s_item.get("style", def_it.get("style", "default"))
+                                merged["row"] = s_item.get("row", def_it.get("row", 0))
+                                merged["col"] = s_item.get("col", def_it.get("col", 0))
+                                merged["enabled"] = s_item.get("enabled", def_it.get("enabled", True))
+                                result_items.append(merged)
+                            else:
+                                result_items.append(copy.deepcopy(def_it))
+                        return result_items
+                    else:
+                        for def_it in defaults:
+                            if def_it.get("id") not in saved_dict:
+                                alt_matched = False
+                                if def_it.get("id") == "wiz_tb_start" and "troubleshoot" in saved_dict:
+                                    alt_matched = True
+                                elif def_it.get("id") == "wiz_conn_start" and "android" in saved_dict:
+                                    alt_matched = True
+                                elif def_it.get("id") in ("name_auto_tg", "name_telegram_id") and ("name_auto_tg" in saved_dict or "name_telegram_id" in saved_dict or "name_tg" in saved_dict):
+                                    alt_matched = True
+                                elif def_it.get("id") in ("confirm_pay", "confirm_purchase") and ("confirm_pay" in saved_dict or "confirm_purchase" in saved_dict):
+                                    alt_matched = True
+                                if not alt_matched:
+                                    saved.append(copy.deepcopy(def_it))
+                        for idx, it in enumerate(saved):
+                            if not isinstance(it, dict):
+                                continue
+                            if "row" not in it:
+                                it["row"] = idx // 2
+                            if "col" not in it:
+                                it["col"] = idx % 2
+                            if "style" not in it:
+                                matching_def = next((d for d in defaults if d.get("id") == it.get("id")), {})
+                                it["style"] = matching_def.get("style", "default")
+                        return saved
+            except Exception as e:
+                logger.error(f"Error parsing saved sub menu {prefix}: {e}")
         return copy.deepcopy(defaults)
 
     def get_sub_menu_dict(self, *args, **kwargs) -> dict:
@@ -15701,14 +15853,44 @@ class Database:
             cfg = self.get_sub_menu_dict(bot_type, menu_key, is_reseller=is_reseller, reseller_id=reseller_id)
             item = cfg.get(item_id)
             if not item:
+                # تطبیق هوشمند شناسه‌های پلن‌ها و بسته‌ها
+                if item_id.startswith("r_buy_"):
+                    pid = item_id.replace("r_buy_", "")
+                    item = cfg.get(f"plan_{pid}") or cfg.get(pid)
+                elif item_id.startswith("plan_"):
+                    pid = item_id.replace("plan_", "")
+                    item = cfg.get(f"r_buy_{pid}") or cfg.get(pid)
+                elif f"plan_{item_id}" in cfg:
+                    item = cfg[f"plan_{item_id}"]
+                elif f"bundle_{item_id}" in cfg:
+                    item = cfg[f"bundle_{item_id}"]
+                elif item_id.startswith("bsb_buy_bdl_"):
+                    bid = item_id.replace("bsb_buy_bdl_", "")
+                    item = cfg.get(f"bundle_{bid}") or cfg.get(bid)
+
+            if not item:
                 alias_map = {
                     "troubleshoot": ["wiz_tb_start", "troubleshoot_url"],
                     "troubleshoot_url": ["troubleshoot", "wiz_tb_start"],
                     "wiz_tb_start": ["troubleshoot", "troubleshoot_url"],
                     "wiz_conn_start": ["android", "tutorial_url"],
                     "tutorial_url": ["windows", "wiz_conn_start"],
-                    "cancel": ["back", "bsb_bundles"],
-                    "back": ["cancel"],
+                    "cancel": ["back", "bsb_bundles", "cancel_order", "cancel_purchase", "cancel_payment", "r_cancel_buy"],
+                    "back": ["cancel", "back_to_plans", "back_to_menu", "back_to_main", "back_payment", "r_back_plans"],
+                    "r_back_plans": ["back_to_plans", "back", "back_to_menu"],
+                    "back_to_plans": ["r_back_plans", "back", "back_to_menu"],
+                    "back_to_menu": ["back_to_main", "back", "r_back_plans"],
+                    "back_to_main": ["back_to_menu", "back"],
+                    "name_telegram_id": ["name_auto_tg", "name_tg"],
+                    "name_auto_tg": ["name_telegram_id", "name_tg"],
+                    "name_tg": ["name_auto_tg", "name_telegram_id"],
+                    "confirm_purchase": ["confirm_pay"],
+                    "confirm_pay": ["confirm_purchase"],
+                    "change_name": ["change_account_name"],
+                    "change_account_name": ["change_name"],
+                    "cancel_order": ["cancel", "r_cancel_buy", "cancel_purchase"],
+                    "cancel_purchase": ["cancel", "cancel_order", "r_cancel_buy"],
+                    "cancel_payment": ["cancel", "r_cancel_buy"],
                 }
                 for alt in alias_map.get(item_id, []):
                     if alt in cfg:
@@ -15723,6 +15905,50 @@ class Database:
         except Exception:
             pass
         return default if default in ("primary", "success", "danger") else None
+
+    def get_sub_menu_item_title(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> str:
+        """استخراج عنوان سفارشی دکمه با در نظر گرفتن تنظیمات دیتابیس یا فال‌بک"""
+        try:
+            cfg = self.get_sub_menu_dict(bot_type, menu_key, is_reseller=is_reseller, reseller_id=reseller_id)
+            item = cfg.get(item_id)
+            if not item:
+                if item_id.startswith("r_buy_"):
+                    pid = item_id.replace("r_buy_", "")
+                    item = cfg.get(f"plan_{pid}") or cfg.get(pid)
+                elif item_id.startswith("plan_"):
+                    pid = item_id.replace("plan_", "")
+                    item = cfg.get(f"r_buy_{pid}") or cfg.get(pid)
+                elif f"plan_{item_id}" in cfg:
+                    item = cfg[f"plan_{item_id}"]
+                elif f"bundle_{item_id}" in cfg:
+                    item = cfg[f"bundle_{item_id}"]
+                elif item_id.startswith("bsb_buy_bdl_"):
+                    bid = item_id.replace("bsb_buy_bdl_", "")
+                    item = cfg.get(f"bundle_{bid}") or cfg.get(bid)
+
+            if not item:
+                alias_map = {
+                    "name_telegram_id": ["name_auto_tg", "name_tg"],
+                    "name_auto_tg": ["name_telegram_id", "name_tg"],
+                    "name_tg": ["name_auto_tg", "name_telegram_id"],
+                    "confirm_purchase": ["confirm_pay"],
+                    "confirm_pay": ["confirm_purchase"],
+                    "change_name": ["change_account_name"],
+                    "change_account_name": ["change_name"],
+                    "cancel_order": ["cancel", "r_cancel_buy", "cancel_purchase"],
+                    "cancel_purchase": ["cancel", "cancel_order", "r_cancel_buy"],
+                    "back_to_plans": ["r_back_plans", "back"],
+                    "r_back_plans": ["back_to_plans", "back"],
+                }
+                for alt in alias_map.get(item_id, []):
+                    if alt in cfg:
+                        item = cfg[alt]
+                        break
+            if item and item.get("title"):
+                return item["title"]
+        except Exception:
+            pass
+        return default or ""
 
     def save_sub_menu_config(self, *args, **kwargs) -> bool:
         """ذخیره تنظیمات، رنگ و ترتیب زیرمنوهای ربات"""
@@ -15751,14 +15977,14 @@ class Database:
             return False
 
     def reset_sub_menu_config(self, *args, **kwargs) -> list:
-        """بازنشانی زیرمنو به حالت پیش‌فرض"""
+        """بازنشانی زیرمنو به حالت پیش‌فرض بر اساس دیتابیس زنده"""
         arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
         arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
         is_reseller = kwargs.get("is_reseller", False)
         reseller_id = kwargs.get("reseller_id", None)
         menu_key, bot_kind, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
 
-        defaults = copy.deepcopy(self.DEFAULT_SUB_MENUS.get(menu_key, []))
+        defaults = self.get_default_sub_menu(menu_key, bot_kind, reseller_id)
         if bot_kind == "bundle":
             prefix = f"sub_menu_{menu_key}_bundle"
         elif bot_kind == "reseller":

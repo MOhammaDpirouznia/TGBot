@@ -499,9 +499,9 @@ class ResellerBotInstance:
                 else:
                     prompt = t("lang_select_prompt", "fa")
                     if update.message:
-                        await update.message.reply_text(prompt, reply_markup=get_language_keyboard())
+                        await update.message.reply_text(prompt, reply_markup=get_language_keyboard(is_reseller=True, reseller_id=r_id))
                     elif update.callback_query:
-                        await update.callback_query.message.reply_text(prompt, reply_markup=get_language_keyboard())
+                        await update.callback_query.message.reply_text(prompt, reply_markup=get_language_keyboard(is_reseller=True, reseller_id=r_id))
                     return
 
             lang = user_lang or "fa"
@@ -595,18 +595,66 @@ class ResellerBotInstance:
                 brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
                 text = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
 
-                buttons = []
-                for p in plans:
-                    pid = p["plan_id"]
-                    pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
-                    price = p.get("display_price", 0)
-                    vol = p.get("data_limit", 0)
-                    days = p.get("duration", 30)
-                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
-                    emoji = get_plan_telegram_emoji(p, pid)
+                sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
+                sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
 
-                    btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
-                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
+                row_map = {}
+                for idx, p in enumerate(plans):
+                    pid = str(p["plan_id"])
+                    cfg_it = sub_dict.get(pid) or sub_dict.get(f"plan_{pid}") or sub_dict.get(f"r_buy_{pid}") or {}
+                    if not cfg_it.get("enabled", True):
+                        continue
+
+                    st = cfg_it.get("style")
+                    st_arg = st if st in ("primary", "success", "danger") else None
+                    kw = {"style": st_arg} if st_arg else {}
+
+                    if cfg_it.get("title"):
+                        btn_text = cfg_it["title"]
+                    else:
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        price = p.get("display_price", 0)
+                        vol = p.get("data_limit", 0)
+                        days = p.get("duration", 30)
+                        vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                        emoji = get_plan_telegram_emoji(p, pid)
+                        btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+
+                    r = cfg_it.get("row", idx)
+                    c = cfg_it.get("col", 0)
+                    if r not in row_map:
+                        row_map[r] = []
+                    row_map[r].append((c, InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}", **kw)))
+
+                back_it = sub_dict.get("r_back_plans") or sub_dict.get("back_to_menu") or sub_dict.get("back") or {}
+                if back_it.get("enabled", True):
+                    b_st = back_it.get("style", "danger")
+                    b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
+                    b_kw = {"style": b_st_arg} if b_st_arg else {}
+                    b_title = back_it.get("title") or "◀️ بازگشت"
+                    r_back = back_it.get("row", 99)
+                    c_back = back_it.get("col", 0)
+                    if r_back not in row_map:
+                        row_map[r_back] = []
+                    row_map[r_back].append((c_back, InlineKeyboardButton(b_title, callback_data="r_cancel_buy", **b_kw)))
+
+                buttons = []
+                for r in sorted(row_map.keys()):
+                    row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+                    if row_btns:
+                        buttons.append(row_btns)
+
+                if not buttons:
+                    for p in plans:
+                        pid = p["plan_id"]
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        price = p.get("display_price", 0)
+                        vol = p.get("data_limit", 0)
+                        days = p.get("duration", 30)
+                        vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                        emoji = get_plan_telegram_emoji(p, pid)
+                        btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
 
                 kb = InlineKeyboardMarkup(buttons)
                 if update.callback_query:
@@ -649,12 +697,46 @@ class ResellerBotInstance:
                     f"لطفاً مشخص کنید تمایل دارید نام اشتراک شما چگونه ایجاد شود:"
                 )
 
-                buttons = [
-                    [InlineKeyboardButton("🔄 انتخاب خودکار (آیدی تلگرام)", callback_data=f"r_name_tg_{plan_id}")],
-                    [InlineKeyboardButton("🧠 نام هوشمند / تصادفی", callback_data=f"r_name_smart_{plan_id}")],
-                    [InlineKeyboardButton("✏️ نام دلخواه", callback_data=f"r_name_custom_{plan_id}")],
-                    [InlineKeyboardButton("◀️ بازگشت به لیست پلن‌ها", callback_data="r_back_plans")]
-                ]
+                naming_cfg = db.get_sub_menu_config("reseller", "account_naming", is_reseller=True, reseller_id=r_id)
+                cb_map = {
+                    "name_auto_tg": f"r_name_tg_{plan_id}",
+                    "name_telegram_id": f"r_name_tg_{plan_id}",
+                    "name_tg": f"r_name_tg_{plan_id}",
+                    "name_smart": f"r_name_smart_{plan_id}",
+                    "name_custom": f"r_name_custom_{plan_id}",
+                    "back_to_plans": "r_back_plans",
+                    "r_back_plans": "r_back_plans",
+                }
+                row_map = {}
+                for it in naming_cfg:
+                    if not isinstance(it, dict) or not it.get("enabled", True):
+                        continue
+                    i_id = it.get("id")
+                    cb = cb_map.get(i_id)
+                    if not cb:
+                        continue
+                    title = it.get("title", "")
+                    st = it.get("style")
+                    kw = {"style": st} if st in ("primary", "success", "danger") else {}
+                    r = it.get("row", len(row_map))
+                    c = it.get("col", 0)
+                    if r not in row_map:
+                        row_map[r] = []
+                    row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+                buttons = []
+                for r in sorted(row_map.keys()):
+                    row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+                    if row_btns:
+                        buttons.append(row_btns)
+
+                if not buttons:
+                    buttons = [
+                        [InlineKeyboardButton("🔄 انتخاب خودکار (آیدی تلگرام)", callback_data=f"r_name_tg_{plan_id}")],
+                        [InlineKeyboardButton("🧠 نام هوشمند / تصادفی", callback_data=f"r_name_smart_{plan_id}")],
+                        [InlineKeyboardButton("✏️ نام دلخواه", callback_data=f"r_name_custom_{plan_id}")],
+                        [InlineKeyboardButton("◀️ بازگشت به لیست پلن‌ها", callback_data="r_back_plans")]
+                    ]
 
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception as e:
@@ -718,11 +800,46 @@ class ResellerBotInstance:
                 f"جهت انتخاب روش پرداخت روی دکمه زیر کلیک نمایید:"
             )
 
-            buttons = [
-                [InlineKeyboardButton("✅ تایید و انتخاب روش پرداخت", callback_data=f"r_conf_{plan_id}")],
-                [InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}")],
-                [InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-            ]
+            conf_cfg = db.get_sub_menu_config("reseller", "confirm_subscription", is_reseller=True, reseller_id=r_id)
+            cb_map = {
+                "confirm_purchase": f"r_conf_{plan_id}",
+                "confirm_pay": f"r_conf_{plan_id}",
+                "change_name": f"r_buy_{plan_id}",
+                "change_account_name": f"r_buy_{plan_id}",
+                "cancel_order": "r_cancel_buy",
+                "cancel_purchase": "r_cancel_buy",
+                "cancel": "r_cancel_buy",
+                "r_cancel_buy": "r_cancel_buy",
+            }
+            row_map = {}
+            for it in conf_cfg:
+                if not isinstance(it, dict) or not it.get("enabled", True):
+                    continue
+                i_id = it.get("id")
+                cb = cb_map.get(i_id)
+                if not cb:
+                    continue
+                title = it.get("title", "")
+                st = it.get("style")
+                kw = {"style": st} if st in ("primary", "success", "danger") else {}
+                r = it.get("row", len(row_map))
+                c = it.get("col", 0)
+                if r not in row_map:
+                    row_map[r] = []
+                row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+            buttons = []
+            for r in sorted(row_map.keys()):
+                row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+                if row_btns:
+                    buttons.append(row_btns)
+
+            if not buttons:
+                buttons = [
+                    [InlineKeyboardButton("✅ تایید و انتخاب روش پرداخت", callback_data=f"r_conf_{plan_id}", style="success")],
+                    [InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}")],
+                    [InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style="danger")]
+                ]
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
@@ -962,11 +1079,50 @@ class ResellerBotInstance:
                 msg += "سیستم مجهز به <b>تایید خودکار با پیامک بانکی اختصاصی نماینده</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی واریزی شما، لطفاً مبلغ را با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست فرمایید تا اشتباهی رخ ندهد.\n\n"
                 msg += "⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>"
 
-                buttons = [
-                    [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num), style="primary")],
-                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)), style="primary")],
-                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style="danger")]
-                ]
+                card_cfg = db.get_sub_menu_config("reseller", "card_payment", is_reseller=True, reseller_id=r_id)
+                row_map = {}
+                for it in card_cfg:
+                    if not isinstance(it, dict) or not it.get("enabled", True):
+                        continue
+                    i_id = it.get("id")
+                    st = it.get("style")
+                    kw = {"style": st} if st in ("primary", "success", "danger") else {}
+                    title = it.get("title", "")
+                    btn = None
+                    if i_id in ("copy_card", "card"):
+                        btn = InlineKeyboardButton(title or "📋 کپی شماره کارت", copy_text=CopyTextButton(card_num), **kw)
+                    elif i_id in ("copy_rial", "copy_amount", "rial"):
+                        if not title:
+                            t = f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)"
+                        elif "{rial}" in title or "{amount}" in title:
+                            t = title.replace("{rial}", rial_fmt).replace("{amount}", rial_fmt)
+                        else:
+                            t = f"{title} ({rial_fmt} ریال)"
+                        btn = InlineKeyboardButton(t, copy_text=CopyTextButton(str(rial_price)), **kw)
+                    elif i_id in ("back", "back_payment"):
+                        btn = InlineKeyboardButton(title or "◀️ بازگشت", callback_data=f"r_conf_{plan_id}", **kw)
+                    elif i_id in ("cancel", "cancel_payment"):
+                        btn = InlineKeyboardButton(title or "❌ انصراف", callback_data="r_cancel_buy", **kw)
+
+                    if btn:
+                        r = it.get("row", len(row_map))
+                        c = it.get("col", 0)
+                        if r not in row_map:
+                            row_map[r] = []
+                        row_map[r].append((c, btn))
+
+                buttons = []
+                for r in sorted(row_map.keys()):
+                    row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+                    if row_btns:
+                        buttons.append(row_btns)
+
+                if not buttons:
+                    buttons = [
+                        [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num), style="primary")],
+                        [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)), style="primary")],
+                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style="danger")]
+                    ]
 
                 kb = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
@@ -4861,7 +5017,7 @@ class ResellerBotInstance:
                     return await guide_handler(update, context)
                 elif b_id == "language":
                     prompt = t("lang_select_prompt", "fa")
-                    await update.message.reply_text(prompt, reply_markup=get_language_keyboard())
+                    await update.message.reply_text(prompt, reply_markup=get_language_keyboard(is_reseller=True, reseller_id=r_id))
                     return
                 elif b_id == "payments":
                     conn = db.get_connection()

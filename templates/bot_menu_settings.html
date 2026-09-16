@@ -1230,12 +1230,32 @@
                 </ul>
 
                 <div class="tab-content" id="subMenusBotTabsContent">
+                    {% set sub_titles = {
+                        'plans': 'تعرفه‌ها و انتخاب پلن‌های اشتراک (داینامیک)',
+                        'account_naming': 'انتخاب نحوه نام‌گذاری اکانت',
+                        'confirm_subscription': 'تایید مشخصات اشتراک و پیش‌فاکتور',
+                        'payment': 'روش‌های پرداخت و تسویه حساب',
+                        'card_payment': 'صفحه اطلاعات واریز کارت به کارت',
+                        'language': 'انتخاب زبان ربات (چندزبانه)',
+                        'wallet': 'کیف پول و مدیریت حساب کاربری',
+                        'support': 'پشتیبانی، تیکت و ارتباط',
+                        'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها'
+                    } %}
+                    {% set sub_icons = {
+                        'plans': 'fas fa-boxes-stacked text-primary',
+                        'account_naming': 'fas fa-signature text-info',
+                        'confirm_subscription': 'fas fa-file-invoice text-success',
+                        'payment': 'fas fa-credit-card text-success',
+                        'card_payment': 'fas fa-money-bill-transfer text-primary',
+                        'language': 'fas fa-language text-secondary',
+                        'wallet': 'fas fa-wallet text-warning',
+                        'support': 'fas fa-headset text-info',
+                        'tutorials': 'fas fa-book-open text-primary'
+                    } %}
                     
                     <!-- زیرمنوهای ربات مدیریت -->
                     <div class="tab-pane fade show active" id="sub-admin-panel" role="tabpanel">
                         <div class="row g-4">
-                            {% set sub_titles = {'payment': 'روش‌های پرداخت و تسویه حساب', 'support': 'پشتیبانی، تیکت و ارتباط', 'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها', 'wallet': 'کیف پول و مدیریت حساب کاربری'} %}
-                            {% set sub_icons = {'payment': 'fas fa-credit-card text-success', 'support': 'fas fa-headset text-info', 'tutorials': 'fas fa-book-open text-primary', 'wallet': 'fas fa-wallet text-warning'} %}
                             
                             {% for m_key, items in admin_sub_menus.items() %}
                             <div class="col-lg-6">
@@ -1412,8 +1432,18 @@
                     <!-- زیرمنوهای ربات فروش بسته نمایندگی -->
                     <div class="tab-pane fade" id="sub-bundle-panel" role="tabpanel">
                         <div class="row g-4">
-                            {% set b_sub_titles = {'bundle_payment': 'مراحل و گزینه‌های پرداخت و خرید بسته', 'bundle_support': 'گزینه‌های پشتیبانی و ارتباط با مدیریت'} %}
-                            {% set b_sub_icons = {'bundle_payment': 'fas fa-money-bill-wave text-success', 'bundle_support': 'fas fa-headset text-info'} %}
+                            {% set b_sub_titles = {
+                                'bundle_packages': 'بسته‌های شارژ و اعتبار نمایندگی (داینامیک)',
+                                'bundle_payment': 'مراحل و گزینه‌های پرداخت و خرید بسته',
+                                'bundle_wallet': 'کیف پول و توان خرید نماینده',
+                                'bundle_support': 'گزینه‌های پشتیبانی و ارتباط با مدیریت'
+                            } %}
+                            {% set b_sub_icons = {
+                                'bundle_packages': 'fas fa-cubes text-info',
+                                'bundle_payment': 'fas fa-money-bill-wave text-success',
+                                'bundle_wallet': 'fas fa-wallet text-warning',
+                                'bundle_support': 'fas fa-headset text-primary'
+                            } %}
                             
                             {% for m_key, items in bundle_sub_menus.items() %}
                             <div class="col-lg-6">

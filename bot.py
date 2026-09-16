@@ -893,10 +893,19 @@ async def back_to_confirm_purchase(update: Update, context: ContextTypes.DEFAULT
 
 آیا مایل به خرید این پلن هستید؟
 """
+    conf_cfg = db.get_sub_menu_dict("admin", "confirm_subscription")
+    conf_title = conf_cfg.get("confirm_pay", {}).get("title") or conf_cfg.get("confirm_purchase", {}).get("title") or "✅ تایید خرید"
+    conf_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "confirm_purchase", default="success")
+    conf_kw = {"style": conf_st} if conf_st in ("primary", "success", "danger") else {}
+
+    back_title = conf_cfg.get("change_name", {}).get("title") or "◀️ بازگشت"
+    back_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "change_name", default=None)
+    back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
+
     keyboard = [
         [
-            InlineKeyboardButton("✅ تایید خرید", callback_data="confirm_purchase"),
-            InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_plan"),
+            InlineKeyboardButton(conf_title, callback_data="confirm_purchase", **conf_kw),
+            InlineKeyboardButton(back_title, callback_data="back_to_select_plan", **back_kw),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -977,11 +986,30 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
 • برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.
 • پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
+    c2c_cfg = db.get_sub_menu_dict("admin", "card_payment")
+    card_st = db.get_sub_menu_item_style("admin", "card_payment", "copy_card", default="primary")
+    rial_st = db.get_sub_menu_item_style("admin", "card_payment", "copy_rial", default="primary")
+    toman_st = db.get_sub_menu_item_style("admin", "card_payment", "copy_toman", default=None)
+    back_st = db.get_sub_menu_item_style("admin", "card_payment", "back_payment", default=None)
+    cancel_st = db.get_sub_menu_item_style("admin", "card_payment", "cancel_payment", default="danger")
+
+    card_kw = {"style": card_st} if card_st in ("primary", "success", "danger") else {}
+    rial_kw = {"style": rial_st} if rial_st in ("primary", "success", "danger") else {}
+    toman_kw = {"style": toman_st} if toman_st in ("primary", "success", "danger") else {}
+    back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
+    cancel_kw = {"style": cancel_st} if cancel_st in ("primary", "success", "danger") else {}
+
+    card_title = c2c_cfg.get("copy_card", {}).get("title") or "📋 کپی شماره کارت"
+    rial_title = c2c_cfg.get("copy_rial", {}).get("title") or f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)"
+    toman_title = c2c_cfg.get("copy_toman", {}).get("title") or f"💵 کپی مبلغ به تومان ({price_formatted} ت)"
+    back_title = c2c_cfg.get("back_payment", {}).get("title") or "◀️ بازگشت"
+    cancel_title = c2c_cfg.get("cancel_payment", {}).get("title") or "❌ انصراف"
+
     keyboard = [
-        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number_clean}", style="primary")],
-        [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
-        [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{plan.get('price', 0)}")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")],
+        [InlineKeyboardButton(card_title, callback_data=f"copy_card_{card_number_clean}", **card_kw)],
+        [InlineKeyboardButton(rial_title, callback_data=f"copy_rial_{rial_amount}", **rial_kw)],
+        [InlineKeyboardButton(toman_title, callback_data=f"copy_amount_{plan.get('price', 0)}", **toman_kw)],
+        [InlineKeyboardButton(back_title, callback_data="back_to_select_payment", **back_kw), InlineKeyboardButton(cancel_title, callback_data="cancel", **cancel_kw)],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
@@ -1424,17 +1452,53 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CHOOSING
 
-    keyboard = []
+    sub_cfg = db.get_sub_menu_config("admin", "plans")
+    sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
+
+    row_map = {}
     for plan_id, plan in plans.items():
-        price_formatted = f"{plan['price']:,}".replace(",", "،")
-        emoji = get_plan_telegram_emoji(plan, plan_id)
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
-                callback_data=f"plan_{plan_id}",
-            )
-        ])
-    keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
+        item_id = plan_id if str(plan_id).startswith("plan_") else f"plan_{plan_id}"
+        cfg_it = sub_dict.get(item_id, {})
+        if not cfg_it.get("enabled", True):
+            continue
+
+        st = cfg_it.get("style")
+        st_arg = st if st in ("primary", "success", "danger") else None
+        kw = {"style": st_arg} if st_arg else {}
+
+        if cfg_it.get("title"):
+            btn_title = cfg_it["title"]
+        else:
+            price_formatted = f"{plan['price']:,}".replace(",", "،")
+            emoji = get_plan_telegram_emoji(plan, plan_id)
+            btn_title = f"{emoji} {plan['name']} - {plan.get('description', '')} - {price_formatted} تومان"
+
+        r = cfg_it.get("row", len(row_map))
+        c = cfg_it.get("col", 0)
+        if r not in row_map:
+            row_map[r] = []
+        row_map[r].append((c, InlineKeyboardButton(btn_title, callback_data=f"plan_{plan_id}", **kw)))
+
+    back_it = sub_dict.get("back_to_menu", {})
+    if back_it.get("enabled", True):
+        b_st = back_it.get("style", "danger")
+        b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
+        b_kw = {"style": b_st_arg} if b_st_arg else {}
+        b_title = back_it.get("title") or "◀️ بازگشت"
+        r_back = back_it.get("row", 99)
+        c_back = back_it.get("col", 0)
+        if r_back not in row_map:
+            row_map[r_back] = []
+        row_map[r_back].append((c_back, InlineKeyboardButton(b_title, callback_data="back_to_menu", **b_kw)))
+
+    keyboard = []
+    for r in sorted(row_map.keys()):
+        row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+        if row_btns:
+            keyboard.append(row_btns)
+
+    if not keyboard:
+        keyboard = [[InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")]]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = "🛒 **پلن‌های اشتراک:**\n\nلطفاً یکی از پلن‌های زیر را انتخاب کنید:"
@@ -1496,11 +1560,42 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• قیمت: {price_formatted} تومان\n\n"
         f"📝 نام اکانت خود را انتخاب کنید:"
     )
-    keyboard = [
-        [InlineKeyboardButton("🔄 انتخاب خودکار(آیدی تلگرام)", callback_data="name_telegram_id")],
-        [InlineKeyboardButton("✏️ نام دلخواه", callback_data="name_custom")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_plan")],
-    ]
+    naming_cfg = db.get_sub_menu_config("admin", "account_naming")
+    cb_map = {
+        "name_auto_tg": "name_telegram_id",
+        "name_telegram_id": "name_telegram_id",
+        "name_smart": "name_smart",
+        "name_custom": "name_custom",
+        "back_to_plans": "back_to_select_plan",
+    }
+    row_map = {}
+    for it in naming_cfg:
+        i_id = it.get("id")
+        if not it.get("enabled", True):
+            continue
+        cb = cb_map.get(i_id, i_id)
+        title = it.get("title", "")
+        st = it.get("style")
+        kw = {"style": st} if st in ("primary", "success", "danger") else {}
+        r = it.get("row", len(row_map))
+        c = it.get("col", 0)
+        if r not in row_map:
+            row_map[r] = []
+        row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+    keyboard = []
+    for r in sorted(row_map.keys()):
+        row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+        if row_btns:
+            keyboard.append(row_btns)
+
+    if not keyboard:
+        keyboard = [
+            [InlineKeyboardButton("🔄 انتخاب خودکار(آیدی تلگرام)", callback_data="name_telegram_id")],
+            [InlineKeyboardButton("🧠 نام هوشمند / تصادفی", callback_data="name_smart")],
+            [InlineKeyboardButton("✏️ نام دلخواه", callback_data="name_custom")],
+            [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_plan")],
+        ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup)
     return SELECTING_NAME_TYPE
@@ -1525,9 +1620,13 @@ async def select_name_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plan = plans.get(plan_id, {})
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
 
-    if query.data == "name_telegram_id":
-        # استفاده از آیدی تلگرام
-        context.user_data["account_name"] = f"tg_{user.id}"
+    if query.data in ("name_telegram_id", "name_smart"):
+        import secrets
+        if query.data == "name_smart":
+            acc_name = f"smart_{user.id % 10000}_{secrets.token_hex(2)}"
+        else:
+            acc_name = f"tg_{user.id}"
+        context.user_data["account_name"] = acc_name
         context.user_data["account_comment"] = None
 
         text = (
@@ -1535,13 +1634,22 @@ async def select_name_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• حجم: {plan.get('data_limit', 0) if plan.get('data_limit', 0) > 0 else 'نامحدود'} گیگابایت\n"
             f"• مدت: {plan.get('duration', 0)} روز\n"
             f"• قیمت: {price_formatted} تومان\n\n"
-            f"📝 نام اکانت: tg_{user.id}\n\n"
+            f"📝 نام اکانت: {acc_name}\n\n"
             f"آیا مایل به خرید این پلن هستید?"
         )
+        conf_cfg = db.get_sub_menu_dict("admin", "confirm_subscription")
+        conf_title = conf_cfg.get("confirm_pay", {}).get("title") or conf_cfg.get("confirm_purchase", {}).get("title") or "✅ تایید خرید"
+        conf_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "confirm_purchase", default="success")
+        conf_kw = {"style": conf_st} if conf_st in ("primary", "success", "danger") else {}
+
+        back_title = conf_cfg.get("change_name", {}).get("title") or "◀️ بازگشت"
+        back_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "change_name", default=None)
+        back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
+
         keyboard = [
             [
-                InlineKeyboardButton("✅ تایید خرید", callback_data="confirm_purchase"),
-                InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_name_selection"),
+                InlineKeyboardButton(conf_title, callback_data="confirm_purchase", **conf_kw),
+                InlineKeyboardButton(back_title, callback_data="back_to_name_selection", **back_kw),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)

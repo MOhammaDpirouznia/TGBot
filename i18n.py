@@ -540,8 +540,47 @@ def t(key: str, lang: str = "fa", **kwargs) -> str:
     return text
 
 
-def get_language_keyboard() -> InlineKeyboardMarkup:
-    """کیبورد اینلاین انتخاب زبان"""
+def get_language_keyboard(is_reseller: bool = False, reseller_id: int = None) -> InlineKeyboardMarkup:
+    """کیبورد اینلاین انتخاب زبان با پشتیبانی از چیدمان، رنگ‌ها و عناوین پنل مدیریت"""
+    try:
+        from database import db
+        bot_kind = "reseller" if is_reseller else "admin"
+        l_cfg = db.get_sub_menu_config(bot_kind, "language", is_reseller=is_reseller, reseller_id=reseller_id)
+    except Exception:
+        l_cfg = None
+
+    if l_cfg:
+        cb_map = {
+            "lang_fa": "lang_fa",
+            "lang_en": "lang_en",
+            "lang_ru": "lang_ru",
+            "lang_zh": "lang_zh",
+        }
+        row_map = {}
+        for it in l_cfg:
+            if not it.get("enabled", True):
+                continue
+            i_id = it.get("id")
+            cb = cb_map.get(i_id, i_id)
+            title = it.get("title") or i_id
+            st = it.get("style")
+            st_arg = st if st in ("primary", "success", "danger") else None
+            kw = {"style": st_arg} if st_arg else {}
+            r = it.get("row", len(row_map))
+            c = it.get("col", 0)
+            if r not in row_map:
+                row_map[r] = []
+            row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+        keyboard = []
+        for r in sorted(row_map.keys()):
+            row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+            if row_btns:
+                keyboard.append(row_btns)
+        if keyboard:
+            return InlineKeyboardMarkup(keyboard)
+
+    # فال‌بک پیش‌فرض
     keyboard = [
         [
             InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa"),
