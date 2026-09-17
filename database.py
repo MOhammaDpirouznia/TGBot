@@ -7526,6 +7526,34 @@ class Database:
         cursor = conn.cursor()
         try:
             now_str = renewed_at or get_now_iso()
+            
+            # استخراج خودکار start_date و expire_date از اشتراک جاری در صورت عدم ارسال
+            final_start_date = start_date
+            final_expire_date = expire_date
+            if subscription_id and (not final_start_date or not final_expire_date):
+                try:
+                    cursor.execute("SELECT start_date, expire_date, created_at FROM subscriptions WHERE id = ?", (subscription_id,))
+                    sub_row = cursor.fetchone()
+                    if sub_row:
+                        if not final_start_date:
+                            final_start_date = sub_row[0] or sub_row[2]
+                        if not final_expire_date:
+                            final_expire_date = sub_row[1]
+                except Exception:
+                    pass
+
+            # قانون مهم کاربر: تاریخ پایان دوره باید روزی باشد که اشتراک به پایان رسیده است
+            # اگر دوره به علت اتمام حجم یا تمدید زودتر از موعد تمام شده، تاریخ پایان = now_str است
+            if final_expire_date:
+                try:
+                    is_traffic_finished = (previous_limit_gb and float(previous_limit_gb) > 0 and float(previous_usage_gb or 0) >= float(previous_limit_gb) * 0.98)
+                    if is_traffic_finished or str(now_str)[:10] < str(final_expire_date)[:10]:
+                        final_expire_date = now_str
+                except Exception:
+                    pass
+            else:
+                final_expire_date = now_str
+
             cursor.execute("""
                 INSERT INTO subscription_history (
                     subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
@@ -7537,7 +7565,7 @@ class Database:
                 subscription_id, telegram_id or 0, hidify_uuid, account_name, plan_name,
                 float(previous_usage_gb or 0), float(previous_limit_gb or 0),
                 int(period_days or 30), renewal_type, now_str, reseller_id,
-                int(plan_price or 0), int(cost_paid or 0), start_date, expire_date,
+                int(plan_price or 0), int(cost_paid or 0), final_start_date, final_expire_date,
                 int(is_manual or 0), int(period_offset or 1), period_label, note, created_by
             ))
             if subscription_id:
@@ -7677,10 +7705,13 @@ class Database:
             conn.close()
 
     def get_subscription_full_details_and_history(self, sub_id: int, reseller_id: int = None) -> dict:
-        """دریافت اطلاعات جامع اشتراک به همراه آرشیو تمام دوره‌ها و مبالغ پرداختی گذشته به ترتیب زمانی دقیق"""
+        """دریافت اطلاعات جامع هویت مشتری، اشتراک‌های متصل، سوابق تراکنش‌ها و پرداخت‌ها و آرشیو دوره‌ها"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            from utils import gregorian_to_shamsi
+            from datetime import datetime
+
             if reseller_id:
                 cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             else:
@@ -7690,6 +7721,115 @@ class Database:
                 return {"success": False, "error": "اشتراک یافت نشد"}
 
             sub_dict = dict(sub_row)
+            tg_id = sub_dict.get("telegram_id")
+            phone = sub_dict.get("phone_number")
+            acc_name = sub_dict.get("account_name") or ""
+            uuid = sub_dict.get("hidify_uuid") or ""
+
+            # ۱. بازیابی هویت و مشخصات مشتری (مشابه کاربران تلگرام)
+            user_dict = None
+            if tg_id and int(tg_id) > 0:
+                cursor.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,))
+                u_row = cursor.fetchone()
+                if u_row:
+                    user_dict = dict(u_row)
+            if not user_dict and phone:
+                cursor.execute("SELECT * FROM users WHERE phone_number=? LIMIT 1", (phone,))
+                u_row = cursor.fetchone()
+                if u_row:
+                    user_dict = dict(u_row)
+            
+            # در صورت عدم وجود رکورد اختصاصی در users، یک پروفایل مشتری بر اساس اشتراک ایجاد می‌شود
+            if not user_dict:
+                user_dict = {
+                    "telegram_id": int(tg_id) if (tg_id and int(tg_id) > 0) else 0,
+                    "username": acc_name,
+                    "phone_number": phone or "",
+                    "is_verified": bool(phone),
+                    "wallet_balance": 0,
+                    "is_vip": bool(sub_dict.get("is_vip")),
+                    "vip_type": "manual" if sub_dict.get("is_vip") else None,
+                    "created_at": sub_dict.get("created_at") or "",
+                    "is_synthetic": True
+                }
+            else:
+                user_dict["is_synthetic"] = False
+
+            # دریافت موجودی کیف پول کاربر در صورت داشتن آیدی تلگرام
+            if user_dict.get("telegram_id") and user_dict["telegram_id"] > 0:
+                try:
+                    cursor.execute("SELECT balance FROM wallet WHERE telegram_id=?", (user_dict["telegram_id"],))
+                    w_row = cursor.fetchone()
+                    if w_row:
+                        user_dict["wallet_balance"] = w_row[0]
+                except Exception:
+                    pass
+
+            # تاریخ عضویت شمسی
+            if user_dict.get("created_at"):
+                user_dict["created_at_shamsi"] = gregorian_to_shamsi(user_dict["created_at"], fmt="%Y/%m/%d %H:%M")
+            else:
+                user_dict["created_at_shamsi"] = "-"
+
+            # ۲. دریافت تمام اشتراک‌های متصل به این مشتری
+            user_subs = []
+            if tg_id and int(tg_id) > 0:
+                if reseller_id:
+                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id, reseller_id))
+                else:
+                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id,))
+                user_subs = [dict(r) for r in cursor.fetchall()]
+            elif phone:
+                if reseller_id:
+                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone, reseller_id))
+                else:
+                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone,))
+                user_subs = [dict(r) for r in cursor.fetchall()]
+            else:
+                user_subs = [sub_dict]
+
+            # غنی‌سازی اشتراک‌های کاربر
+            for us in user_subs:
+                u_used = float(us.get("data_used") or 0.0)
+                u_limit = float(us.get("data_limit") or 0.0)
+                us["remaining_gb"] = max(0.0, round(u_limit - u_used, 2)) if u_limit > 0 else 0.0
+                if us.get("expire_date"):
+                    us["expire_date_shamsi"] = gregorian_to_shamsi(us["expire_date"], fmt="%Y/%m/%d")
+                else:
+                    us["expire_date_shamsi"] = "-"
+
+            # ۳. دریافت تراکنش‌ها و سوابق پرداخت مشتری (بخش حیاتی و اجباری)
+            # جستجو بر اساس: subscription_id, renew_sub_id, user_id (اگر tg_id دارد) یا username
+            tx_where_clauses = ["(subscription_id=? OR renew_sub_id=?)"]
+            tx_params = [sub_id, sub_id]
+            if tg_id and int(tg_id) > 0:
+                tx_where_clauses.append("(user_id=? AND user_id>0)")
+                tx_params.append(int(tg_id))
+            if acc_name:
+                tx_where_clauses.append("(username IS NOT NULL AND username!='' AND username=?)")
+                tx_params.append(acc_name)
+
+            tx_query = f"""
+                SELECT * FROM transactions
+                WHERE ({" OR ".join(tx_where_clauses)})
+                  AND (is_deleted=0 OR is_deleted IS NULL)
+                  AND (gateway!='bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                ORDER BY created_at DESC LIMIT 50
+            """
+            cursor.execute(tx_query, tuple(tx_params))
+            tx_rows = [dict(r) for r in cursor.fetchall()]
+
+            # غنی‌سازی تراکنش‌ها با تاریخ شمسی
+            for t in tx_rows:
+                if t.get("created_at"):
+                    t["created_at_shamsi"] = gregorian_to_shamsi(t["created_at"], fmt="%Y/%m/%d %H:%M")
+                else:
+                    t["created_at_shamsi"] = "-"
+
+            # محاسبه مجموع خریدهای تایید شده مشتری (CLV)
+            total_paid = sum(int(t.get("amount") or 0) for t in tx_rows if t.get("status") in ("approved", "completed", "paid"))
+
+            # ۴. سوابق دوره‌ها و مصرف گذشته
             cursor.execute("""
                 SELECT * FROM subscription_history 
                 WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
@@ -7697,12 +7837,74 @@ class Database:
                     COALESCE(renewed_at, start_date) DESC, 
                     id DESC
                 LIMIT 50
-            """, (sub_id, sub_dict.get("hidify_uuid") or ""))
+            """, (sub_id, uuid))
             history_rows = [dict(r) for r in cursor.fetchall()]
+
+            # غنی‌سازی دوره‌ها با:
+            # - تاریخ شروع و تاریخ پایان واقعی
+            # - طول دوره به روز (used_days)
+            # - میانگین مصرف روزانه (burn_rate)
+            # - دلیل اتمام دوره (حجم / زمان)
+            for h in history_rows:
+                s_date = h.get("start_date")
+                exp_date = h.get("expire_date")
+                ren_date = h.get("renewed_at")
+
+                # اگر دوره بر اثر تمدید یا پایان حجم تمام شده، تاریخ انقضای واقعی همان روز پایان است
+                effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
+                h["effective_expire_date"] = effective_exp
+
+                # تاریخ‌های شمسی
+                h["start_date_shamsi"] = gregorian_to_shamsi(s_date, fmt="%Y/%m/%d") if s_date else "-"
+                h["expire_date_shamsi"] = gregorian_to_shamsi(effective_exp, fmt="%Y/%m/%d") if effective_exp else "-"
+                h["renewed_at_shamsi"] = gregorian_to_shamsi(ren_date, fmt="%Y/%m/%d %H:%M") if ren_date else "-"
+
+                # محاسبه تعداد روزهای استفاده شده (used_days)
+                used_days = int(h.get("period_days") or 30)
+                if s_date and effective_exp:
+                    try:
+                        clean_s = str(s_date).replace("Z", "").split("+")[0].strip()
+                        clean_e = str(effective_exp).replace("Z", "").split("+")[0].strip()
+                        dt_s = datetime.fromisoformat(clean_s[:19])
+                        dt_e = datetime.fromisoformat(clean_e[:19])
+                        used_days = max(1, round((dt_e - dt_s).total_seconds() / 86400.0))
+                    except Exception:
+                        used_days = int(h.get("period_days") or 30)
+                h["used_days"] = used_days
+
+                # محاسبه میانگین مصرف روزانه (GB/Day)
+                usage_val = float(h.get("previous_usage_gb") or 0.0)
+                limit_val = float(h.get("previous_limit_gb") or 0.0)
+                h["burn_rate"] = round(usage_val / max(1, used_days), 2)
+
+                # تعیین وضعیت علت پایان دوره
+                if limit_val > 0 and usage_val >= limit_val * 0.98:
+                    h["completion_reason"] = "پایان حجم ترافیک"
+                    h["completion_badge"] = "danger"
+                elif h.get("period_days") and used_days >= int(h.get("period_days")):
+                    h["completion_reason"] = "پایان مهلت زمانی"
+                    h["completion_badge"] = "warning"
+                else:
+                    h["completion_reason"] = "تمدید زودهنگام / تغییر بسته"
+                    h["completion_badge"] = "info"
+
+            # افزودن تاریخ‌های شمسی به اشتراک جاری
+            if sub_dict.get("start_date"):
+                sub_dict["start_date_shamsi"] = gregorian_to_shamsi(sub_dict["start_date"], fmt="%Y/%m/%d")
+            else:
+                sub_dict["start_date_shamsi"] = "-"
+            if sub_dict.get("expire_date"):
+                sub_dict["expire_date_shamsi"] = gregorian_to_shamsi(sub_dict["expire_date"], fmt="%Y/%m/%d")
+            else:
+                sub_dict["expire_date_shamsi"] = "-"
 
             return {
                 "success": True,
                 "current": sub_dict,
+                "user": user_dict,
+                "user_subscriptions": user_subs,
+                "transactions": tx_rows,
+                "total_paid": total_paid,
                 "history": history_rows
             }
         except Exception as e:

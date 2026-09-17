@@ -2107,10 +2107,10 @@
                     <tr class="text-secondary border-bottom border-secondary border-opacity-25">
                         <th>دوره</th>
                         <th>بسته</th>
-                        <th>حجم</th>
-                        <th>مدت</th>
+                        <th>حجم مصرفی</th>
+                        <th>مدت استفاده</th>
+                        <th>تاریخ شروع و پایان</th>
                         <th>وضعیت</th>
-                        <th>تاریخ ثبت</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2118,8 +2118,21 @@
                     <tr class="border-bottom border-secondary border-opacity-10">
                         <td class="font-monospace">دوره {{ h.get('period_offset') or loop.index }}</td>
                         <td class="fw-bold">{{ h.get('plan_name') or 'بسته اشتراک' }}</td>
-                        <td>{{ h.get('data_limit') or '-' }} گیگ</td>
-                        <td>{{ h.get('duration') or '-' }} روز</td>
+                        <td>
+                            <span class="text-info font-monospace">{{ "%.2f"|format(h.get('previous_usage_gb', 0) | float) }}</span> از <span class="text-white font-monospace">{{ h.get('previous_limit_gb') or h.get('data_limit') or '-' }}</span> گیگ
+                        </td>
+                        <td>
+                            <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 font-monospace">
+                                {{ h.get('used_days') or h.get('period_days') or 30 }} روز
+                            </span>
+                            {% if h.get('burn_rate') %}
+                            <small class="text-muted d-block font-monospace mt-1" style="font-size: 0.72rem;">{{ h.get('burn_rate') }} GB/روز</small>
+                            {% endif %}
+                        </td>
+                        <td class="font-monospace small">
+                            <span class="text-success d-block"><i class="fas fa-play me-1" style="font-size: 0.65rem;"></i>شروع: {{ h.get('start_date_shamsi') or format_shamsi_date(h.get('start_date')) or '-' }}</span>
+                            <span class="text-warning d-block"><i class="fas fa-flag-checkered me-1" style="font-size: 0.65rem;"></i>پایان: {{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</span>
+                        </td>
                         <td>
                             {% if h.get('status') == 'active' %}
                             <span class="badge bg-success small">جاری</span>
@@ -2129,7 +2142,6 @@
                             <span class="badge bg-info small">{{ h.get('status') }}</span>
                             {% endif %}
                         </td>
-                        <td class="small text-secondary font-monospace">{{ (h.get('renewed_at') or h.get('created_at') or '')[:10] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -2676,9 +2688,11 @@
                                             </span>
                                             <strong class="text-white small">{{ h.get('plan_name') or 'بسته اشتراک' }}</strong>
                                         </div>
-                                        <span class="text-secondary small font-monospace">
-                                            <i class="fas fa-calendar-day me-1"></i>{{ format_shamsi_date(h.get('renewed_at') or h.get('start_date')) }}
-                                        </span>
+                                        <div class="text-secondary small font-monospace d-flex flex-wrap align-items-center gap-2">
+                                            <span><i class="fas fa-play me-1 text-success" style="font-size: 0.72rem;"></i>شروع: <strong class="text-light">{{ h.get('start_date_shamsi') or format_shamsi_date(h.get('start_date')) or '-' }}</strong></span>
+                                            <span class="text-muted">|</span>
+                                            <span><i class="fas fa-flag-checkered me-1 text-warning" style="font-size: 0.72rem;"></i>پایان: <strong class="text-light">{{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</strong></span>
+                                        </div>
                                     </div>
 
                                     {% set p_used = h.get('previous_usage_gb', 0) | float %}
@@ -2686,14 +2700,19 @@
                                     {% set p_pct = (p_used / p_limit * 100)|round(1) if p_limit > 0 else 0 %}
 
                                     <div class="row g-2 text-secondary small align-items-center mb-2">
-                                        <div class="col-sm-6">
+                                        <div class="col-sm-5">
                                             <span><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره:</span>
                                             <strong class="text-info font-monospace">{{ "%.2f"|format(p_used) }}</strong> از <strong class="text-white font-monospace">{{ p_limit }}</strong> گیگ
                                             <span class="badge bg-secondary font-monospace ms-1">{{ p_pct }}٪</span>
                                         </div>
-                                        <div class="col-sm-3">
-                                            <span><i class="fas fa-hourglass-half me-1 text-warning"></i>مدت:</span>
-                                            <strong class="text-white font-monospace">{{ h.get('period_days') or 30 }}</strong> روز
+                                        <div class="col-sm-4">
+                                            <span><i class="fas fa-calendar-check me-1 text-warning"></i>مدت دوره:</span>
+                                            <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-25 font-monospace">
+                                                استفاده در {{ h.get('used_days') or h.get('period_days') or 30 }} روز
+                                            </span>
+                                            {% if h.get('burn_rate') %}
+                                            <small class="text-muted font-monospace ms-1">({{ h.get('burn_rate') }} GB/روز)</small>
+                                            {% endif %}
                                         </div>
                                         <div class="col-sm-3 text-sm-end">
                                             {% set price_val = h.get('cost_paid') or h.get('plan_price') or 0 %}

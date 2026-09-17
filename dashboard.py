@@ -11027,8 +11027,9 @@ def api_hiddify_admins():
 
 
 @app.route("/api/subscription/<int:sub_id>/history", methods=["GET"])
+@app.route("/api/customer/details/<int:sub_id>", methods=["GET"])
 def api_subscription_history(sub_id):
-    """وب‌سرویس دریافت سوابق و تاریخچه دوره‌های قبلی و مصرف یک اشتراک"""
+    """وب‌سرویس دریافت اطلاعات جامع مشتری، تراکنش‌ها، سوابق دوره‌ها و مصرف یک اشتراک"""
     if not session.get("logged_in"):
         return jsonify({"success": False, "error": "احراز هویت لازم است"}), 401
 
@@ -20126,8 +20127,44 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
         conn.close()
 
-        sub_history = [dict(r) for r in sub_hist_rows]
-        tx_history = [dict(r) for r in tx_rows]
+        sub_history = []
+        for r in sub_hist_rows:
+            h = dict(r)
+            s_date = h.get("start_date")
+            exp_date = h.get("expire_date")
+            ren_date = h.get("renewed_at")
+            effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
+            h["effective_expire_date"] = effective_exp
+            h["start_date_shamsi"] = gregorian_to_shamsi(s_date, fmt="%Y/%m/%d") if s_date else "-"
+            h["expire_date_shamsi"] = gregorian_to_shamsi(effective_exp, fmt="%Y/%m/%d") if effective_exp else "-"
+            h["renewed_at_shamsi"] = gregorian_to_shamsi(ren_date, fmt="%Y/%m/%d %H:%M") if ren_date else "-"
+
+            used_days = int(h.get("period_days") or 30)
+            if s_date and effective_exp:
+                try:
+                    clean_s = str(s_date).replace("Z", "").split("+")[0].strip()
+                    clean_e = str(effective_exp).replace("Z", "").split("+")[0].strip()
+                    dt_s = datetime.fromisoformat(clean_s[:19])
+                    dt_e = datetime.fromisoformat(clean_e[:19])
+                    used_days = max(1, round((dt_e - dt_s).total_seconds() / 86400.0))
+                except Exception:
+                    used_days = int(h.get("period_days") or 30)
+            h["used_days"] = used_days
+
+            usage_val = float(h.get("previous_usage_gb") or 0.0)
+            limit_val = float(h.get("previous_limit_gb") or 0.0)
+            h["burn_rate"] = round(usage_val / max(1, used_days), 2)
+            sub_history.append(h)
+
+        tx_history = []
+        for r in tx_rows:
+            t = dict(r)
+            if t.get("created_at"):
+                t["created_at_shamsi"] = gregorian_to_shamsi(t["created_at"], fmt="%Y/%m/%d %H:%M")
+            else:
+                t["created_at_shamsi"] = "-"
+            tx_history.append(t)
+
         total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
 
     # تمام اشتراک‌های کاربر جهت نمایش در سوئیچر اکانت‌ها در مینی‌اپ
