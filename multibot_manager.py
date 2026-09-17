@@ -4141,7 +4141,10 @@ class ResellerBotInstance:
                             reseller_id=r_id,
                             plan_price=selling_price,
                             cost_paid=w_price,
-                            start_date=get_now_iso()
+                            start_date=get_now_iso(),
+                            period_offset=0,
+                            period_label="دوره فعلی (دوره اولیه)",
+                            note="افتتاح و شروع اشتراک"
                         )
                     except Exception as e_rec:
                         logger.error(f"Error logging multibot tx/history: {e_rec}")

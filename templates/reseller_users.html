@@ -3345,20 +3345,35 @@ function openSubscriptionHistory(subId, accountName) {
                     const limit = (h.previous_limit_gb || 0).toFixed(1);
                     const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
                     const isManual = (h.is_manual === 1 || h.renewal_type === 'manual');
-                    const periodLabel = h.period_label || (h.period_offset ? (h.period_offset + ' دوره قبل') : 'دوره گذشته');
+                    const isInitial = (h.renewal_type === 'new_subscription' || h.is_current_period || (h.period_label && h.period_label.includes('دوره اولیه')) || (h.period_label && h.period_label.includes('دوره فعلی')));
+                    const isCurrentPeriod = (h.is_current_period === true || (isInitial && parseFloat(used) === 0));
+
+                    let periodLabel = h.period_label;
+                    if (!periodLabel || periodLabel.includes('دوره قبل')) {
+                        if (isCurrentPeriod) {
+                            periodLabel = 'دوره فعلی (دوره اولیه)';
+                        } else if (isInitial) {
+                            periodLabel = 'دوره ۱ (دوره اولیه)';
+                        } else {
+                            periodLabel = h.period_offset ? (h.period_offset + ' دوره گذشته') : 'دوره گذشته';
+                        }
+                    }
                     const usedDays = h.used_days || h.period_days || 30;
                     const burnRate = h.burn_rate || 0;
 
                     html += `
-                        <tr class="${isManual ? 'table-warning bg-opacity-10' : ''}">
+                        <tr class="${isCurrentPeriod ? 'table-success bg-opacity-10' : (isManual ? 'table-warning bg-opacity-10' : '')}">
                             <td class="text-center font-monospace small">${idx + 1}</td>
                             <td>
-                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-bold d-block mb-1">
-                                    <i class="fas fa-clock-rotate-left me-1"></i>${periodLabel}
+                                <span class="badge ${isCurrentPeriod ? 'bg-success-subtle text-success border border-success' : 'bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25'} fw-bold d-block mb-1">
+                                    <i class="fas ${isCurrentPeriod ? 'fa-bolt' : 'fa-clock-rotate-left'} me-1"></i>${periodLabel}
                                 </span>
-                                ${isManual ? 
-                                    '<span class="badge bg-warning text-dark border border-warning shadow-sm" style="font-size: 10px;"><i class="fas fa-hand me-1"></i> دستی</span>' : 
-                                    '<span class="badge bg-light text-secondary border" style="font-size: 10px;">سیستمی</span>'
+                                ${isCurrentPeriod ?
+                                    '<span class="badge bg-success text-white border shadow-sm" style="font-size: 10px;"><i class="fas fa-circle-check me-1"></i> دوره جاری</span>' :
+                                    (isManual ? 
+                                        '<span class="badge bg-warning text-dark border border-warning shadow-sm" style="font-size: 10px;"><i class="fas fa-hand me-1"></i> دستی</span>' : 
+                                        '<span class="badge bg-light text-secondary border" style="font-size: 10px;">سیستمی</span>'
+                                    )
                                 }
                             </td>
                             <td>
@@ -3367,14 +3382,22 @@ function openSubscriptionHistory(subId, accountName) {
                                 ${h.note ? `<div class="text-muted small mt-1" style="font-size: 10.5px;"><i class="fas fa-comment-dots text-info me-1"></i>${h.note}</div>` : ''}
                             </td>
                             <td>
-                                <span class="badge bg-primary fs-6 px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
-                                    <i class="fas fa-calendar-day"></i>
-                                    استفاده در ${usedDays} روز
-                                </span>
-                                <small class="text-muted d-block mt-1">از دوره ${h.period_days || 30} روزه</small>
-                                <span class="badge bg-info-subtle text-info border border-info mt-1" style="font-size: 10.5px;">
-                                    <i class="fas fa-gauge-high me-1"></i>میانگین: ${burnRate} گیگ/روز
-                                </span>
+                                ${isCurrentPeriod && parseFloat(used) === 0 ? `
+                                    <span class="badge bg-success-subtle text-success border border-success fs-6 px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                        <i class="fas fa-play-circle"></i>
+                                        دوره جاری (${h.period_days || 30} روزه)
+                                    </span>
+                                    <small class="text-muted d-block mt-1">شروع و افتتاح اشتراک</small>
+                                ` : `
+                                    <span class="badge bg-primary fs-6 px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                        <i class="fas fa-calendar-day"></i>
+                                        استفاده در ${usedDays} روز
+                                    </span>
+                                    <small class="text-muted d-block mt-1">از دوره ${h.period_days || 30} روزه</small>
+                                    <span class="badge bg-info-subtle text-info border border-info mt-1" style="font-size: 10.5px;">
+                                        <i class="fas fa-gauge-high me-1"></i>میانگین: ${burnRate} گیگ/روز
+                                    </span>
+                                `}
                             </td>
                             <td>
                                 <div class="small text-muted mb-1">
@@ -3382,8 +3405,8 @@ function openSubscriptionHistory(subId, accountName) {
                                     <span class="font-monospace text-dark fw-bold">${h.start_date_shamsi || '-'}</span>
                                 </div>
                                 <div class="small text-muted">
-                                    <i class="fas fa-calendar-xmark text-danger me-1"></i>پایان واقعی:
-                                    <span class="font-monospace text-danger fw-bold">${h.expire_date_shamsi || '-'}</span>
+                                    <i class="fas ${isCurrentPeriod ? 'fa-calendar-check text-success' : 'fa-calendar-xmark text-danger'} me-1"></i>${isCurrentPeriod ? 'تاریخ انقضا:' : 'پایان واقعی:'}
+                                    <span class="font-monospace ${isCurrentPeriod ? 'text-success' : 'text-danger'} fw-bold">${h.expire_date_shamsi || '-'}</span>
                                 </div>
                             </td>
                             <td>
@@ -3393,8 +3416,8 @@ function openSubscriptionHistory(subId, accountName) {
                                 </div>
                             </td>
                             <td>
-                                <span class="badge bg-${h.completion_badge || 'secondary'}-subtle text-${h.completion_badge || 'secondary'} border border-${h.completion_badge || 'secondary'}">
-                                    ${h.completion_reason || 'پایان دوره'}
+                                <span class="badge bg-${h.completion_badge || (isCurrentPeriod ? 'success' : 'secondary')}-subtle text-${h.completion_badge || (isCurrentPeriod ? 'success' : 'secondary')} border border-${h.completion_badge || (isCurrentPeriod ? 'success' : 'secondary')}">
+                                    ${isCurrentPeriod ? '<i class="fas fa-circle-play me-1"></i>دوره اولیه (در حال استفاده)' : (h.completion_reason || 'پایان دوره')}
                                 </span>
                             </td>
                             <td>

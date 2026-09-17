@@ -13671,7 +13671,7 @@ def reseller_create_user():
             except Exception as e_tx:
                 logger.error(f"Error saving customer payment in reseller_create_user: {e_tx}")
 
-        # ثبت سابقه دوره اولیه در تاریخچه
+        # ثبت سابقه دوره اولیه در تاریخچه با عنوان شفاف دوره فعلی
         db.save_subscription_history(
             subscription_id=sub_id,
             telegram_id=telegram_id,
@@ -13685,7 +13685,11 @@ def reseller_create_user():
             reseller_id=reseller_id,
             plan_price=original_price,
             cost_paid=final_price,
-            start_date=now
+            start_date=now,
+            expire_date=expire_date,
+            period_offset=0,
+            period_label="دوره فعلی (دوره اولیه)",
+            note="افتتاح و شروع اشتراک"
         )
 
         # محاسبه و واریز خودکار پورسانت به نماینده معرف (بالادستی)
@@ -17877,7 +17881,7 @@ def admin_create_customer():
         conn.commit()
         conn.close()
 
-        # ثبت سابقه دوره اولیه در تاریخچه
+        # ثبت سابقه دوره اولیه در تاریخچه با عنوان شفاف دوره فعلی
         db.save_subscription_history(
             subscription_id=sub_id,
             telegram_id=telegram_id or 0,
@@ -17890,7 +17894,11 @@ def admin_create_customer():
             renewal_type="new_subscription",
             plan_price=price,
             cost_paid=price if payment_method != "debtor" else 0,
-            start_date=now
+            start_date=now,
+            expire_date=expire_date,
+            period_offset=0,
+            period_label="دوره فعلی (دوره اولیه)",
+            note="افتتاح و شروع اشتراک"
         )
 
         # ثبت کاربر در جدول users
@@ -20127,20 +20135,56 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
         conn.close()
 
+        has_subsequent_renewals = any(
+            dict(item).get("renewal_type") in ("replace", "direct", "reset_and_replaced", "manual", "manual_receipt", "queued_manual_activated", "queued_auto_activated")
+            for item in sub_hist_rows
+        )
+
         sub_history = []
         for r in sub_hist_rows:
             h = dict(r)
             s_date = h.get("start_date")
             exp_date = h.get("expire_date")
             ren_date = h.get("renewed_at")
-            effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
-            h["effective_expire_date"] = effective_exp
+            ren_type = h.get("renewal_type")
+
+            is_initial_sub = (ren_type == "new_subscription" or h.get("period_offset") == 0 or (h.get("period_label") and "دوره اولیه" in str(h.get("period_label"))))
+
+            if is_initial_sub and not has_subsequent_renewals:
+                effective_exp = sub.get("expire_date") or exp_date
+                h["effective_expire_date"] = effective_exp
+                h["period_label"] = "دوره فعلی (دوره اولیه)"
+                h["is_current_period"] = True
+                h["completion_reason"] = "دوره اولیه اشتراک (جاری)"
+                h["completion_badge"] = "success"
+                used_days = int(h.get("period_days") or sub.get("duration") or 30)
+            elif is_initial_sub and has_subsequent_renewals:
+                effective_exp = exp_date or ren_date
+                h["effective_expire_date"] = effective_exp
+                h["period_label"] = "دوره ۱ (دوره اولیه)"
+                h["is_current_period"] = False
+                h["completion_reason"] = "تمدید و شروع دوره جدید"
+                h["completion_badge"] = "info"
+                used_days = int(h.get("period_days") or 30)
+            else:
+                effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
+                h["effective_expire_date"] = effective_exp
+                h["is_current_period"] = False
+
+                p_offset = h.get("period_offset")
+                orig_label = str(h.get("period_label") or "")
+                if orig_label and "دوره قبل" not in orig_label:
+                    h["period_label"] = orig_label
+                elif p_offset and int(p_offset) > 0:
+                    h["period_label"] = f"دوره {p_offset} گذشته"
+                else:
+                    h["period_label"] = "دوره گذشته"
+
             h["start_date_shamsi"] = gregorian_to_shamsi(s_date, fmt="%Y/%m/%d") if s_date else "-"
             h["expire_date_shamsi"] = gregorian_to_shamsi(effective_exp, fmt="%Y/%m/%d") if effective_exp else "-"
             h["renewed_at_shamsi"] = gregorian_to_shamsi(ren_date, fmt="%Y/%m/%d %H:%M") if ren_date else "-"
 
-            used_days = int(h.get("period_days") or 30)
-            if s_date and effective_exp:
+            if not (is_initial_sub and not has_subsequent_renewals) and s_date and effective_exp:
                 try:
                     clean_s = str(s_date).replace("Z", "").split("+")[0].strip()
                     clean_e = str(effective_exp).replace("Z", "").split("+")[0].strip()
@@ -20149,10 +20193,11 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                     used_days = max(1, round((dt_e - dt_s).total_seconds() / 86400.0))
                 except Exception:
                     used_days = int(h.get("period_days") or 30)
+            elif is_initial_sub and not has_subsequent_renewals:
+                used_days = int(h.get("period_days") or sub.get("duration") or 30)
             h["used_days"] = used_days
 
             usage_val = float(h.get("previous_usage_gb") or 0.0)
-            limit_val = float(h.get("previous_limit_gb") or 0.0)
             h["burn_rate"] = round(usage_val / max(1, used_days), 2)
             sub_history.append(h)
 

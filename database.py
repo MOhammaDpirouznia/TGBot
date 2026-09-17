@@ -7543,16 +7543,22 @@ class Database:
                     pass
 
             # قانون مهم کاربر: تاریخ پایان دوره باید روزی باشد که اشتراک به پایان رسیده است
-            # اگر دوره به علت اتمام حجم یا تمدید زودتر از موعد تمام شده، تاریخ پایان = now_str است
-            if final_expire_date:
-                try:
-                    is_traffic_finished = (previous_limit_gb and float(previous_limit_gb) > 0 and float(previous_usage_gb or 0) >= float(previous_limit_gb) * 0.98)
-                    if is_traffic_finished or str(now_str)[:10] < str(final_expire_date)[:10]:
-                        final_expire_date = now_str
-                except Exception:
-                    pass
+            # برای دوره‌های تمدید شده یا پایان یافته: تاریخ پایان همان روز اتمام است
+            # اما برای دوره اولیه (new_subscription): اشتراک تازه شروع شده و نباید منقضی شود!
+            if renewal_type == "new_subscription":
+                if not period_label:
+                    period_label = "دوره فعلی (دوره اولیه)"
+                period_offset = 0
             else:
-                final_expire_date = now_str
+                if final_expire_date:
+                    try:
+                        is_traffic_finished = (previous_limit_gb and float(previous_limit_gb) > 0 and float(previous_usage_gb or 0) >= float(previous_limit_gb) * 0.98)
+                        if is_traffic_finished or str(now_str)[:10] < str(final_expire_date)[:10]:
+                            final_expire_date = now_str
+                    except Exception:
+                        pass
+                else:
+                    final_expire_date = now_str
 
             cursor.execute("""
                 INSERT INTO subscription_history (
@@ -7566,7 +7572,7 @@ class Database:
                 float(previous_usage_gb or 0), float(previous_limit_gb or 0),
                 int(period_days or 30), renewal_type, now_str, reseller_id,
                 int(plan_price or 0), int(cost_paid or 0), final_start_date, final_expire_date,
-                int(is_manual or 0), int(period_offset or 1), period_label, note, created_by
+                int(is_manual or 0), int(period_offset if period_offset is not None else 1), period_label, note, created_by
             ))
             if subscription_id:
                 try:
@@ -7840,28 +7846,60 @@ class Database:
             """, (sub_id, uuid))
             history_rows = [dict(r) for r in cursor.fetchall()]
 
+            # بررسی وجود سوابق تمدید بعدی
+            has_subsequent_renewals = any(
+                item.get("renewal_type") in ("replace", "direct", "reset_and_replaced", "manual", "manual_receipt", "queued_manual_activated", "queued_auto_activated")
+                for item in history_rows
+            )
+
             # غنی‌سازی دوره‌ها با:
+            # - تمایز هوشمند دوره فعلی (دوره اولیه) از دوره‌های پایان‌یافته قبلی
             # - تاریخ شروع و تاریخ پایان واقعی
             # - طول دوره به روز (used_days)
             # - میانگین مصرف روزانه (burn_rate)
-            # - دلیل اتمام دوره (حجم / زمان)
+            # - دلیل اتمام یا وضعیت جاری دوره
             for h in history_rows:
                 s_date = h.get("start_date")
                 exp_date = h.get("expire_date")
                 ren_date = h.get("renewed_at")
+                ren_type = h.get("renewal_type")
+                used_days = int(h.get("period_days") or sub_dict.get("duration") or 30)
 
-                # اگر دوره بر اثر تمدید یا پایان حجم تمام شده، تاریخ انقضای واقعی همان روز پایان است
-                effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
-                h["effective_expire_date"] = effective_exp
+                is_initial_sub = (ren_type == "new_subscription" or h.get("period_offset") == 0 or (h.get("period_label") and "دوره اولیه" in str(h.get("period_label"))))
 
-                # تاریخ‌های شمسی
-                h["start_date_shamsi"] = gregorian_to_shamsi(s_date, fmt="%Y/%m/%d") if s_date else "-"
-                h["expire_date_shamsi"] = gregorian_to_shamsi(effective_exp, fmt="%Y/%m/%d") if effective_exp else "-"
-                h["renewed_at_shamsi"] = gregorian_to_shamsi(ren_date, fmt="%Y/%m/%d %H:%M") if ren_date else "-"
+                if is_initial_sub and not has_subsequent_renewals:
+                    # اشتراک تازه شروع شده و این رکورد در واقع دوره فعلی است
+                    effective_exp = sub_dict.get("expire_date") or exp_date
+                    h["effective_expire_date"] = effective_exp
+                    h["period_label"] = "دوره فعلی (دوره اولیه)"
+                    h["is_current_period"] = True
+                    h["completion_reason"] = "دوره اولیه اشتراک (جاری)"
+                    h["completion_badge"] = "success"
+                elif is_initial_sub and has_subsequent_renewals:
+                    # اشتراک قبلاً افتتاح شده و سپس تمدید شده است
+                    effective_exp = exp_date or ren_date
+                    h["effective_expire_date"] = effective_exp
+                    h["period_label"] = "دوره ۱ (دوره اولیه)"
+                    h["is_current_period"] = False
+                    h["completion_reason"] = "تمدید و شروع دوره جدید"
+                    h["completion_badge"] = "info"
+                else:
+                    # دوره‌های تمدید شده یا ثبت شده قبلی
+                    effective_exp = ren_date if (ren_date and (not exp_date or ren_date < exp_date)) else (exp_date or ren_date)
+                    h["effective_expire_date"] = effective_exp
+                    h["is_current_period"] = False
+
+                    p_offset = h.get("period_offset")
+                    orig_label = str(h.get("period_label") or "")
+                    if orig_label and "دوره قبل" not in orig_label:
+                        h["period_label"] = orig_label
+                    elif p_offset and int(p_offset) > 0:
+                        h["period_label"] = f"دوره {p_offset} گذشته"
+                    else:
+                        h["period_label"] = "دوره گذشته (تمدید شده)"
 
                 # محاسبه تعداد روزهای استفاده شده (used_days)
-                used_days = int(h.get("period_days") or 30)
-                if s_date and effective_exp:
+                if not (is_initial_sub and not has_subsequent_renewals) and s_date and effective_exp:
                     try:
                         clean_s = str(s_date).replace("Z", "").split("+")[0].strip()
                         clean_e = str(effective_exp).replace("Z", "").split("+")[0].strip()
@@ -7870,23 +7908,33 @@ class Database:
                         used_days = max(1, round((dt_e - dt_s).total_seconds() / 86400.0))
                     except Exception:
                         used_days = int(h.get("period_days") or 30)
+                elif is_initial_sub and not has_subsequent_renewals:
+                    used_days = int(h.get("period_days") or sub_dict.get("duration") or 30)
                 h["used_days"] = used_days
+
+                # تعیین وضعیت علت پایان دوره (تنها برای دوره‌های غیرجاری)
+                if not (is_initial_sub and not has_subsequent_renewals) and not is_initial_sub:
+                    usage_val = float(h.get("previous_usage_gb") or 0.0)
+                    limit_val = float(h.get("previous_limit_gb") or 0.0)
+                    if limit_val > 0 and usage_val >= limit_val * 0.98:
+                        h["completion_reason"] = "پایان حجم ترافیک"
+                        h["completion_badge"] = "danger"
+                    elif h.get("period_days") and int(h.get("period_days")) > 0 and used_days >= int(h.get("period_days")):
+                        h["completion_reason"] = "پایان مهلت زمانی"
+                        h["completion_badge"] = "warning"
+                    else:
+                        h["completion_reason"] = "تمدید زودهنگام / تغییر بسته"
+                        h["completion_badge"] = "info"
+
+                # تاریخ‌های شمسی
+                h["start_date_shamsi"] = gregorian_to_shamsi(s_date, fmt="%Y/%m/%d") if s_date else "-"
+                h["expire_date_shamsi"] = gregorian_to_shamsi(effective_exp, fmt="%Y/%m/%d") if effective_exp else "-"
+                h["renewed_at_shamsi"] = gregorian_to_shamsi(ren_date, fmt="%Y/%m/%d %H:%M") if ren_date else "-"
 
                 # محاسبه میانگین مصرف روزانه (GB/Day)
                 usage_val = float(h.get("previous_usage_gb") or 0.0)
                 limit_val = float(h.get("previous_limit_gb") or 0.0)
                 h["burn_rate"] = round(usage_val / max(1, used_days), 2)
-
-                # تعیین وضعیت علت پایان دوره
-                if limit_val > 0 and usage_val >= limit_val * 0.98:
-                    h["completion_reason"] = "پایان حجم ترافیک"
-                    h["completion_badge"] = "danger"
-                elif h.get("period_days") and used_days >= int(h.get("period_days")):
-                    h["completion_reason"] = "پایان مهلت زمانی"
-                    h["completion_badge"] = "warning"
-                else:
-                    h["completion_reason"] = "تمدید زودهنگام / تغییر بسته"
-                    h["completion_badge"] = "info"
 
             # افزودن تاریخ‌های شمسی به اشتراک جاری
             if sub_dict.get("start_date"):

@@ -2115,26 +2115,41 @@
                 </thead>
                 <tbody>
                     {% for h in sub_history %}
-                    <tr class="border-bottom border-secondary border-opacity-10">
-                        <td class="font-monospace">دوره {{ h.get('period_offset') or loop.index }}</td>
+                    {% set is_curr = (h.get('is_current_period') or h.get('renewal_type') == 'new_subscription' or 'دوره فعلی' in (h.get('period_label') or '')) %}
+                    <tr class="border-bottom border-secondary border-opacity-10 {% if is_curr %}table-success bg-opacity-10{% endif %}">
+                        <td class="font-monospace">
+                            {% if is_curr %}
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">دوره فعلی</span>
+                            {% else %}
+                                {{ h.get('period_label') or ('دوره ' ~ (h.get('period_offset') or loop.index)) }}
+                            {% endif %}
+                        </td>
                         <td class="fw-bold">{{ h.get('plan_name') or 'بسته اشتراک' }}</td>
                         <td>
                             <span class="text-info font-monospace">{{ "%.2f"|format(h.get('previous_usage_gb', 0) | float) }}</span> از <span class="text-white font-monospace">{{ h.get('previous_limit_gb') or h.get('data_limit') or '-' }}</span> گیگ
                         </td>
                         <td>
-                            <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 font-monospace">
-                                {{ h.get('used_days') or h.get('period_days') or 30 }} روز
-                            </span>
-                            {% if h.get('burn_rate') %}
-                            <small class="text-muted d-block font-monospace mt-1" style="font-size: 0.72rem;">{{ h.get('burn_rate') }} GB/روز</small>
+                            {% if is_curr and (h.get('previous_usage_gb', 0)|float == 0) %}
+                                <span class="badge bg-success-subtle text-success border border-success border-opacity-25 font-monospace">
+                                    دوره جاری ({{ h.get('period_days') or 30 }} روز)
+                                </span>
+                            {% else %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 font-monospace">
+                                    {{ h.get('used_days') or h.get('period_days') or 30 }} روز
+                                </span>
+                                {% if h.get('burn_rate') %}
+                                <small class="text-muted d-block font-monospace mt-1" style="font-size: 0.72rem;">{{ h.get('burn_rate') }} GB/روز</small>
+                                {% endif %}
                             {% endif %}
                         </td>
                         <td class="font-monospace small">
                             <span class="text-success d-block"><i class="fas fa-play me-1" style="font-size: 0.65rem;"></i>شروع: {{ h.get('start_date_shamsi') or format_shamsi_date(h.get('start_date')) or '-' }}</span>
-                            <span class="text-warning d-block"><i class="fas fa-flag-checkered me-1" style="font-size: 0.65rem;"></i>پایان: {{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</span>
+                            <span class="{% if is_curr %}text-success{% else %}text-warning{% endif %} d-block"><i class="fas {% if is_curr %}fa-calendar-check{% else %}fa-flag-checkered{% endif %} me-1" style="font-size: 0.65rem;"></i>{{ 'انقضا:' if is_curr else 'پایان:' }} {{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</span>
                         </td>
                         <td>
-                            {% if h.get('status') == 'active' %}
+                            {% if is_curr %}
+                            <span class="badge bg-success small">دوره جاری (فعال)</span>
+                            {% elif h.get('status') == 'active' %}
                             <span class="badge bg-success small">جاری</span>
                             {% elif h.get('status') == 'completed' %}
                             <span class="badge bg-secondary small">پایان یافته</span>
@@ -2680,18 +2695,23 @@
                         {% if sub_history %}
                             <div class="d-flex flex-column gap-2">
                                 {% for h in sub_history %}
-                                <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                                {% set is_curr = (h.get('is_current_period') or h.get('renewal_type') == 'new_subscription' or 'دوره فعلی' in (h.get('period_label') or '')) %}
+                                <div class="p-3 rounded-3 bg-black bg-opacity-30 border {% if is_curr %}border-success border-opacity-50{% else %}border-secondary border-opacity-25{% endif %}">
                                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                                         <div class="d-flex align-items-center gap-2">
-                                            <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1 rounded-pill small font-monospace">
-                                                {{ h.get('period_label') or ('دوره ' ~ (h.get('period_offset') or loop.index)) }}
+                                            <span class="badge {% if is_curr %}bg-success-subtle text-success border border-success{% else %}bg-primary-subtle text-primary border border-primary{% endif %} px-2 py-1 rounded-pill small font-monospace">
+                                                {% if is_curr %}
+                                                    <i class="fas fa-bolt me-1"></i>دوره فعلی (دوره اولیه)
+                                                {% else %}
+                                                    {{ h.get('period_label') or ('دوره ' ~ (h.get('period_offset') or loop.index)) }}
+                                                {% endif %}
                                             </span>
                                             <strong class="text-white small">{{ h.get('plan_name') or 'بسته اشتراک' }}</strong>
                                         </div>
                                         <div class="text-secondary small font-monospace d-flex flex-wrap align-items-center gap-2">
                                             <span><i class="fas fa-play me-1 text-success" style="font-size: 0.72rem;"></i>شروع: <strong class="text-light">{{ h.get('start_date_shamsi') or format_shamsi_date(h.get('start_date')) or '-' }}</strong></span>
                                             <span class="text-muted">|</span>
-                                            <span><i class="fas fa-flag-checkered me-1 text-warning" style="font-size: 0.72rem;"></i>پایان: <strong class="text-light">{{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</strong></span>
+                                            <span><i class="fas {% if is_curr %}fa-calendar-check text-success{% else %}fa-flag-checkered text-warning{% endif %} me-1" style="font-size: 0.72rem;"></i>{{ 'انقضا:' if is_curr else 'پایان:' }} <strong class="text-light">{{ h.get('expire_date_shamsi') or format_shamsi_date(h.get('effective_expire_date') or h.get('expire_date')) or '-' }}</strong></span>
                                         </div>
                                     </div>
 
@@ -2706,12 +2726,19 @@
                                             <span class="badge bg-secondary font-monospace ms-1">{{ p_pct }}٪</span>
                                         </div>
                                         <div class="col-sm-4">
-                                            <span><i class="fas fa-calendar-check me-1 text-warning"></i>مدت دوره:</span>
-                                            <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-25 font-monospace">
-                                                استفاده در {{ h.get('used_days') or h.get('period_days') or 30 }} روز
-                                            </span>
-                                            {% if h.get('burn_rate') %}
-                                            <small class="text-muted font-monospace ms-1">({{ h.get('burn_rate') }} GB/روز)</small>
+                                            {% if is_curr and p_used == 0 %}
+                                                <span><i class="fas fa-circle-check me-1 text-success"></i>وضعیت دوره:</span>
+                                                <span class="badge bg-success-subtle text-success border border-success border-opacity-25 font-monospace">
+                                                    دوره جاری ({{ h.get('period_days') or 30 }} روزه)
+                                                </span>
+                                            {% else %}
+                                                <span><i class="fas fa-calendar-check me-1 text-warning"></i>مدت دوره:</span>
+                                                <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-25 font-monospace">
+                                                    استفاده در {{ h.get('used_days') or h.get('period_days') or 30 }} روز
+                                                </span>
+                                                {% if h.get('burn_rate') %}
+                                                <small class="text-muted font-monospace ms-1">({{ h.get('burn_rate') }} GB/روز)</small>
+                                                {% endif %}
                                             {% endif %}
                                         </div>
                                         <div class="col-sm-3 text-sm-end">
