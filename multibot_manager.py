@@ -4306,8 +4306,55 @@ class ResellerBotInstance:
 
                 plans = db.get_reseller_plans(r_id)
                 acc = sub.get("account_name") or f"sub_{sub_id}"
-                msg = f"🔄 <b>تمدید اشتراک «{acc}»</b>\n\nلطفاً پلن مدنظر جهت تمدید را انتخاب فرمایید:"
+                msg = f"🔄 <b>تمدید اشتراک «{acc}»</b>\n\n"
                 btns = []
+                q_items = db.get_pending_queue_items(sub_id)
+                if q_items:
+                    msg += "⏳ <b>بسته‌های در صف تمدید (رزرو):</b>\n"
+                    for q in q_items:
+                        q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                        msg += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                        btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
+                    msg += "\n"
+                msg += "لطفاً پلن مدنظر جهت تمدید را انتخاب فرمایید:"
+                for p in plans:
+                    pid = p["plan_id"]
+                    pn = p.get("display_name") or p.get("master_name", "پلن")
+                    w_price = p.get("wholesale_price", 0)
+                    btns.append([InlineKeyboardButton(f"📦 {pn} ({w_price:,} ت)", callback_data=f"res_adm_dorenew_{sub_id}_{pid}")])
+                btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")])
+                await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(btns), parse_mode="HTML")
+
+            elif data.startswith("res_act_queue_"):
+                parts = data.replace("res_act_queue_", "").split("_")
+                q_id = int(parts[0])
+                sub_id = int(parts[1])
+                from dashboard import activate_single_queue_item
+                res = activate_single_queue_item(q_id, triggered_by=f"نماینده در بات ({user.id})")
+                if res.get("success"):
+                    await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
+                else:
+                    err_msg = res.get("error", "خطای ناشناخته")
+                    await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
+
+                sub = db.get_subscription(sub_id)
+                if not sub or sub.get("reseller_id") != r_id:
+                    await query.edit_message_text("❌ اشتراک یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                    return
+
+                plans = db.get_reseller_plans(r_id)
+                acc = sub.get("account_name") or f"sub_{sub_id}"
+                msg = f"🔄 <b>تمدید اشتراک «{acc}»</b>\n\n"
+                btns = []
+                q_items = db.get_pending_queue_items(sub_id)
+                if q_items:
+                    msg += "⏳ <b>بسته‌های در صف تمدید (رزرو):</b>\n"
+                    for q in q_items:
+                        q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                        msg += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                        btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
+                    msg += "\n"
+                msg += "لطفاً پلن مدنظر جهت تمدید را انتخاب فرمایید:"
                 for p in plans:
                     pid = p["plan_id"]
                     pn = p.get("display_name") or p.get("master_name", "پلن")
@@ -4345,13 +4392,55 @@ class ResellerBotInstance:
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
 
+                    p_text = (
+                        f"🔄 <b>انتخاب نوع اعمال تمدید «{acct_name}» (گام ۲ از ۴)</b>\n\n"
+                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n"
+                        f"💰 کسر از پنل: <b>{w_price:,} تومان</b>\n\n"
+                        f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
+                        f"⚡ <b>فعال‌سازی فوری و آنی:</b>\n"
+                        f"میزان مصرف فعلی صفر شده و بسته جدید بلافاصله از اکنون فعال می‌گردد.\n\n"
+                        f"⏳ <b>قرارگیری در صف تمدید (رزرو خودکار):</b>\n"
+                        f"حجم و روزهای فعلی کاربر حفظ می‌شود و این بسته پس از پایان دوره فعلی، به طور خودکار فعال خواهد شد."
+                    )
+                    buttons = [
+                        [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی", callback_data=f"res_adm_rmode_instant_{s_id}_{p_id}")],
+                        [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"res_adm_rmode_queue_{s_id}_{p_id}")],
+                        [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
+                    ]
+                    await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            elif data.startswith("res_adm_rmode_"):
+                sub_data = data.replace("res_adm_rmode_", "")
+                parts = sub_data.split("_", 2)
+                if len(parts) >= 3:
+                    mode = parts[0]
+                    s_id = int(parts[1])
+                    p_id = parts[2]
+                    plan = db.get_reseller_plan(r_id, p_id)
+                    sub = db.get_subscription(s_id)
+                    if not sub or not plan or int(sub.get("reseller_id") or 0) != int(r_id):
+                        await query.answer("❌ اشتراک یا پلن نامعتبر است.", show_alert=True)
+                        return
+
+                    w_price = plan.get("wholesale_price", 0)
+                    selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                    days = plan.get("duration", 30)
+                    vol = plan.get("data_limit", 0)
+                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    acct_name = sub.get("account_name") or f"sub_{s_id}"
+
                     context.user_data["waiting_res_renew_discount"] = True
                     context.user_data["res_renew_sub_id"] = s_id
                     context.user_data["res_renew_plan_id"] = p_id
+                    context.user_data["res_renew_mode"] = mode
                     context.user_data["res_renew_discount"] = 0
 
+                    mode_label = "⚡ فعال‌سازی فوری و آنی" if mode == "instant" else "⏳ قرارگیری در صف تمدید (رزرو)"
                     p_text = (
-                        f"🎁 <b>تخفیف به مشتری برای تمدید «{acct_name}» (گام ۲ از ۳)</b>\n\n"
+                        f"🎁 <b>تخفیف به مشتری برای تمدید «{acct_name}» (گام ۳ از ۴)</b>\n\n"
+                        f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
                         f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n\n"
                         f"در صورت تمایل، <b>مبلغ تخفیف</b> را به <b>تومان</b> تایپ و ارسال فرمایید:\n"
@@ -4359,7 +4448,7 @@ class ResellerBotInstance:
                     )
                     buttons = [
                         [InlineKeyboardButton("⚪ بدون تخفیف (0 تومان)", callback_data=f"res_adm_rskip_disc_{s_id}_{p_id}")],
-                        [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
+                        [InlineKeyboardButton("🔙 بازگشت به انتخاب نوع تمدید", callback_data=f"res_adm_dorenew_{s_id}_{p_id}")]
                     ]
                     await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
@@ -4394,8 +4483,12 @@ class ResellerBotInstance:
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
+                    renew_mode = context.user_data.get("res_renew_mode", "instant")
+                    mode_label = "⚡ فعال‌سازی فوری و آنی" if renew_mode == "instant" else "⏳ قرارگیری در صف تمدید (رزرو)"
+
                     p_text = (
-                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)</b>\n\n"
+                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)</b>\n\n"
+                        f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
                         f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
                         f"🎁 مبلغ تخفیف: <b>0 تومان</b>\n"
@@ -4439,6 +4532,7 @@ class ResellerBotInstance:
                 selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
                 discount_amount = int(context.user_data.get("res_renew_discount") or 0)
                 final_price = max(0, selling_price - discount_amount)
+                renew_mode = context.user_data.get("res_renew_mode", "instant")
 
                 r_stats = db.get_reseller_stats(r_id) or {}
                 power = r_stats.get("total_purchasing_power", 0)
@@ -4462,151 +4556,296 @@ class ResellerBotInstance:
                     profit_margin=profit_margin
                 )
 
-                if sub.get("hidify_uuid"):
-                    try:
-                        r_client = get_reseller_hidify_client(r_id)
-                        await r_client.update_user(
-                            uuid=sub["hidify_uuid"],
-                            package_days=int(days),
-                            usage_limit_gb=float(vol) if vol > 0 else None,
-                            reset_usage=True
+                if renew_mode == "queue":
+                    # قرارگیری در صف تمدید (رزرو خودکار)
+                    if mode == "debt":
+                        payment_status = "debtor"
+                        old_debt = int(sub.get("debt_amount") or 0)
+                        new_debt = old_debt + final_price
+                        db.update_subscription(
+                            sub_id,
+                            payment_status="debtor",
+                            debt_amount=new_debt,
+                            debt_notes=f"بدهی رزرو در صف تمدید {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                         )
-                    except Exception as e_ren:
-                        logger.error(f"Error renewing sub in hidify (multibot): {e_ren}")
-
-                if mode == "debt":
-                    payment_status = "debtor"
-                    old_debt = int(sub.get("debt_amount") or 0)
-                    new_debt = old_debt + final_price
-                    db.update_subscription(
-                        sub_id,
-                        plan_id=plan_id,
-                        plan_name=pname,
-                        data_limit=float(vol),
-                        duration=int(days),
-                        data_used=0.0,
-                        status="active",
-                        payment_status="debtor",
-                        debt_amount=new_debt,
-                        debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
-                    )
-                    db.add_customer_debt_record(
-                        subscription_id=sub_id,
-                        account_name=acct_name,
-                        telegram_id=sub.get("telegram_id") or 0,
-                        reseller_id=r_id,
-                        action_type="renew_debt",
-                        plan_name=pname,
-                        amount=final_price,
-                        notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
-                        created_by=creator_user,
-                        previous_debt=old_debt
-                    )
-                    pay_label = f"🔴 بدهکار (+{final_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
-                elif mode == "card" and target_card_id:
-                    payment_status = "paid"
-                    c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
-                    c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
-                    c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
-                    pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
-                    try:
-                        db.add_card_transaction(
-                            card_id=target_card_id,
-                            owner_type="reseller" if r_id else "admin",
-                            owner_id=r_id or 0,
-                            reseller_id=r_id or 0,
+                        db.add_customer_debt_record(
+                            subscription_id=sub_id,
+                            account_name=acct_name,
+                            telegram_id=sub.get("telegram_id") or 0,
+                            reseller_id=r_id,
+                            action_type="renew_debt",
+                            plan_name=pname,
                             amount=final_price,
-                            tx_type="deposit",
-                            category="فروش اشتراک",
-                            title=f"تمدید اشتراک {acct_name}",
-                            description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
-                            ref_type="subscription",
-                            ref_id=str(sub_id),
-                            actor=creator_user
+                            notes=f"ثبت بدهی رزرو در صف تمدید توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                            created_by=creator_user,
+                            previous_debt=old_debt
                         )
-                    except Exception as e_c:
-                        logger.error(f"Error depositing to card on renew in multibot: {e_c}")
+                        pay_label = f"🔴 بدهکار (+{final_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
+                    elif mode == "card" and target_card_id:
+                        payment_status = "paid"
+                        c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+                        c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
+                        c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
+                        pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
+                        try:
+                            db.add_card_transaction(
+                                card_id=target_card_id,
+                                owner_type="reseller" if r_id else "admin",
+                                owner_id=r_id or 0,
+                                reseller_id=r_id or 0,
+                                amount=final_price,
+                                tx_type="deposit",
+                                category="فروش اشتراک",
+                                title=f"رزرو تمدید در صف {acct_name}",
+                                description=f"دریافت وجه رزرو در صف {pname} به کارت توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                actor=creator_user
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error depositing to card on renew queue in multibot: {e_c}")
+                    else:
+                        pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
 
-                    db.update_subscription(
-                        sub_id,
-                        plan_id=plan_id,
-                        plan_name=pname,
-                        data_limit=float(vol),
-                        duration=int(days),
-                        data_used=0.0,
-                        status="active"
-                    )
-                else:
-                    pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
-                    db.update_subscription(
-                        sub_id,
-                        plan_id=plan_id,
-                        plan_name=pname,
-                        data_limit=float(vol),
-                        duration=int(days),
-                        data_used=0.0,
-                        status="active"
-                    )
-
-                # ثبت تاریخچه و تراکنش
-                try:
-                    db.save_transaction(
-                        order_id=f"MBOT_REN_{r_id}_{int(datetime.now().timestamp())}",
-                        user_id=sub.get("telegram_id") or 0,
-                        username=acct_name,
-                        plan_name=pname,
-                        amount=final_price,
-                        gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
-                        tracking_code=f"MBOT_REN_{creator_user}",
-                        status="approved",
-                        account_name=acct_name,
-                        is_renewal=1,
-                        renew_sub_id=sub_id,
-                        source="reseller_bot",
-                        reseller_id=r_id,
-                        subscription_id=sub_id
-                    )
-                    db.save_subscription_history(
+                    q_res = db.add_to_subscription_queue(
                         subscription_id=sub_id,
-                        telegram_id=sub.get("telegram_id") or 0,
-                        hidify_uuid=sub.get("hidify_uuid"),
-                        account_name=acct_name,
+                        plan_id=plan_id,
                         plan_name=pname,
-                        previous_usage_gb=sub.get("data_used", 0),
-                        previous_limit_gb=vol,
-                        period_days=days,
-                        renewal_type="renewal",
+                        data_limit=float(vol),
+                        duration=int(days),
+                        cost=w_price,
                         reseller_id=r_id,
-                        plan_price=selling_price,
-                        discount_amount=discount_amount,
-                        cost_paid=w_price,
-                        start_date=get_now_iso(),
-                        note="تمدید اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
+                        telegram_id=sub.get("telegram_id") or 0,
+                        hidify_uuid=sub.get("hidify_uuid") or "",
+                        note=f"تمدید در صف رزرو توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                     )
-                except Exception as e_tx:
-                    logger.error(f"Error saving multibot renew tx: {e_tx}")
+                    q_order = q_res.get("queue_order", 1) if q_res.get("success") else 1
 
-                context.user_data.pop("waiting_res_renew_discount", None)
-                context.user_data.pop("res_renew_sub_id", None)
-                context.user_data.pop("res_renew_plan_id", None)
-                context.user_data.pop("res_renew_discount", None)
-                context.user_data.pop("res_renew_final_price", None)
+                    try:
+                        db.save_transaction(
+                            order_id=f"MBOT_QREN_{r_id}_{int(datetime.now().timestamp())}",
+                            user_id=sub.get("telegram_id") or 0,
+                            username=acct_name,
+                            plan_name=pname,
+                            amount=final_price,
+                            gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
+                            tracking_code=f"MBOT_QREN_{creator_user}",
+                            status="approved",
+                            account_name=acct_name,
+                            is_renewal=1,
+                            renew_sub_id=sub_id,
+                            source="reseller_bot",
+                            reseller_id=r_id,
+                            subscription_id=sub_id
+                        )
+                        db.save_subscription_history(
+                            subscription_id=sub_id,
+                            telegram_id=sub.get("telegram_id") or 0,
+                            hidify_uuid=sub.get("hidify_uuid"),
+                            account_name=acct_name,
+                            plan_name=pname,
+                            previous_usage_gb=sub.get("data_used", 0),
+                            previous_limit_gb=vol,
+                            period_days=days,
+                            renewal_type="queue_reservation",
+                            reseller_id=r_id,
+                            plan_price=selling_price,
+                            discount_amount=discount_amount,
+                            cost_paid=w_price,
+                            start_date=get_now_iso(),
+                            note="رزرو تمدید در صف" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
+                        )
+                    except Exception as e_tx:
+                        logger.error(f"Error saving multibot renew queue tx: {e_tx}")
 
-                disc_txt = f"\n🎁 تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
-                succ_txt = (
-                    f"✅ <b>اشتراک «{acct_name}» با موفقیت تمدید شد.</b>\n\n"
-                    f"📦 پلن جدید: <b>{pname}</b>\n"
-                    f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>"
-                    f"{disc_txt}\n"
-                    f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
-                    f"✍️ تمدیدکننده: <b>{creator_user}</b>\n"
-                    f"💰 کسر شده از پنل: <b>{w_price:,} تومان</b>"
-                )
-                await query.edit_message_text(
-                    succ_txt,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
-                    parse_mode="HTML"
-                )
+                    context.user_data.pop("waiting_res_renew_discount", None)
+                    context.user_data.pop("res_renew_sub_id", None)
+                    context.user_data.pop("res_renew_plan_id", None)
+                    context.user_data.pop("res_renew_mode", None)
+                    context.user_data.pop("res_renew_discount", None)
+                    context.user_data.pop("res_renew_final_price", None)
+
+                    if sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
+                        try:
+                            cust_msg = (
+                                f"⏳ <b>بسته تمدیدی شما در صف رزرو قرار گرفت!</b>\n\n"
+                                f"📦 پلن: <b>{pname}</b>\n"
+                                f"📊 حجم بسته: <b>{vol} گیگابایت</b>\n"
+                                f"⏰ مدت اعتبار: <b>{days} روز</b>\n"
+                                f"🔹 نوبت در صف: <b>نوبت {q_order}</b>\n\n"
+                                f"ℹ️ حجم و زمان باقیمانده فعلی شما محفوظ است و این بسته پس از اتمام دوره فعلی، به صورت خودکار فعال خواهد شد. سپاس از همراهی شما! 🌹"
+                            )
+                            await context.bot.send_message(chat_id=int(sub["telegram_id"]), text=cust_msg, parse_mode="HTML")
+                        except Exception:
+                            pass
+
+                    disc_txt = f"\n🎁 تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
+                    succ_txt = (
+                        f"✅ <b>بسته تمدیدی «{acct_name}» با موفقیت در صف رزرو ثبت شد.</b>\n\n"
+                        f"📦 پلن: <b>{pname}</b>\n"
+                        f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>\n"
+                        f"⏳ نوبت در صف: <b>نوبت {q_order}</b>"
+                        f"{disc_txt}\n"
+                        f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
+                        f"✍️ ثبت‌کننده: <b>{creator_user}</b>\n"
+                        f"💰 کسر شده از پنل: <b>{w_price:,} تومان</b>\n\n"
+                        f"ℹ️ وضعیت اشتراک فعلی حفظ شد و بسته در زمان مقتضی به صورت خودکار فعال خواهد شد."
+                    )
+                    await query.edit_message_text(
+                        succ_txt,
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
+                        parse_mode="HTML"
+                    )
+
+                else:
+                    # فعال‌سازی فوری و آنی
+                    if sub.get("hidify_uuid"):
+                        try:
+                            r_client = get_reseller_hidify_client(r_id)
+                            await r_client.update_user(
+                                uuid=sub["hidify_uuid"],
+                                package_days=int(days),
+                                usage_limit_gb=float(vol) if vol > 0 else None,
+                                reset_usage=True
+                            )
+                        except Exception as e_ren:
+                            logger.error(f"Error renewing sub in hidify (multibot): {e_ren}")
+
+                    if mode == "debt":
+                        payment_status = "debtor"
+                        old_debt = int(sub.get("debt_amount") or 0)
+                        new_debt = old_debt + final_price
+                        db.update_subscription(
+                            sub_id,
+                            plan_id=plan_id,
+                            plan_name=pname,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            data_used=0.0,
+                            status="active",
+                            payment_status="debtor",
+                            debt_amount=new_debt,
+                            debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
+                        )
+                        db.add_customer_debt_record(
+                            subscription_id=sub_id,
+                            account_name=acct_name,
+                            telegram_id=sub.get("telegram_id") or 0,
+                            reseller_id=r_id,
+                            action_type="renew_debt",
+                            plan_name=pname,
+                            amount=final_price,
+                            notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                            created_by=creator_user,
+                            previous_debt=old_debt
+                        )
+                        pay_label = f"🔴 بدهکار (+{final_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
+                    elif mode == "card" and target_card_id:
+                        payment_status = "paid"
+                        c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+                        c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
+                        c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
+                        pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
+                        try:
+                            db.add_card_transaction(
+                                card_id=target_card_id,
+                                owner_type="reseller" if r_id else "admin",
+                                owner_id=r_id or 0,
+                                reseller_id=r_id or 0,
+                                amount=final_price,
+                                tx_type="deposit",
+                                category="فروش اشتراک",
+                                title=f"تمدید اشتراک {acct_name}",
+                                description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                actor=creator_user
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error depositing to card on renew in multibot: {e_c}")
+
+                        db.update_subscription(
+                            sub_id,
+                            plan_id=plan_id,
+                            plan_name=pname,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            data_used=0.0,
+                            status="active"
+                        )
+                    else:
+                        pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
+                        db.update_subscription(
+                            sub_id,
+                            plan_id=plan_id,
+                            plan_name=pname,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            data_used=0.0,
+                            status="active"
+                        )
+
+                    # ثبت تاریخچه و تراکنش
+                    try:
+                        db.save_transaction(
+                            order_id=f"MBOT_REN_{r_id}_{int(datetime.now().timestamp())}",
+                            user_id=sub.get("telegram_id") or 0,
+                            username=acct_name,
+                            plan_name=pname,
+                            amount=final_price,
+                            gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
+                            tracking_code=f"MBOT_REN_{creator_user}",
+                            status="approved",
+                            account_name=acct_name,
+                            is_renewal=1,
+                            renew_sub_id=sub_id,
+                            source="reseller_bot",
+                            reseller_id=r_id,
+                            subscription_id=sub_id
+                        )
+                        db.save_subscription_history(
+                            subscription_id=sub_id,
+                            telegram_id=sub.get("telegram_id") or 0,
+                            hidify_uuid=sub.get("hidify_uuid"),
+                            account_name=acct_name,
+                            plan_name=pname,
+                            previous_usage_gb=sub.get("data_used", 0),
+                            previous_limit_gb=vol,
+                            period_days=days,
+                            renewal_type="renewal",
+                            reseller_id=r_id,
+                            plan_price=selling_price,
+                            discount_amount=discount_amount,
+                            cost_paid=w_price,
+                            start_date=get_now_iso(),
+                            note="تمدید اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
+                        )
+                    except Exception as e_tx:
+                        logger.error(f"Error saving multibot renew tx: {e_tx}")
+
+                    context.user_data.pop("waiting_res_renew_discount", None)
+                    context.user_data.pop("res_renew_sub_id", None)
+                    context.user_data.pop("res_renew_plan_id", None)
+                    context.user_data.pop("res_renew_mode", None)
+                    context.user_data.pop("res_renew_discount", None)
+                    context.user_data.pop("res_renew_final_price", None)
+
+                    disc_txt = f"\n🎁 تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
+                    succ_txt = (
+                        f"✅ <b>اشتراک «{acct_name}» با موفقیت تمدید شد.</b>\n\n"
+                        f"⚡ نوع تمدید: <b>فعال‌سازی فوری و آنی</b>\n"
+                        f"📦 پلن جدید: <b>{pname}</b>\n"
+                        f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>"
+                        f"{disc_txt}\n"
+                        f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
+                        f"✍️ تمدیدکننده: <b>{creator_user}</b>\n"
+                        f"💰 کسر شده از پنل: <b>{w_price:,} تومان</b>"
+                    )
+                    await query.edit_message_text(
+                        succ_txt,
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
+                        parse_mode="HTML"
+                    )
 
             elif data == "res_adm_discounts":
                 txt, kb = get_reseller_discounts_payload(r_id)
@@ -4923,8 +5162,12 @@ class ResellerBotInstance:
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
+                    renew_mode = context.user_data.get("res_renew_mode", "instant")
+                    mode_label = "⚡ فعال‌سازی فوری و آنی" if renew_mode == "instant" else "⏳ قرارگیری در صف تمدید (رزرو)"
+
                     p_text = (
-                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)</b>\n\n"
+                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)</b>\n\n"
+                        f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
                         f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
                         f"🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n"
@@ -5340,7 +5583,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(reseller_copy_link_callback, pattern="^(copy_link|r_copy_help)$"))
         app.add_handler(CallbackQueryHandler(reseller_queue_action_callback, pattern="^(r_act_queue_|r_conf_act_queue_|r_cancel_act_queue|r_qman_|r_qmove_)"))
         app.add_handler(CallbackQueryHandler(reseller_quick_ticket_callback, pattern="^(r_quick_tkt_|r_qsend_|r_qedit_|r_qback)"))
-        app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^res_adm_"))
+        app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^(res_adm_|res_act_queue_)"))
         app.add_handler(CallbackQueryHandler(reseller_wizard_callback_handler, pattern="^wiz_"))
         app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
         app.add_handler(MessageHandler(filters.PHOTO, receipt_photo_handler))
