@@ -221,10 +221,10 @@
                 <tbody>
                     {% for log in failover_logs %}
                     <tr>
-                        <td class="ps-3 text-muted font-monospace small">{{ log.created_at[:19].replace('T', ' ') }}</td>
+                        <td class="ps-3 text-muted font-monospace small">{{ log.created_at[:19].replace('T', ' ') if log.created_at else '-' }}</td>
                         <td><span class="text-danger fw-bold"><i class="fas fa-circle-xmark me-1"></i> {{ log.source_name }}</span></td>
                         <td><span class="text-success fw-bold"><i class="fas fa-circle-check me-1"></i> {{ log.target_name }}</span></td>
-                        <td><span class="badge bg-primary bg-opacity-10 text-primary fw-bold">{{ log.affected_users_count:, }} کاربر</span></td>
+                        <td><span class="badge bg-primary bg-opacity-10 text-primary fw-bold">{{ log.affected_users_count or 0 }} کاربر</span></td>
                         <td class="small">{{ log.reason }}</td>
                         <td class="text-center pe-3"><span class="badge bg-success">با موفقیت اعمال شد</span></td>
                     </tr>
