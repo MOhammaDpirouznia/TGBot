@@ -278,7 +278,15 @@ def normalize_plan_permissions(p: dict) -> dict:
 
 
 def load_plans() -> dict:
-    """بارگذاری پلن‌ها با اولویت فایل محلی -> دیتابیس -> بک‌آپ جامع -> پلن‌های پیش‌فرض"""
+    """بارگذاری پلن‌ها با اولویت کش حافظه -> فایل محلی -> دیتابیس -> بک‌آپ جامع -> پلن‌های پیش‌فرض"""
+    try:
+        from cache_manager import cache
+        cached_plans = cache.get("plans_all")
+        if cached_plans and isinstance(cached_plans, dict):
+            return cached_plans
+    except Exception:
+        pass
+
     candidate_files = [
         PLANS_FILE,
         Path("data/plans.json"),
@@ -293,6 +301,11 @@ def load_plans() -> dict:
                     if data and isinstance(data, dict):
                         for p in data.values():
                             normalize_plan_permissions(p)
+                        try:
+                            from cache_manager import cache
+                            cache.set("plans_all", data, ttl=300)
+                        except Exception:
+                            pass
                         return data
             except Exception:
                 pass
@@ -369,7 +382,14 @@ def load_plans() -> dict:
 
 
 def save_plans(plans: dict):
-    """ذخیره پلن‌ها در تمامی فایل‌های محلی، دیتابیس و بک‌آپ"""
+    """ذخیره پلن‌ها در تمامی فایل‌های محلی، دیتابیس و بک‌آپ همراه با ابطال کش"""
+    try:
+        from cache_manager import cache
+        cache.invalidate_plans()
+        cache.set("plans_all", plans, ttl=300)
+    except Exception:
+        pass
+
     targets = [PLANS_FILE, Path("data/plans.json"), Path("plans.json")]
     if Path("/data").exists():
         targets.append(Path("/data/plans.json"))

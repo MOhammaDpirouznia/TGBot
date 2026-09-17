@@ -91,10 +91,14 @@ class Database:
         self.migrate_add_columns()
 
     def get_connection(self):
-        """دریافت اتصال دیتابیس"""
+        """دریافت اتصال بهینه‌شده دیتابیس با تنظیمات پیشرفته همزمانی و کارایی"""
         conn = sqlite3.connect(self.db_path, timeout=60)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=60000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-64000")
+        conn.execute("PRAGMA temp_store=MEMORY")
         return conn
 
     def init_db(self):
@@ -4843,13 +4847,14 @@ class Database:
     # ═══════════════════════════════════════════════════════════════
 
     def save_setting(self, key, value):
-        """ذخیره تنظیم"""
+        """ذخیره تنظیم همراه با بروزرسانی آنی کش درون‌حافظه‌ای"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
         try:
             # تبدیل dict/list به JSON
+            raw_val = value
             if isinstance(value, (dict, list)):
                 value = json.dumps(value, ensure_ascii=False)
 
@@ -4859,6 +4864,16 @@ class Database:
             """, (key, str(value), now))
             conn.commit()
             logger.info(f"Setting {key} saved")
+
+            try:
+                from cache_manager import cache
+                cache.set(f"setting:{key}", raw_val, ttl=600)
+                cache.delete("all_settings")
+                if key == "plans_config":
+                    cache.invalidate_plans()
+            except Exception:
+                pass
+
             try:
                 self.export_full_backup_json()
             except Exception:
@@ -4875,7 +4890,15 @@ class Database:
         return self.save_setting(key, value)
 
     def get_setting(self, key, default=None):
-        """دریافت تنظیم"""
+        """دریافت تنظیم با اولویت کش سریع درون‌حافظه‌ای"""
+        try:
+            from cache_manager import cache
+            cached_val = cache.get(f"setting:{key}")
+            if cached_val is not None:
+                return cached_val
+        except Exception:
+            pass
+
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -4886,9 +4909,15 @@ class Database:
                 value = row["value"]
                 # تلاش برای تبدیل از JSON
                 try:
-                    return json.loads(value)
+                    res = json.loads(value)
                 except:
-                    return value
+                    res = value
+                try:
+                    from cache_manager import cache
+                    cache.set(f"setting:{key}", res, ttl=600)
+                except Exception:
+                    pass
+                return res
             return default
         except Exception as e:
             logger.error(f"Error getting setting {key}: {e}")
@@ -4897,7 +4926,15 @@ class Database:
             conn.close()
 
     def get_all_settings(self):
-        """دریافت تمام تنظیمات"""
+        """دریافت تمام تنظیمات با پشتیبانی از کش"""
+        try:
+            from cache_manager import cache
+            cached_all = cache.get("all_settings")
+            if cached_all is not None:
+                return cached_all
+        except Exception:
+            pass
+
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -4910,6 +4947,11 @@ class Database:
                     result[row["key"]] = json.loads(row["value"])
                 except:
                     result[row["key"]] = row["value"]
+            try:
+                from cache_manager import cache
+                cache.set("all_settings", result, ttl=300)
+            except Exception:
+                pass
             return result
         except Exception as e:
             logger.error(f"Error getting all settings: {e}")
@@ -13526,15 +13568,29 @@ class Database:
             conn.close()
 
     def get_reseller_by_telegram_id(self, telegram_id: int):
-        """جستجوی نماینده بر اساس تلگرام آیدی"""
+        """جستجوی نماینده بر اساس تلگرام آیدی با کش سریع"""
         if not telegram_id:
             return None
+        try:
+            from cache_manager import cache
+            cached_res = cache.get(f"reseller_by_tg:{telegram_id}")
+            if cached_res is not None:
+                return cached_res
+        except Exception:
+            pass
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT * FROM resellers WHERE telegram_id = ?", (int(telegram_id),))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            res = dict(row) if row else None
+            try:
+                from cache_manager import cache
+                cache.set(f"reseller_by_tg:{telegram_id}", res, ttl=60)
+            except Exception:
+                pass
+            return res
         except Exception as e:
             logger.error(f"Error finding reseller by telegram id: {e}")
             return None
@@ -13574,7 +13630,15 @@ class Database:
             conn.close()
 
     def get_reseller_bot_admins(self, reseller_id: int) -> list:
-        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها (شامل اعضای تیم با اجازه دسترسی ربات)"""
+        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها با کش سریع"""
+        try:
+            from cache_manager import cache
+            cached_adm = cache.get(f"reseller_bot_admins:{reseller_id}")
+            if cached_adm is not None:
+                return cached_adm
+        except Exception:
+            pass
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13616,6 +13680,11 @@ class Database:
                         "username": tu["username"],
                         "member_id": tu["id"]
                     })
+            try:
+                from cache_manager import cache
+                cache.set(f"reseller_bot_admins:{reseller_id}", admins, ttl=60)
+            except Exception:
+                pass
             return admins
         except Exception as e:
             logger.error(f"Error getting reseller bot admins: {e}")
@@ -13646,9 +13715,17 @@ class Database:
         return False, ""
 
     def is_telegram_user_any_reseller_admin(self, telegram_id: int) -> tuple:
-        """بررسی آیا کاربر تلگرام ادمین ربات هر نماینده‌ای در سیستم هست یا نه"""
+        """بررسی آیا کاربر تلگرام ادمین ربات هر نماینده‌ای در سیستم هست یا نه با کش سریع"""
         if not telegram_id:
             return False, 0, ""
+        try:
+            from cache_manager import cache
+            cached_res = cache.get(f"reseller_admin:{telegram_id}")
+            if cached_res is not None:
+                return cached_res
+        except Exception:
+            pass
+
         conn = self.get_connection()
         cursor = conn.cursor()
         tg_str = str(telegram_id).strip()
@@ -13662,23 +13739,48 @@ class Database:
             """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
             team_user = cursor.fetchone()
             if team_user:
-                return True, team_user["reseller_id"], team_user["role"]
+                res = (True, team_user["reseller_id"], team_user["role"])
+                try:
+                    from cache_manager import cache
+                    cache.set(f"reseller_admin:{telegram_id}", res, ttl=60)
+                except Exception:
+                    pass
+                return res
 
             # ۲. بررسی مستقیم نماینده یا آرایه bot_admins
             cursor.execute("SELECT id, telegram_id, bot_admins FROM resellers WHERE status = 'active'")
             for r in cursor.fetchall():
                 r_id = r["id"]
                 if r["telegram_id"] and str(r["telegram_id"]).strip() == tg_str:
-                    return True, r_id, "main"
+                    res = (True, r_id, "main")
+                    try:
+                        from cache_manager import cache
+                        cache.set(f"reseller_admin:{telegram_id}", res, ttl=60)
+                    except Exception:
+                        pass
+                    return res
                 if r["bot_admins"]:
                     try:
                         b_admins = json.loads(r["bot_admins"])
                         for a in b_admins:
                             if str(a.get("telegram_id", "")).strip() == tg_str:
-                                return True, r_id, a.get("role", "main")
+                                res = (True, r_id, a.get("role", "main"))
+                                try:
+                                    from cache_manager import cache
+                                    cache.set(f"reseller_admin:{telegram_id}", res, ttl=60)
+                                except Exception:
+                                    pass
+                                return res
                     except Exception:
                         pass
-            return False, 0, ""
+
+            res = (False, 0, "")
+            try:
+                from cache_manager import cache
+                cache.set(f"reseller_admin:{telegram_id}", res, ttl=60)
+            except Exception:
+                pass
+            return res
         except Exception as e:
             logger.error(f"Error in is_telegram_user_any_reseller_admin: {e}")
             return False, 0, ""
@@ -19652,7 +19754,15 @@ class Database:
     # ─── مدیریت پلن‌های اختصاصی نمایندگان (Reseller Custom Plans) ───
 
     def get_reseller_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده (با فیلتر قطعی پلن‌های اختصاصی)"""
+        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده با کش سریع"""
+        try:
+            from cache_manager import cache
+            cached_res = cache.get(f"plans:reseller:{reseller_id}")
+            if cached_res is not None:
+                return cached_res
+        except Exception:
+            pass
+
         from admin_manager import load_plans
         raw_master_plans = load_plans()
         
@@ -19910,6 +20020,11 @@ class Database:
                     "reseller_scope": p_meta.get("reseller_scope", "all")
                 })
 
+        try:
+            from cache_manager import cache
+            cache.set(f"plans:reseller:{reseller_id}", result, ttl=120)
+        except Exception:
+            pass
         return result
 
     def get_reseller_plans_dict(self, reseller_id: int) -> Dict[str, dict]:
@@ -19997,6 +20112,11 @@ class Database:
                     now
                 ))
             conn.commit()
+            try:
+                from cache_manager import cache
+                cache.delete(f"plans:reseller:{reseller_id}")
+            except Exception:
+                pass
             return {"success": True}
         except Exception as e:
             logger.error(f"Error updating reseller plan override: {e}")
@@ -20040,6 +20160,11 @@ class Database:
             else:
                 cursor.execute("DELETE FROM reseller_plans WHERE reseller_id = ? AND plan_id = ?", (reseller_id, plan_id))
             conn.commit()
+            try:
+                from cache_manager import cache
+                cache.delete(f"plans:reseller:{reseller_id}")
+            except Exception:
+                pass
             return {"success": True}
         except Exception as e:
             logger.error(f"Error resetting reseller plan override: {e}")

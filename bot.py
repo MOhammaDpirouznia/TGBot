@@ -2875,8 +2875,9 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     enable = h_user.get("enable", True)
                     status = "active" if (is_active and enable) else "expired"
 
-                    # بروزرسانی در دیتابیس محلی
-                    db.update_subscription_by_uuid(
+                    # بروزرسانی در دیتابیس محلی (به صورت غیرمسدودکننده Non-blocking)
+                    await asyncio.to_thread(
+                        db.update_subscription_by_uuid,
                         uuid,
                         data_used=data_used,
                         data_limit=data_limit,
@@ -5639,12 +5640,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_super_admin:
         if context.user_data.get("waiting_adm_search_sub"):
             context.user_data["waiting_adm_search_sub"] = False
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            q = f"%{text.strip()}%"
-            cursor.execute("SELECT id, account_name, data_used, data_limit, status FROM subscriptions WHERE (account_name LIKE ? OR phone_number LIKE ? OR telegram_id LIKE ? OR hidify_uuid LIKE ?) AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 8", (q, q, q, q))
-            subs = [dict(r) for r in cursor.fetchall()]
-            conn.close()
+            def _search_subs(search_term):
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                q = f"%{search_term.strip()}%"
+                cursor.execute("SELECT id, account_name, data_used, data_limit, status FROM subscriptions WHERE (account_name LIKE ? OR phone_number LIKE ? OR telegram_id LIKE ? OR hidify_uuid LIKE ?) AND (is_deleted = 0 OR is_deleted IS NULL) LIMIT 8", (q, q, q, q))
+                results = [dict(r) for r in cursor.fetchall()]
+                conn.close()
+                return results
+
+            subs = await asyncio.to_thread(_search_subs, text)
             if not subs:
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔍 جستجوی مجدد", callback_data="adm_adv_renew_user")],
@@ -5769,19 +5774,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if context.user_data.get("waiting_adm_broadcast"):
             context.user_data["waiting_adm_broadcast"] = False
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id > 0")
-            user_rows = cursor.fetchall()
-            conn.close()
+            def _get_broadcast_tids():
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id > 0")
+                rows = cursor.fetchall()
+                conn.close()
+                return [r[0] for r in rows]
+
+            user_ids = await asyncio.to_thread(_get_broadcast_tids)
 
             sent_cnt = 0
             fail_cnt = 0
-            for row in user_rows:
-                tg_id = row[0]
+            for tg_id in user_ids:
                 try:
                     await context.bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML")
                     sent_cnt += 1
+                    await asyncio.sleep(0.04)
                 except Exception:
                     fail_cnt += 1
             await update.message.reply_text(
@@ -5800,7 +5809,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("waiting_reseller_search_sub"):
             context.user_data["waiting_reseller_search_sub"] = False
             from reseller_bot_admin import search_reseller_subscriptions
-            subs = search_reseller_subscriptions(r_id, text)
+            subs = await asyncio.to_thread(search_reseller_subscriptions, r_id, text)
             if not subs:
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔍 جستجوی مجدد", callback_data="res_adm_renew_user")],
