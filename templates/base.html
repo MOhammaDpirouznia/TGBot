@@ -1751,7 +1751,7 @@
                 {% endif %}
 
                 <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1787,6 +1787,9 @@
                         {% if has_permission('servers_view') %}
                         <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                             <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_node_monitor' %}active{% endif %}" href="{{ url_for('admin_node_monitor') }}">
+                            <i class="fas fa-network-wired text-warning"></i> پایش سلامت نودها و سوییچینگ
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'admin_security' %}active{% endif %}" href="{{ url_for('admin_security') }}">
                             <i class="fas fa-shield-alt text-primary"></i> امنیت سیستم

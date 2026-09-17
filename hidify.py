@@ -350,3 +350,19 @@ class HidifyClient:
         except Exception as e:
             logger.error(f"Error fetching Hiddify backup: {e}")
         return None
+
+    # ─── Domain & Node Management (for Health Check & Failover) ───
+
+    async def get_domains(self) -> list:
+        """دریافت لیست تمامی دامنه‌ها و نودهای فعال در هیدیفای"""
+        res = await self._request("GET", "/admin/domain/")
+        return res if isinstance(res, list) else []
+
+    async def get_domain(self, domain_id: int) -> dict:
+        """دریافت مشخصات یک دامنه مشخص"""
+        return await self._request("GET", f"/admin/domain/{domain_id}/")
+
+    async def update_domain(self, domain_id: int, **kwargs) -> dict:
+        """بروزرسانی مشخصات یا وضعیت دامنه/نود در هیدیفای"""
+        return await self._request("PATCH", f"/admin/domain/{domain_id}/", kwargs)
+

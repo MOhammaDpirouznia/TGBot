@@ -6950,6 +6950,91 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
             return ADMIN_MENU
 
+        elif data == "adm_adv_nodes":
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_node_ping_all":
+            await query.answer("⚡ در حال پایش و سنجش پینگ تمامی نودها...", show_alert=False)
+            from node_monitor import NodeMonitor
+            await NodeMonitor.check_all_nodes(trigger_failover=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
+        elif data == "adm_node_sync":
+            await query.answer("🔄 در حال دریافت دامنه‌ها از هیدیفای...", show_alert=False)
+            from node_monitor import NodeMonitor
+            from hidify import HidifyClient
+            h_url = db.get_setting("hidify_panel_url") or os.getenv("HIDIFY_PANEL_URL", "")
+            h_key = db.get_setting("hidify_api_key") or os.getenv("HIDIFY_API_KEY", "")
+            h_proxy = db.get_setting("hidify_proxy_path") or os.getenv("HIDIFY_PROXY_PATH", "")
+            h_client = HidifyClient(h_url, h_key, h_proxy)
+            added = await NodeMonitor.sync_hiddify_domains(h_client)
+            await h_client.close()
+            await query.answer(f"✅ تعداد {added} دامنه جدید اضافه شد.", show_alert=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
+        elif data == "adm_node_failover_menu":
+            nodes = db.get_all_nodes(active_only=True)
+            fallback_nodes = [n for n in nodes if n.get("is_fallback") or n.get("status") == "online"]
+            if not fallback_nodes:
+                await query.answer("❌ نود جایگزین یا پشتیبان آماده‌ای برای سوییچ یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+            
+            kb_list = []
+            for src in nodes:
+                s_name = src.get("name") or src.get("host")
+                fb_id = src.get("fallback_target_id")
+                if fb_id:
+                    fb_n = db.get_node(fb_id)
+                    fb_name = fb_n.get("name") if fb_n else f"نود #{fb_id}"
+                    kb_list.append([InlineKeyboardButton(f"🔄 {s_name} ➡️ {fb_name}", callback_data=f"adm_do_failover_{src['id']}_{fb_id}")])
+                elif fallback_nodes:
+                    tgt = fallback_nodes[0]
+                    if tgt["id"] != src["id"]:
+                        kb_list.append([InlineKeyboardButton(f"🔄 {s_name} ➡️ {tgt['name']}", callback_data=f"adm_do_failover_{src['id']}_{tgt['id']}")])
+            
+            kb_list.append([InlineKeyboardButton("🔙 بازگشت به پایش نودها", callback_data="adm_adv_nodes")])
+            await query.edit_message_text(
+                "🔄 **منوی سوییچ اضطراری ترافیک (Failover)**\n\n"
+                "لطفاً نود مورد نظر جهت انتقال به سرور رزرو را انتخاب فرمایید:\n"
+                "با لمس هر گزینه، انتقال به صورت آنی و بدون قطعی اعمال می‌گردد.",
+                reply_markup=InlineKeyboardMarkup(kb_list),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data.startswith("adm_do_failover_"):
+            parts = data.replace("adm_do_failover_", "").split("_")
+            if len(parts) >= 2:
+                src_id, tgt_id = int(parts[0]), int(parts[1])
+                from node_monitor import NodeMonitor
+                res = await NodeMonitor.execute_failover(src_id, tgt_id, reason="سوییچ دستی از طریق ربات تلگرام")
+                if res.get("success"):
+                    await query.answer(f"✅ {res.get('message')}", show_alert=True)
+                else:
+                    await query.answer(f"❌ خطا: {res.get('error')}", show_alert=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
         elif data == "adm_adv_broadcast":
             context.user_data["waiting_adm_broadcast"] = True
             await query.edit_message_text(

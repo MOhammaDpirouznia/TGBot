@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% block title %}پایش سلامت نودها و سوییچینگ اضطراری{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="page-title"><i class="fas fa-network-wired text-warning me-2"></i> پایش سلامت نودها و سوییچینگ سرور</h1>
+        <p class="text-muted mb-0">پایش بلادرنگ پینگ و در دسترس بودن سرورها، تشخیص فیلترینگ و سوییچینگ اضطراری (Failover) دستی و هوشمند</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-primary fw-bold shadow-sm d-flex align-items-center gap-1" id="btnCheckAllNodes" onclick="runCheckAllNodes()">
+            <i class="fas fa-bolt"></i> ⚡ تست پینگ و سلامت همه نودها
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info fw-bold shadow-sm d-flex align-items-center gap-1" onclick="runSyncHiddifyDomains()">
+            <i class="fas fa-arrows-rotate"></i> همگام‌سازی دامنه‌های هیدیفای
+        </button>
+        <button type="button" class="btn btn-sm btn-danger fw-bold shadow-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#modalFailover">
+            <i class="fas fa-shuffle"></i> 🔄 سوییچ اضطراری ترافیک
+        </button>
+        <button type="button" class="btn btn-sm btn-success fw-bold shadow-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#modalAddNode">
+            <i class="fas fa-plus"></i> افزودن نود جدید
+        </button>
+    </div>
+</div>
+
+<!-- کارت‌های آمار وضعیت شبکه -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-0 shadow-sm h-100 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small fw-bold">تعداد کل نودها و دامنه‌ها</span>
+                    <h3 class="fw-bold my-1 text-primary">{{ nodes|length }}</h3>
+                    <small class="text-muted">تحت پایش و نظارت سیستم</small>
+                </div>
+                <div class="rounded-circle p-3 bg-primary bg-opacity-10 text-primary fs-3">
+                    <i class="fas fa-server"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-0 shadow-sm h-100 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small fw-bold">نودهای آنلاین و سالم</span>
+                    <h3 class="fw-bold my-1 text-success">{{ online_count }}</h3>
+                    <small class="text-success">پینگ عالی و در دسترس</small>
+                </div>
+                <div class="rounded-circle p-3 bg-success bg-opacity-10 text-success fs-3">
+                    <i class="fas fa-circle-check"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-0 shadow-sm h-100 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small fw-bold">نودهای دارای اختلال یا کندی</span>
+                    <h3 class="fw-bold my-1 text-warning">{{ degraded_count }}</h3>
+                    <small class="text-warning">تاخیر بالا یا ناپایدار</small>
+                </div>
+                <div class="rounded-circle p-3 bg-warning bg-opacity-10 text-warning fs-3">
+                    <i class="fas fa-triangle-exclamation"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-0 shadow-sm h-100 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small fw-bold">نودهای قطع / فیلترشده</span>
+                    <h3 class="fw-bold my-1 text-danger">{{ offline_count }}</h3>
+                    <small class="text-danger">تایم‌اوت یا مسدود شده</small>
+                </div>
+                <div class="rounded-circle p-3 bg-danger bg-opacity-10 text-danger fs-3">
+                    <i class="fas fa-circle-xmark"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول نودها -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i> لیست نودها و وضعیت پایش زنده</h5>
+        <span class="badge bg-light text-dark border px-2 py-1"><i class="fas fa-clock me-1 text-muted"></i> بروزرسانی خودکار هر ۵ دقیقه</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="nodesTable">
+                <thead class="table-light small">
+                    <tr>
+                        <th class="ps-3" style="width: 50px;">#</th>
+                        <th>نام و برچسب نود</th>
+                        <th>نوع</th>
+                        <th>آدرس هاست / IP</th>
+                        <th class="text-center" style="width: 140px;">وضعیت</th>
+                        <th class="text-center" style="width: 120px;">پینگ (ms)</th>
+                        <th>نود رزرو (Failover)</th>
+                        <th class="text-center">سوییچ خودکار</th>
+                        <th class="text-center">آخرین بررسی</th>
+                        <th class="text-center pe-3" style="width: 180px;">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for n in nodes %}
+                    <tr id="node-row-{{ n.id }}">
+                        <td class="ps-3 fw-bold text-muted">{{ n.id }}</td>
+                        <td>
+                            <span class="fw-bold d-block">{{ n.name }}</span>
+                            {% if n.is_fallback %}
+                            <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25" style="font-size: 0.68rem;">نود پشتیبان (رزرو)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size: 0.72rem;">
+                                {{ 'دامنه مستقیم' if n.node_type == 'domain_node' else ('پنل هیدیفای' if n.node_type == 'hiddify_panel' else 'پراکسی CDN') }}
+                            </span>
+                        </td>
+                        <td>
+                            <code class="text-dark bg-light px-2 py-1 rounded border">{{ n.host }}:{{ n.port }}</code>
+                        </td>
+                        <td class="text-center node-status-cell">
+                            {% if n.status == 'online' %}
+                            <span class="badge bg-success-subtle text-success px-2 py-1 rounded-pill"><i class="fas fa-circle-check me-1"></i> برخط</span>
+                            {% elif n.status == 'degraded' %}
+                            <span class="badge bg-warning-subtle text-warning px-2 py-1 rounded-pill"><i class="fas fa-triangle-exclamation me-1"></i> کندی</span>
+                            {% elif n.status == 'offline' %}
+                            <span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill" title="{{ n.last_error or 'قطع' }}"><i class="fas fa-circle-xmark me-1"></i> فیلتر / قطع</span>
+                            {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary px-2 py-1 rounded-pill">بررسی نشده</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center node-ping-cell">
+                            {% if n.ping_ms and n.ping_ms > 0 %}
+                            <span class="fw-bold {% if n.ping_ms < 250 %}text-success{% elif n.ping_ms < 600 %}text-warning{% else %}text-danger{% endif %}">
+                                {{ n.ping_ms|round(1) }} ms
+                            </span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if n.fallback_target_id %}
+                                {% set fb_node = node_map.get(n.fallback_target_id) %}
+                                {% if fb_node %}
+                                <span class="badge bg-light text-dark border"><i class="fas fa-arrow-left text-info me-1"></i>{{ fb_node.name }}</span>
+                                {% else %}
+                                <span class="text-muted small">-</span>
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted small">تعریف نشده</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if n.auto_failover %}
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success" title="سوییچ خودکار پس از ۳ خطای متوالی فعال است"><i class="fas fa-check"></i> فعال</span>
+                            {% else %}
+                            <span class="badge bg-light text-muted border">دستی</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center text-muted small node-checked-cell">
+                            {{ n.last_checked[11:19] if n.last_checked else '-' }}
+                        </td>
+                        <td class="text-center pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" title="تست لحظه‌ای پینگ این نود" onclick="checkSingleNode({{ n.id }})">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                {% if n.fallback_target_id %}
+                                <button type="button" class="btn btn-outline-danger" title="اجرای سوییچ اضطراری به نود رزرو" onclick="quickFailover({{ n.id }}, {{ n.fallback_target_id }})">
+                                    <i class="fas fa-shuffle"></i>
+                                </button>
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-secondary" title="ویرایش نود" onclick='openEditModal({{ n|tojson }})'>
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" title="حذف نود" onclick="deleteNode({{ n.id }}, '{{ n.name }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="fas fa-server fs-1 d-block mb-3 opacity-25"></i>
+                            هنوز نودی جهت پایش ثبت نشده است.<br>
+                            می‌توانید با دکمه <b>«همگام‌سازی دامنه‌های هیدیفای»</b> یا <b>«افزودن نود جدید»</b> اولین نود را ثبت کنید.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- جدول لاگ‌های سوییچ اضطراری -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-clock-rotate-left text-secondary me-2"></i> سوابق و تاریخچه سوییچینگ‌های اضطراری (Failover Logs)</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light small">
+                    <tr>
+                        <th class="ps-3">زمان اقدام</th>
+                        <th>نود مبدا (از دسترس خارج شده)</th>
+                        <th>نود مقصد (جایگزین سالم)</th>
+                        <th>تعداد کاربران منتفع</th>
+                        <th>علت سوییچ</th>
+                        <th class="text-center pe-3">وضعیت</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in failover_logs %}
+                    <tr>
+                        <td class="ps-3 text-muted font-monospace small">{{ log.created_at[:19].replace('T', ' ') }}</td>
+                        <td><span class="text-danger fw-bold"><i class="fas fa-circle-xmark me-1"></i> {{ log.source_name }}</span></td>
+                        <td><span class="text-success fw-bold"><i class="fas fa-circle-check me-1"></i> {{ log.target_name }}</span></td>
+                        <td><span class="badge bg-primary bg-opacity-10 text-primary fw-bold">{{ log.affected_users_count:, }} کاربر</span></td>
+                        <td class="small">{{ log.reason }}</td>
+                        <td class="text-center pe-3"><span class="badge bg-success">با موفقیت اعمال شد</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted small">
+                            تاکنون سوییچ اضطراری ثبت نشده است. شبکه در وضعیت پایدار قرار دارد.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال افزودن نود جدید -->
+<div class="modal fade" id="modalAddNode" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-success text-white py-3">
+                <h6 class="modal-title fw-bold"><i class="fas fa-plus me-1"></i> افزودن نود یا دامنه جدید برای پایش</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_node_add') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نام نمایشی نود / سرور</label>
+                        <input type="text" name="name" class="form-control form-control-sm" placeholder="مثال: سرور آلمان Hetzner - نود ۱" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-8">
+                            <label class="form-label fw-bold small">آدرس دامنه یا IP نود</label>
+                            <input type="text" name="host" class="form-control form-control-sm" placeholder="مثال: de1.mysite.com" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-bold small">پورت تست</label>
+                            <input type="number" name="port" class="form-control form-control-sm" value="443" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نوع نود</label>
+                        <select name="node_type" class="form-select form-select-sm">
+                            <option value="domain_node">دامنه مستقیم (Direct Domain)</option>
+                            <option value="cdn_proxy">پراکسی و CDN کلودفلر</option>
+                            <option value="hiddify_panel">پنل سرور هیدیفای</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نود پشتیبان (Failover Target)</label>
+                        <select name="fallback_target_id" class="form-select form-select-sm">
+                            <option value="">-- بدون نود رزرو --</option>
+                            {% for n in nodes %}
+                            <option value="{{ n.id }}">{{ n.name }} ({{ n.host }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" name="auto_failover" value="1" id="addAutoFailover">
+                        <label class="form-check-label small fw-bold" for="addAutoFailover">سوییچ خودکار در صورت ۳ خطای متوالی</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_fallback" value="1" id="addIsFallback">
+                        <label class="form-check-label small fw-bold" for="addIsFallback">این نود به عنوان نود رزرو/پشتیبان علامت‌گذاری شود</label>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-sm btn-success fw-bold"><i class="fas fa-save me-1"></i> ذخیره نود</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال سوییچ اضطراری دستی -->
+<div class="modal fade" id="modalFailover" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white py-3">
+                <h6 class="modal-title fw-bold"><i class="fas fa-shuffle me-1"></i> سوییچ اضطراری ترافیک (Failover)</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_node_failover_manual') }}">
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning small d-flex gap-2 align-items-center mb-3">
+                        <i class="fas fa-exclamation-triangle fs-4"></i>
+                        <div>با اجرای سوییچ اضطراری، ترافیک و دامنه‌های سابسکریپشن از نود مبدا به نود مقصد منتقل شده و اعلان به ادمین تلگرام مخابره می‌گردد.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-danger">نود مبدا (از دسترس خارج شده / دچار اختلال)</label>
+                        <select name="source_node_id" id="failoverSourceSelect" class="form-select form-select-sm" required>
+                            <option value="">-- انتخاب نود قطع‌شده --</option>
+                            {% for n in nodes %}
+                            <option value="{{ n.id }}">{{ n.name }} ({{ n.host }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-success">نود مقصد (نود سالم و جایگزین)</label>
+                        <select name="target_node_id" id="failoverTargetSelect" class="form-select form-select-sm" required>
+                            <option value="">-- انتخاب نود جایگزین سالم --</option>
+                            {% for n in nodes %}
+                            <option value="{{ n.id }}">{{ n.name }} ({{ n.host }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small">علت سوییچ</label>
+                        <input type="text" name="reason" class="form-control form-control-sm" value="سوییچ اضطراری دستی به دلیل اختلال دیتاسنتر یا فیلترینگ" required>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-sm btn-danger fw-bold"><i class="fas fa-bolt me-1"></i> اجرای فوری سوییچینگ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+async function runCheckAllNodes() {
+    const btn = document.getElementById("btnCheckAllNodes");
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال تست پینگ نودها...';
+
+    try {
+        const resp = await fetch("{{ url_for('admin_node_check_all') }}", { method: "POST" });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("خطا در پایش: " + (data.error || "خطای نامشخص"));
+        }
+    } catch (e) {
+        alert("خطا در ارتباط با سرور: " + e);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+async function checkSingleNode(nodeId) {
+    const row = document.getElementById("node-row-" + nodeId);
+    const statusCell = row.querySelector(".node-status-cell");
+    const pingCell = row.querySelector(".node-ping-cell");
+    statusCell.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span>';
+
+    try {
+        const resp = await fetch("{{ url_for('admin_node_check_single', node_id=0) }}".replace("0", nodeId), { method: "POST" });
+        const res = await resp.json();
+        if (res.success) {
+            const n = res.result;
+            if (n.status === "online") {
+                statusCell.innerHTML = '<span class="badge bg-success-subtle text-success px-2 py-1 rounded-pill"><i class="fas fa-circle-check me-1"></i> برخط</span>';
+                pingCell.innerHTML = '<span class="fw-bold text-success">' + n.ping_ms + ' ms</span>';
+            } else if (n.status === "degraded") {
+                statusCell.innerHTML = '<span class="badge bg-warning-subtle text-warning px-2 py-1 rounded-pill"><i class="fas fa-triangle-exclamation me-1"></i> کندی</span>';
+                pingCell.innerHTML = '<span class="fw-bold text-warning">' + n.ping_ms + ' ms</span>';
+            } else {
+                statusCell.innerHTML = '<span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill"><i class="fas fa-circle-xmark me-1"></i> قطع</span>';
+                pingCell.innerHTML = '<span class="text-muted">-</span>';
+            }
+        }
+    } catch (e) {
+        alert("خطا در تست نود: " + e);
+    }
+}
+
+async function runSyncHiddifyDomains() {
+    if (!confirm("آیا مایلید تمامی دامنه‌های فعال هیدیفای به صورت خودکار به لیست نودهای تحت پایش اضافه گردند؟")) return;
+    try {
+        const resp = await fetch("{{ url_for('admin_node_sync_hiddify') }}", { method: "POST" });
+        const data = await resp.json();
+        alert(data.message || "همگام‌سازی با موفقیت انجام شد.");
+        location.reload();
+    } catch (e) {
+        alert("خطا در همگام‌سازی: " + e);
+    }
+}
+
+function quickFailover(srcId, tgtId) {
+    if (!confirm("آیا از اجرای فوری سوییچ اضطراری از این نود به نود رزرو اطمینان دارید؟")) return;
+    document.getElementById("failoverSourceSelect").value = srcId;
+    document.getElementById("failoverTargetSelect").value = tgtId;
+    new bootstrap.Modal(document.getElementById("modalFailover")).show();
+}
+
+async function deleteNode(nodeId, nodeName) {
+    if (!confirm(`آیا از حذف نود «${nodeName}» از سیستم پایش اطمینان دارید؟`)) return;
+    try {
+        const resp = await fetch("{{ url_for('admin_node_delete', node_id=0) }}".replace("0", nodeId), { method: "POST" });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || "خطا در حذف نود");
+        }
+    } catch (e) {
+        alert("خطا در حذف نود: " + e);
+    }
+}
+</script>
+{% endblock %}

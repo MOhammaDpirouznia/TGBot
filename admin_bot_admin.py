@@ -236,6 +236,7 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                 ],
                 [
                     InlineKeyboardButton("🤖 استودیو هوش مصنوعی و محتوا", callback_data="adm_ai_menu"),
+                    InlineKeyboardButton("🌐 پایش سلامت نودها و سرورها", callback_data="adm_adv_nodes"),
                 ],
                 [
                     InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
@@ -405,3 +406,55 @@ def get_admin_settings_overview_payload() -> Tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]
     ]
     return text, InlineKeyboardMarkup(buttons)
+
+def get_admin_nodes_overview_payload() -> Tuple[str, InlineKeyboardMarkup]:
+    """دریافت و قالب‌بندی وضعیت نودها و سلامت شبکه در ربات مدیریت"""
+    nodes = db.get_all_nodes()
+    if not nodes:
+        txt = (
+            "🌐 **سامانه پایش سلامت نودها و سرورها**\n\n"
+            "⚠️ هنوز نودی در سیستم ثبت نشده است.\n"
+            "می‌توانید با زدن دکمه زیر، دامنه‌های هیدیفای را به صورت خودکار اضافه فرمایید یا از پنل وب اقدام نمایید."
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 همگام‌سازی خودکار دامنه‌های هیدیفای", callback_data="adm_node_sync")],
+            [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]
+        ])
+        return txt, kb
+
+    online_cnt = sum(1 for n in nodes if n.get("status") == "online")
+    degraded_cnt = sum(1 for n in nodes if n.get("status") == "degraded")
+    offline_cnt = sum(1 for n in nodes if n.get("status") == "offline")
+
+    txt = (
+        f"🌐 **وضعیت زنده سلامت نودها و سرورهای شبکه**\n\n"
+        f"📊 **آمار کلی:**\n"
+        f"• کل نودها: `{len(nodes)}` عدد\n"
+        f"• سالم و برخط: 🟢 `{online_cnt}` | کندی: 🟡 `{degraded_cnt}` | قطع/فیلتر: 🔴 `{offline_cnt}`\n\n"
+        f"📡 **وضعیت نودها:**\n"
+    )
+
+    for n in nodes[:10]:
+        st = n.get("status", "unknown")
+        icon = "🟢" if st == "online" else ("🟡" if st == "degraded" else ("🔴" if st == "offline" else "⚪"))
+        ping_val = n.get('ping_ms', -1)
+        ping_str = f"{ping_val:.0f} ms" if ping_val and ping_val > 0 else "قطع"
+        name = n.get("name") or n.get("host")
+        fb_badge = " [رزرو]" if n.get("is_fallback") else ""
+        txt += f"{icon} **{name}**{fb_badge}\n"
+        txt += f"├ هاست: `{n.get('host')}:{n.get('port', 443)}` | پینگ: `{ping_str}`\n"
+        if st == "offline" and n.get("last_error"):
+            txt += f"└ ⚠️ خطا: {n.get('last_error')[:40]}\n\n"
+        else:
+            txt += f"└ وضعیت: {'سالم' if st == 'online' else ('کندی تاخیر' if st == 'degraded' else 'قطع / فیلتر')}\n\n"
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚡ تست و پایش لحظه‌ای سلامت نودها", callback_data="adm_node_ping_all")],
+        [
+            InlineKeyboardButton("🔄 همگام‌سازی از هیدیفای", callback_data="adm_node_sync"),
+            InlineKeyboardButton("🔄 سوییچ اضطراری ترافیک", callback_data="adm_node_failover_menu"),
+        ],
+        [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]
+    ])
+    return txt, kb
+

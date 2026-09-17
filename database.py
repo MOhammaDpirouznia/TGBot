@@ -503,6 +503,41 @@ class Database:
             )
         """)
 
+        # جدول نودها و سرورها جهت پایش سلامت شبکه و سوییچینگ اضطراری
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS node_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                node_type TEXT DEFAULT 'domain_node',
+                host TEXT NOT NULL,
+                port INTEGER DEFAULT 443,
+                ping_ms REAL DEFAULT -1,
+                status TEXT DEFAULT 'unknown',
+                is_active BOOLEAN DEFAULT 1,
+                is_fallback BOOLEAN DEFAULT 0,
+                auto_failover BOOLEAN DEFAULT 0,
+                fallback_target_id INTEGER,
+                consecutive_fails INTEGER DEFAULT 0,
+                last_checked TEXT,
+                last_error TEXT,
+                created_at TEXT
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS node_failover_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_node_id INTEGER,
+                source_name TEXT,
+                target_node_id INTEGER,
+                target_name TEXT,
+                reason TEXT,
+                affected_users_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'completed',
+                created_at TEXT
+            )
+        """)
+
         # مایگریشن خودکار ایندکس‌ها و ستون‌های جدید
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_token ON login_logs(session_token)")
@@ -20949,4 +20984,151 @@ class Database:
             return {"success": False, "error": str(e)}
 
 # اینستنس singleton
+
+    # ═══════════════════════════════════════════════════════════════
+    # سیستم پایش سلامت نودها و سوییچینگ سرور (Node Health & Failover)
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_all_nodes(self, active_only: bool = False) -> list:
+        """دریافت لیست نودها و سرورها با جزئیات کامل وضعیت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if active_only:
+                cursor.execute("SELECT * FROM node_servers WHERE is_active=1 ORDER BY id ASC")
+            else:
+                cursor.execute("SELECT * FROM node_servers ORDER BY id ASC")
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_all_nodes: {e}")
+            return []
+
+    def get_node(self, node_id: int) -> Optional[dict]:
+        """دریافت اطلاعات یک نود مشخص"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM node_servers WHERE id=?", (node_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_node: {e}")
+            return None
+
+    def add_node(self, name: str, host: str, port: int = 443, node_type: str = 'domain_node',
+                 is_fallback: bool = False, auto_failover: bool = False, fallback_target_id: int = None) -> int:
+        """افزودن نود یا سرور جدید برای پایش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO node_servers (name, node_type, host, port, is_active, is_fallback, auto_failover, fallback_target_id, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+            """, (name.strip(), node_type.strip(), host.strip(), int(port), 1 if is_fallback else 0, 1 if auto_failover else 0, fallback_target_id, now))
+            conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Error in add_node: {e}")
+            return 0
+
+    def update_node(self, node_id: int, **kwargs) -> bool:
+        """بروزرسانی مشخصات نود"""
+        if not kwargs:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            fields = []
+            values = []
+            for k, v in kwargs.items():
+                fields.append(f"{k}=?")
+                values.append(v)
+            values.append(node_id)
+            query = f"UPDATE node_servers SET {', '.join(fields)} WHERE id=?"
+            cursor.execute(query, tuple(values))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error in update_node: {e}")
+            return False
+
+    def delete_node(self, node_id: int) -> bool:
+        """حذف نود از سامانه پایش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM node_servers WHERE id=?", (node_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error in delete_node: {e}")
+            return False
+
+    def record_node_ping(self, node_id: int, ping_ms: float, status: str, error: str = None) -> bool:
+        """ثبت نتیجه بررسی وضعیت و پینگ نود"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            if status == "online":
+                cursor.execute("""
+                    UPDATE node_servers 
+                    SET ping_ms=?, status='online', consecutive_fails=0, last_checked=?, last_error=NULL 
+                    WHERE id=?
+                """, (round(ping_ms, 1), now, node_id))
+            else:
+                cursor.execute("""
+                    UPDATE node_servers 
+                    SET ping_ms=?, status=?, consecutive_fails=consecutive_fails+1, last_checked=?, last_error=? 
+                    WHERE id=?
+                """, (round(ping_ms, 1) if ping_ms > 0 else -1, status, now, error or "Timeout/Connection Failed", node_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error in record_node_ping: {e}")
+            return False
+
+    def get_fallback_nodes(self) -> list:
+        """دریافت نودهای رزرو و سالم جهت سوییچ اضطراری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM node_servers WHERE is_active=1 AND is_fallback=1 AND status='online' ORDER BY id ASC")
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_fallback_nodes: {e}")
+            return []
+
+    def add_failover_log(self, source_id: int, source_name: str, target_id: int, target_name: str,
+                         reason: str, affected_users: int = 0) -> int:
+        """ثبت لاگ عملیات سوییچ اضطراری سرور"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO node_failover_logs (source_node_id, source_name, target_node_id, target_name, reason, affected_users_count, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)
+            """, (source_id, source_name, target_id, target_name, reason, affected_users, now))
+            conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Error in add_failover_log: {e}")
+            return 0
+
+    def get_failover_logs(self, limit: int = 20) -> list:
+        """دریافت آخرین لاگ‌های سوییچ اضطراری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM node_failover_logs ORDER BY id DESC LIMIT ?", (limit,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_failover_logs: {e}")
+            return []
+
 db = Database()

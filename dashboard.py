@@ -12624,6 +12624,146 @@ def admin_logs_clear():
     return redirect(url_for("admin_logs"))
 
 
+# ═══════════════════════════════════════════════════════════════
+# سامانه پایش سلامت نودها و سوییچینگ سرور (Node Health & Failover)
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/admin/nodes", methods=["GET"])
+@permission_required("servers_view")
+def admin_node_monitor():
+    """صفحه پایش زنده سلامت نودها، تست پینگ و سوییچ اضطراری"""
+    nodes = db.get_all_nodes()
+    online_count = sum(1 for n in nodes if n.get("status") == "online")
+    degraded_count = sum(1 for n in nodes if n.get("status") == "degraded")
+    offline_count = sum(1 for n in nodes if n.get("status") == "offline")
+    node_map = {n["id"]: n for n in nodes}
+    failover_logs = db.get_failover_logs(limit=25)
+
+    return render_template(
+        "node_monitor.html",
+        nodes=nodes,
+        online_count=online_count,
+        degraded_count=degraded_count,
+        offline_count=offline_count,
+        node_map=node_map,
+        failover_logs=failover_logs
+    )
+
+
+@app.route("/admin/nodes/check-all", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_check_all():
+    """اجرای تست پینگ و پایش وضعیت تمامی نودها به صورت همزمان"""
+    from node_monitor import NodeMonitor
+    import asyncio
+    try:
+        results = asyncio.run(NodeMonitor.check_all_nodes(trigger_failover=True))
+        return jsonify({"success": True, "results": results})
+    except Exception as e:
+        logger.error(f"Error checking all nodes: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/admin/nodes/check-single/<int:node_id>", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_check_single(node_id):
+    """تست پینگ و وضعیت یک نود به صورت منفرد"""
+    from node_monitor import NodeMonitor
+    import asyncio
+    node = db.get_node(node_id)
+    if not node:
+        return jsonify({"success": False, "error": "نود یافت نشد"}), 404
+    try:
+        res = asyncio.run(NodeMonitor.check_single_node(node))
+        return jsonify({"success": True, "result": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/admin/nodes/add", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_add():
+    """افزودن نود جدید به سامانه پایش"""
+    name = request.form.get("name", "").strip()
+    host = request.form.get("host", "").strip()
+    port = request.form.get("port", 443, type=int)
+    node_type = request.form.get("node_type", "domain_node").strip()
+    fallback_target_id = request.form.get("fallback_target_id", type=int) or None
+    is_fallback = request.form.get("is_fallback") == "1"
+    auto_failover = request.form.get("auto_failover") == "1"
+
+    if not name or not host:
+        flash("نام و آدرس هاست نود الزامی است.", "danger")
+        return redirect(url_for("admin_node_monitor"))
+
+    db.add_node(
+        name=name,
+        host=host,
+        port=port,
+        node_type=node_type,
+        is_fallback=is_fallback,
+        auto_failover=auto_failover,
+        fallback_target_id=fallback_target_id
+    )
+    flash(f"نود «{name}» با موفقیت به سیستم پایش اضافه شد.", "success")
+    return redirect(url_for("admin_node_monitor"))
+
+
+@app.route("/admin/nodes/delete/<int:node_id>", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_delete(node_id):
+    """حذف نود از سامانه پایش"""
+    ok = db.delete_node(node_id)
+    return jsonify({"success": ok})
+
+
+@app.route("/admin/nodes/failover-manual", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_failover_manual():
+    """اجرای دستی سوییچینگ اضطراری از پنل مدیریت"""
+    from node_monitor import NodeMonitor
+    import asyncio
+    source_id = request.form.get("source_node_id", type=int)
+    target_id = request.form.get("target_node_id", type=int)
+    reason = request.form.get("reason", "سوییچ دستی توسط مدیر").strip()
+
+    if not source_id or not target_id:
+        flash("انتخاب نود مبدا و مقصد الزامی است.", "danger")
+        return redirect(url_for("admin_node_monitor"))
+
+    if source_id == target_id:
+        flash("نود مبدا و مقصد نمی‌توانند یکسان باشند.", "warning")
+        return redirect(url_for("admin_node_monitor"))
+
+    try:
+        res = asyncio.run(NodeMonitor.execute_failover(source_id, target_id, reason=reason))
+        if res.get("success"):
+            flash(res.get("message", "سوییچ با موفقیت انجام شد."), "success")
+        else:
+            flash(res.get("error", "خطا در اجرای سوییچ."), "danger")
+    except Exception as e:
+        flash(f"خطای سیستم در سوییچ: {e}", "danger")
+
+    return redirect(url_for("admin_node_monitor"))
+
+
+@app.route("/admin/nodes/sync-hiddify", methods=["POST"])
+@permission_required("servers_view")
+def admin_node_sync_hiddify():
+    """همگام‌سازی دامنه‌های تعریف‌شده در پنل هیدیفای"""
+    from node_monitor import NodeMonitor
+    from hidify import HidifyClient
+    import asyncio
+    try:
+        h_client = HidifyClient(get_hiddify_url(), get_hiddify_key(), get_hiddify_proxy())
+        added = asyncio.run(NodeMonitor.sync_hiddify_domains(h_client))
+        asyncio.run(h_client.close())
+        return jsonify({"success": True, "count": added, "message": f"{added} دامنه جدید از هیدیفای با موفقیت افزوده شد."})
+    except Exception as e:
+        logger.error(f"Error syncing domains: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @super_admin_required
 def settings():
