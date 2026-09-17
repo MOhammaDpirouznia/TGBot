@@ -388,6 +388,7 @@ class Database:
                 renewed_at TEXT,
                 reseller_id INTEGER,
                 plan_price INTEGER DEFAULT 0,
+                discount_amount INTEGER DEFAULT 0,
                 cost_paid INTEGER DEFAULT 0,
                 start_date TEXT,
                 expire_date TEXT,
@@ -1242,6 +1243,11 @@ class Database:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        try:
+            cursor.execute("ALTER TABLE subscription_history ADD COLUMN discount_amount INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0")
@@ -2775,7 +2781,7 @@ class Database:
     # مدیریت اشتراک‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, created_by=None, **kwargs):
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, created_by=None, discount_amount: int = 0, **kwargs):
         """ذخیره اشتراک جدید با پشتیبانی از شماره تلفن، وضعیت بدهی و ایجاد خودکار پروفایل کاربر"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -2796,18 +2802,19 @@ class Database:
         debt_notes = kwargs.get("debt_notes")
         debt_created_at = kwargs.get("debt_created_at") or (now if debt_amount > 0 else None)
         payment_source = kwargs.get("payment_source", "wallet")
+        clean_discount = int(discount_amount or kwargs.get("discount_amount", 0) or 0)
 
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
                 (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone_number,
                  data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
-                 payment_status, debt_amount, debt_notes, debt_created_at, payment_source, created_by, created_at, updated_at, last_lifecycle_event_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 payment_status, debt_amount, debt_notes, debt_created_at, payment_source, discount_amount, created_by, created_at, updated_at, last_lifecycle_event_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 telegram_id or 0, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone,
                 data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0),
-                payment_status, debt_amount, debt_notes, debt_created_at, payment_source, creator, now, now, now
+                payment_status, debt_amount, debt_notes, debt_created_at, payment_source, clean_discount, creator, now, now, now
             ))
             conn.commit()
             subscription_id = cursor.lastrowid
@@ -7520,12 +7527,14 @@ class Database:
                                 reseller_id: int = None, plan_price: int = 0, cost_paid: int = 0,
                                 start_date: str = None, expire_date: str = None,
                                 is_manual: int = 0, period_offset: int = 1, period_label: str = None,
-                                note: str = None, created_by: str = None, renewed_at: str = None) -> bool:
+                                note: str = None, created_by: str = None, renewed_at: str = None,
+                                discount_amount: int = 0, **kwargs) -> bool:
         """ثبت تاریخچه و میزان مصرف دوره قبلی همراه با قیمت پلن هنگام تمدید یا تغییر دوره اشتراک"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             now_str = renewed_at or get_now_iso()
+            clean_discount = int(discount_amount or kwargs.get("discount_amount", 0) or 0)
             
             # استخراج خودکار start_date و expire_date از اشتراک جاری در صورت عدم ارسال
             final_start_date = start_date
@@ -7564,14 +7573,14 @@ class Database:
                 INSERT INTO subscription_history (
                     subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
                     previous_usage_gb, previous_limit_gb, period_days, renewal_type,
-                    renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date,
+                    renewed_at, reseller_id, plan_price, discount_amount, cost_paid, start_date, expire_date,
                     is_manual, period_offset, period_label, note, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 subscription_id, telegram_id or 0, hidify_uuid, account_name, plan_name,
                 float(previous_usage_gb or 0), float(previous_limit_gb or 0),
                 int(period_days or 30), renewal_type, now_str, reseller_id,
-                int(plan_price or 0), int(cost_paid or 0), final_start_date, final_expire_date,
+                int(plan_price or 0), clean_discount, int(cost_paid or 0), final_start_date, final_expire_date,
                 int(is_manual or 0), int(period_offset if period_offset is not None else 1), period_label, note, created_by
             ))
             if subscription_id:
@@ -16176,14 +16185,15 @@ class Database:
                         item = cfg[alt]
                         break
             if item:
-                st = item.get("style")
-                if st in ("primary", "success", "danger", "default"):
+                st = str(item.get("style") or "").strip().lower()
+                if st in ("primary", "success", "danger"):
                     return st
-                elif st in ("none", "", None):
-                    return "default"
+                elif st in ("default", "none", ""):
+                    return None
         except Exception:
             pass
-        return default if default in ("primary", "success", "danger", "default") else "default"
+        default_norm = str(default or "").strip().lower()
+        return default_norm if default_norm in ("primary", "success", "danger") else None
 
     def get_sub_menu_item_title(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> str:
         """استخراج عنوان سفارشی دکمه با در نظر گرفتن تنظیمات دیتابیس یا فال‌بک"""
@@ -16234,13 +16244,14 @@ class Database:
         """قالب‌بندی عنوان دکمه تلگرام بر اساس استایل رنگی با ایموجی دایره‌ای"""
         if not title:
             return ""
+        st_norm = str(style or "").strip().lower()
         # پاکسازی نشانگرهای دایره‌ای قبلی
         clean_title = re.sub(r"^[🔵🟢🔴⚪]\s*", "", str(title).strip())
-        if style == "primary":
+        if st_norm == "primary":
             return f"🔵 {clean_title}"
-        elif style == "success":
+        elif st_norm == "success":
             return f"🟢 {clean_title}"
-        elif style == "danger":
+        elif st_norm == "danger":
             return f"🔴 {clean_title}"
         return clean_title
 

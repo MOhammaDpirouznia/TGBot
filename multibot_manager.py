@@ -721,6 +721,7 @@ class ResellerBotInstance:
                     title = it.get("title", "")
                     st = it.get("style")
                     kw = {"style": st} if st in ("primary", "success", "danger") else {}
+                    title = db.format_styled_button_text(title, st)
                     r = it.get("row", len(row_map))
                     c = it.get("col", 0)
                     if r not in row_map:
@@ -2774,10 +2775,18 @@ class ResellerBotInstance:
                         q_limit_str = f"{q_limit} گیگابایت" if q_limit > 0 else "نامحدود"
                         sub_card += f"  • <b>نوبت {idx_q}:</b> {q_pname} ({q_limit_str} | {q_days} روز)\n"
 
+                qr_style = db.get_sub_menu_item_style("reseller", "my_subscriptions", "sub_qr", default="primary", is_reseller=True, reseller_id=r_id)
+                qr_kw = {"style": qr_style} if qr_style in ("primary", "success", "danger") else {}
+                qr_title = db.format_styled_button_text("📱 دریافت بارکد QR", qr_style)
+
+                renew_style = db.get_sub_menu_item_style("reseller", "my_subscriptions", "sub_renew", default="success", is_reseller=True, reseller_id=r_id)
+                renew_kw = {"style": renew_style} if renew_style in ("primary", "success", "danger") else {}
+                renew_title = db.format_styled_button_text("🔄 تمدید اشتراک", renew_style)
+
                 sub_buttons = [
                     [
-                        InlineKeyboardButton("📱 دریافت بارکد QR", callback_data=f"r_sub_qr_{sub_db_id}"),
-                        InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"r_renew_{sub_db_id}")
+                        InlineKeyboardButton(qr_title, callback_data=f"r_sub_qr_{sub_db_id}", **qr_kw),
+                        InlineKeyboardButton(renew_title, callback_data=f"r_renew_{sub_db_id}", **renew_kw)
                     ]
                 ]
 
@@ -2800,9 +2809,11 @@ class ResellerBotInstance:
                             InlineKeyboardButton("🔀 تغییر اولویت و ترتیب صف", callback_data=f"r_qman_{sub_db_id}")
                         ])
 
+                tut_title = db.format_styled_button_text("📖 راهنمای اتصال", "primary")
+                tb_title = db.format_styled_button_text("🛠️ عیب‌یابی", "danger")
                 sub_buttons.append([
-                    InlineKeyboardButton("📖 راهنمای اتصال", url=tutorial_url),
-                    InlineKeyboardButton("🛠️ عیب‌یابی", url=troubleshoot_url)
+                    InlineKeyboardButton(tut_title, url=tutorial_url, style="primary"),
+                    InlineKeyboardButton(tb_title, url=troubleshoot_url, style="danger")
                 ])
 
                 if update.message:
@@ -2875,9 +2886,19 @@ class ResellerBotInstance:
                 acc_title = html.escape(str(target_sub.get("account_name") or "اشتراک"))
                 text = f"🔄 <b>تمدید اشتراک «{acc_title}»:</b>\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:\n"
 
+                sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
+                sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
                 buttons = []
                 for p in plans:
                     pid = p["plan_id"]
+                    item_id = pid if str(pid).startswith("plan_") else f"plan_{pid}"
+                    cfg_it = sub_dict.get(item_id, {})
+                    if not cfg_it.get("enabled", True):
+                        continue
+                    st = cfg_it.get("style")
+                    st_arg = st if st in ("primary", "success", "danger") else None
+                    kw = {"style": st_arg} if st_arg else {}
+
                     pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
                     price = p.get("display_price", 0)
                     vol = p.get("data_limit", 0)
@@ -2885,10 +2906,15 @@ class ResellerBotInstance:
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     emoji = get_plan_telegram_emoji(p, pid)
 
-                    btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
-                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}")])
+                    if cfg_it.get("title"):
+                        btn_text = cfg_it["title"]
+                    else:
+                        btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                    btn_text = db.format_styled_button_text(btn_text, st)
+                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}", **kw)])
 
-                buttons.append([InlineKeyboardButton("◀️ انصراف", callback_data="r_cancel_buy")])
+                cancel_btn = db.format_styled_button_text("◀️ انصراف", "danger")
+                buttons.append([InlineKeyboardButton(cancel_btn, callback_data="r_cancel_buy", style="danger")])
 
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception as e:
@@ -2934,10 +2960,13 @@ class ResellerBotInstance:
                         f"⏳ <b>قرارگیری در صف تمدید (پیشنهادی):</b>\n"
                         f"بسته در صف رزرو اشتراک شما ذخیره می‌شود بدون اینکه حجم یا زمان فعلی شما بسوزد. به محض رسیدن مصرف به ۹۹.۹٪ یا پایان اعتبار فعلی، بسته رزرو شده خودکار فعال خواهد شد."
                     )
+                    q_title = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (رزرو خودکار)", "primary")
+                    inst_title = db.format_styled_button_text("⚡ فعال‌سازی آنی (ریست دوره فعلی)", "success")
+                    back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
                     buttons = [
-                        [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو خودکار)", callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}")],
-                        [InlineKeyboardButton("⚡ فعال‌سازی آنی (ریست دوره فعلی)", callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}")],
-                        [InlineKeyboardButton("◀️ بازگشت به لیست پلن‌ها", callback_data=f"r_renew_{sub_id}")]
+                        [InlineKeyboardButton(q_title, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
+                        [InlineKeyboardButton(inst_title, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
+                        [InlineKeyboardButton(back_title, callback_data=f"r_renew_{sub_id}", style="danger")]
                     ]
                     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
                     return
@@ -3924,8 +3953,11 @@ class ResellerBotInstance:
                 context.user_data.pop("res_create_plan_id", None)
                 context.user_data.pop("res_create_account_name", None)
                 context.user_data.pop("res_create_phone", None)
+                context.user_data.pop("res_create_discount", None)
+                context.user_data.pop("res_create_final_price", None)
                 context.user_data.pop("waiting_res_create_name", None)
                 context.user_data.pop("waiting_res_create_phone", None)
+                context.user_data.pop("waiting_res_create_discount", None)
                 txt, kb = get_reseller_create_user_plans_payload(r_id)
                 await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
 
@@ -3941,7 +3973,7 @@ class ResellerBotInstance:
                 pname = plan.get("display_name") or plan.get("master_name", "پلن") if plan else pid
                 w_price = plan.get("wholesale_price", 0) if plan else 0
                 msg = (
-                    f"👤 <b>ساخت کاربر جدید (گام ۱ از ۳: تعیین نام اکانت)</b>\n\n"
+                    f"👤 <b>ساخت کاربر جدید (گام ۱ از ۴: تعیین نام اکانت)</b>\n\n"
                     f"📦 پلن انتخابی: <b>{pname}</b>\n"
                     f"💰 هزینه کسر از موجودی کیف پول: <b>{w_price:,} تومان</b>\n\n"
                     f"لطفاً <b>نام کاربری (حروف فارسی، لاتین و اعداد)</b> مدنظر برای اکانت مشتری را ارسال فرمایید\n"
@@ -3949,6 +3981,66 @@ class ResellerBotInstance:
                 )
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")]])
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
+
+            elif data == "res_adm_cskip_disc":
+                if role == "finance":
+                    await query.answer("⛔ شما به عنوان مدیر مالی مجاز به ساخت مشتری نیستید.", show_alert=True)
+                    return
+                pid = context.user_data.get("res_create_plan_id")
+                desired_name = context.user_data.get("res_create_account_name")
+                phone = context.user_data.get("res_create_phone")
+                if not pid or not desired_name:
+                    await query.edit_message_text(
+                        "⚠️ اطلاعات صدور کاربر منقضی شده است. لطفاً مجدداً از منو اقدام فرمایید.",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 شروع مجدد", callback_data="res_adm_create_user")]])
+                    )
+                    return
+
+                context.user_data["waiting_res_create_discount"] = False
+                context.user_data["res_create_discount"] = 0
+
+                plan = db.get_reseller_plan(r_id, pid)
+                if not plan:
+                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                    return
+
+                pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+                vol = plan.get("data_limit", 0)
+                days = plan.get("duration", 30)
+                w_price = plan.get("wholesale_price", 0)
+                selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                phone_display = phone or "ثبت نشده (ندارد)"
+                final_price = selling_price
+                context.user_data["res_create_final_price"] = final_price
+
+                cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+
+                preview_txt = (
+                    f"📋 <b>پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)</b>\n\n"
+                    f"👤 نام اکانت: <code>{desired_name}</code>\n"
+                    f"📱 شماره تماس: <code>{phone_display}</code>\n"
+                    f"📦 پلن انتخابی: <b>{pname}</b>\n"
+                    f"📊 حجم بسته: <b>{vol_str}</b> | ⏳ مدت اعتبار: <b>{days} روز</b>\n"
+                    f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                    f"🎁 مبلغ تخفیف: <b>0 تومان</b>\n"
+                    f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
+                    f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
+                    f"لطفاً شیوه دریافت وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
+                )
+                buttons = [
+                    [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data="res_adm_cpay_debt")],
+                ]
+                for c in cards:
+                    c_num = str(c.get("card_number", ""))
+                    c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                    b_name = c.get("bank_name") or "بانک"
+                    buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_cpay_card_{c['id']}")])
+                buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data="res_adm_cpay_cash")])
+                buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")])
+
+                await query.edit_message_text(preview_txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                return
 
             elif data == "res_adm_cconfirm" or data.startswith("res_adm_cpay_"):
                 if role == "finance":
@@ -3974,14 +4066,16 @@ class ResellerBotInstance:
                 days = plan.get("duration", 30)
                 w_price = plan.get("wholesale_price", 0)
                 selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                discount_amount = int(context.user_data.get("res_create_discount") or 0)
+                final_price = max(0, selling_price - discount_amount)
 
                 # تعیین وضعیت پرداخت و کارت مقصد
                 target_card_id = None
                 if data == "res_adm_cpay_debt":
                     payment_status = "debtor"
-                    debt_amount = selling_price
+                    debt_amount = final_price
                     payment_source = "debt"
-                    pay_label = f"🔴 بدهکار ({selling_price:,} تومان)"
+                    pay_label = f"🔴 بدهکار ({final_price:,} تومان)"
                 elif data.startswith("res_adm_cpay_card_"):
                     target_card_id = int(data.replace("res_adm_cpay_card_", ""))
                     payment_status = "paid"
@@ -3990,17 +4084,17 @@ class ResellerBotInstance:
                     c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
                     c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
                     c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
-                    pay_label = f"💳 واریز به {c_name}"
+                    pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
                 elif data == "res_adm_cpay_cash":
                     payment_status = "paid"
                     debt_amount = 0
                     payment_source = "cash"
-                    pay_label = "💵 دریافت نقدی / صندوق"
+                    pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
                 else:
                     payment_status = "paid"
                     debt_amount = 0
                     payment_source = "cash"
-                    pay_label = "💵 نقدی"
+                    pay_label = f"💵 نقدی ({final_price:,} ت)"
 
                 r_stats = db.get_reseller_stats(r_id) or {}
                 power = r_stats.get("total_purchasing_power", 0)
@@ -4030,22 +4124,19 @@ class ResellerBotInstance:
                         name=desired_name,
                         usage_limit_gb=vol if vol > 0 else None,
                         package_days=days,
-                        enable=True,
                         comment=user_comment
                     )
-                    uuid_val = h_res.get("uuid") if (isinstance(h_res, dict) and "error" not in h_res) else None
+                    uuid_val = h_res.get("uuid") if isinstance(h_res, dict) else getattr(h_res, "uuid", None)
                     if not uuid_val:
-                        err_msg = h_res.get("error") if isinstance(h_res, dict) else "پاسخ نامعتبر از سرور هیدیفای"
                         await query.edit_message_text(
-                            f"❌ <b>خطا در برقراری ارتباط با سرور هیدیفای!</b>\n\n<code>{err_msg}</code>\n\nهیچ اشتراکی صادر نشد و هزینه‌ای از حساب شما کسر نگردید. لطفاً مجدداً امتحان فرمایید.",
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منو", callback_data="res_adm_menu")]]),
-                            parse_mode="HTML"
+                            "❌ خطا در صدور کاربر در سرور هیدیفای. لطفاً مجدداً تلاش فرمایید.",
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]])
                         )
                         return
 
                     creator_user = db.get_bot_creator_display_name(user.id, r_id)
-                    profit_margin = 0 if payment_status == "debtor" else max(0, selling_price - w_price)
-                    reseller_selling = 0 if payment_status == "debtor" else selling_price
+                    profit_margin = 0 if payment_status == "debtor" else max(0, final_price - w_price)
+                    reseller_selling = 0 if payment_status == "debtor" else final_price
 
                     db.deduct_reseller_balance(
                         reseller_id=r_id,
@@ -4075,8 +4166,9 @@ class ResellerBotInstance:
                         phone_number=phone,
                         payment_status=payment_status,
                         debt_amount=debt_amount,
-                        debt_notes=f"ثبت بدهی هنگام صدور توسط {creator_user}" if payment_status == "debtor" else None,
-                        payment_source=payment_source
+                        debt_notes=f"ثبت بدهی هنگام صدور توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "") if payment_status == "debtor" else None,
+                        payment_source=payment_source,
+                        discount_amount=discount_amount
                     )
                     sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
@@ -4088,23 +4180,23 @@ class ResellerBotInstance:
                             reseller_id=r_id,
                             action_type="create_debt",
                             plan_name=pname,
-                            amount=selling_price,
-                            notes=f"ثبت بدهی در ساخت اشتراک توسط {creator_user}",
+                            amount=final_price,
+                            notes=f"ثبت بدهی در ساخت اشتراک توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                             created_by=creator_user,
                             previous_debt=0
                         )
-                    elif target_card_id and selling_price > 0:
+                    elif target_card_id and final_price > 0:
                         try:
                             db.add_card_transaction(
                                 card_id=target_card_id,
                                 owner_type="reseller" if r_id else "admin",
                                 owner_id=r_id or 0,
                                 reseller_id=r_id or 0,
-                                amount=selling_price,
+                                amount=final_price,
                                 tx_type="deposit",
                                 category="فروش اشتراک",
                                 title=f"فروش اشتراک {desired_name}",
-                                description=f"دریافت وجه فروش {pname} توسط {creator_user}",
+                                description=f"دریافت وجه فروش {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                                 ref_type="subscription",
                                 ref_id=str(sub_id),
                                 actor=creator_user
@@ -4119,7 +4211,7 @@ class ResellerBotInstance:
                             user_id=0,
                             username=desired_name,
                             plan_name=pname,
-                            amount=selling_price,
+                            amount=final_price,
                             gateway=f"card_{target_card_id}" if payment_source == "card" else ("cash_reseller" if payment_source == "cash" else "debt"),
                             tracking_code=f"MBOT_{creator_user}",
                             status="approved",
@@ -4140,11 +4232,12 @@ class ResellerBotInstance:
                             renewal_type="new_subscription",
                             reseller_id=r_id,
                             plan_price=selling_price,
+                            discount_amount=discount_amount,
                             cost_paid=w_price,
                             start_date=get_now_iso(),
                             period_offset=0,
                             period_label="دوره فعلی (دوره اولیه)",
-                            note="افتتاح و شروع اشتراک"
+                            note="افتتاح و شروع اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                         )
                     except Exception as e_rec:
                         logger.error(f"Error logging multibot tx/history: {e_rec}")
@@ -4156,15 +4249,20 @@ class ResellerBotInstance:
                     context.user_data.pop("res_create_plan_id", None)
                     context.user_data.pop("res_create_account_name", None)
                     context.user_data.pop("res_create_phone", None)
+                    context.user_data.pop("res_create_discount", None)
+                    context.user_data.pop("res_create_final_price", None)
                     context.user_data.pop("waiting_res_create_name", None)
                     context.user_data.pop("waiting_res_create_phone", None)
+                    context.user_data.pop("waiting_res_create_discount", None)
 
                     phone_txt = f"\n📱 شماره تماس مشتری: <code>{phone}</code>" if phone else ""
+                    disc_txt = f"\n🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
                     succ_txt = (
                         f"🎉 <b>اکانت جدید با موفقیت صادر شد:</b>\n\n"
                         f"👤 نام اکانت: <code>{desired_name}</code>{phone_txt}\n"
                         f"📦 پلن: <b>{pname}</b>\n"
-                        f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                        f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>"
+                        f"{disc_txt}\n"
                         f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
                         f"✍️ صادرکننده: <b>{creator_user}</b>\n\n"
                         f"🔗 <b>لینک اتصال:</b>\n<code>{sub_url}</code>"
@@ -4246,17 +4344,67 @@ class ResellerBotInstance:
                     pname = plan.get("display_name") or plan.get("master_name", "پلن")
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
+
+                    context.user_data["waiting_res_renew_discount"] = True
+                    context.user_data["res_renew_sub_id"] = s_id
+                    context.user_data["res_renew_plan_id"] = p_id
+                    context.user_data["res_renew_discount"] = 0
+
+                    p_text = (
+                        f"🎁 <b>تخفیف به مشتری برای تمدید «{acct_name}» (گام ۲ از ۳)</b>\n\n"
+                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n\n"
+                        f"در صورت تمایل، <b>مبلغ تخفیف</b> را به <b>تومان</b> تایپ و ارسال فرمایید:\n"
+                        f"یا جهت ادامه بدون تخفیف، دکمه <b>«بدون تخفیف»</b> را لمس نمایید:"
+                    )
+                    buttons = [
+                        [InlineKeyboardButton("⚪ بدون تخفیف (0 تومان)", callback_data=f"res_adm_rskip_disc_{s_id}_{p_id}")],
+                        [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
+                    ]
+                    await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            elif data.startswith("res_adm_rskip_disc_"):
+                parts = data.replace("res_adm_rskip_disc_", "").split("_")
+                if len(parts) >= 2:
+                    s_id = int(parts[0])
+                    p_id = parts[1]
+                    plan = db.get_reseller_plan(r_id, p_id)
+                    if not plan:
+                        await query.edit_message_text("❌ پلن یافت نشد.")
+                        return
+
+                    sub = db.get_subscription(s_id)
+                    if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                        await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
+                        return
+
+                    context.user_data["waiting_res_renew_discount"] = False
+                    context.user_data["res_renew_sub_id"] = s_id
+                    context.user_data["res_renew_plan_id"] = p_id
+                    context.user_data["res_renew_discount"] = 0
+                    w_price = plan.get("wholesale_price", 0)
+                    selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                    final_price = selling_price
+                    context.user_data["res_renew_final_price"] = final_price
+
+                    days = plan.get("duration", 30)
+                    vol = plan.get("data_limit", 0)
+                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    acct_name = sub.get("account_name") or f"sub_{s_id}"
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
                     p_text = (
-                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}»</b>\n\n"
+                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)</b>\n\n"
                         f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
-                        f"💵 مبلغ دریافتی از مشتری: <b>{selling_price:,} تومان</b>\n"
+                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"🎁 مبلغ تخفیف: <b>0 تومان</b>\n"
+                        f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                         f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
                         f"لطفاً نحوه تسویه وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
                     )
                     buttons = [
-                        [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data=f"res_adm_renpay_debt_{s_id}_{p_id}")],
+                        [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data=f"res_adm_renpay_debt_{s_id}_{p_id}")],
                     ]
                     for c in cards:
                         c_num = str(c.get("card_number", ""))
@@ -4289,6 +4437,9 @@ class ResellerBotInstance:
 
                 w_price = plan.get("wholesale_price", 0)
                 selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                discount_amount = int(context.user_data.get("res_renew_discount") or 0)
+                final_price = max(0, selling_price - discount_amount)
+
                 r_stats = db.get_reseller_stats(r_id) or {}
                 power = r_stats.get("total_purchasing_power", 0)
                 if power < w_price:
@@ -4301,8 +4452,8 @@ class ResellerBotInstance:
                 acct_name = sub.get("account_name") or f"sub_{sub_id}"
 
                 creator_user = db.get_bot_creator_display_name(user.id, r_id)
-                profit_margin = 0 if mode == "debt" else max(0, selling_price - w_price)
-                reseller_selling = 0 if mode == "debt" else selling_price
+                profit_margin = 0 if mode == "debt" else max(0, final_price - w_price)
+                reseller_selling = 0 if mode == "debt" else final_price
 
                 db.deduct_reseller_balance(
                     r_id, w_price, pname, acct_name,
@@ -4326,7 +4477,7 @@ class ResellerBotInstance:
                 if mode == "debt":
                     payment_status = "debtor"
                     old_debt = int(sub.get("debt_amount") or 0)
-                    new_debt = old_debt + selling_price
+                    new_debt = old_debt + final_price
                     db.update_subscription(
                         sub_id,
                         plan_id=plan_id,
@@ -4337,7 +4488,7 @@ class ResellerBotInstance:
                         status="active",
                         payment_status="debtor",
                         debt_amount=new_debt,
-                        debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}"
+                        debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                     )
                     db.add_customer_debt_record(
                         subscription_id=sub_id,
@@ -4346,29 +4497,29 @@ class ResellerBotInstance:
                         reseller_id=r_id,
                         action_type="renew_debt",
                         plan_name=pname,
-                        amount=selling_price,
-                        notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}",
+                        amount=final_price,
+                        notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                         created_by=creator_user,
                         previous_debt=old_debt
                     )
-                    pay_label = f"🔴 بدهکار (+{selling_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
+                    pay_label = f"🔴 بدهکار (+{final_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
                 elif mode == "card" and target_card_id:
                     payment_status = "paid"
                     c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
                     c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
                     c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
-                    pay_label = f"💳 واریز به {c_name}"
+                    pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
                     try:
                         db.add_card_transaction(
                             card_id=target_card_id,
                             owner_type="reseller" if r_id else "admin",
                             owner_id=r_id or 0,
                             reseller_id=r_id or 0,
-                            amount=selling_price,
+                            amount=final_price,
                             tx_type="deposit",
                             category="فروش اشتراک",
                             title=f"تمدید اشتراک {acct_name}",
-                            description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}",
+                            description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                             ref_type="subscription",
                             ref_id=str(sub_id),
                             actor=creator_user
@@ -4386,7 +4537,7 @@ class ResellerBotInstance:
                         status="active"
                     )
                 else:
-                    pay_label = "💵 دریافت نقدی / صندوق"
+                    pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
                     db.update_subscription(
                         sub_id,
                         plan_id=plan_id,
@@ -4404,7 +4555,7 @@ class ResellerBotInstance:
                         user_id=sub.get("telegram_id") or 0,
                         username=acct_name,
                         plan_name=pname,
-                        amount=selling_price,
+                        amount=final_price,
                         gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
                         tracking_code=f"MBOT_REN_{creator_user}",
                         status="approved",
@@ -4427,16 +4578,26 @@ class ResellerBotInstance:
                         renewal_type="renewal",
                         reseller_id=r_id,
                         plan_price=selling_price,
+                        discount_amount=discount_amount,
                         cost_paid=w_price,
-                        start_date=get_now_iso()
+                        start_date=get_now_iso(),
+                        note="تمدید اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                     )
                 except Exception as e_tx:
                     logger.error(f"Error saving multibot renew tx: {e_tx}")
 
+                context.user_data.pop("waiting_res_renew_discount", None)
+                context.user_data.pop("res_renew_sub_id", None)
+                context.user_data.pop("res_renew_plan_id", None)
+                context.user_data.pop("res_renew_discount", None)
+                context.user_data.pop("res_renew_final_price", None)
+
+                disc_txt = f"\n🎁 تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
                 succ_txt = (
                     f"✅ <b>اشتراک «{acct_name}» با موفقیت تمدید شد.</b>\n\n"
                     f"📦 پلن جدید: <b>{pname}</b>\n"
-                    f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>\n"
+                    f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>"
+                    f"{disc_txt}\n"
                     f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
                     f"✍️ تمدیدکننده: <b>{creator_user}</b>\n"
                     f"💰 کسر شده از پنل: <b>{w_price:,} تومان</b>"
@@ -4633,7 +4794,7 @@ class ResellerBotInstance:
 
                     msg = (
                         f"👤 نام اکانت انتخاب شد: <code>{desired_name}</code>\n\n"
-                        f"📱 <b>مرحله ۲ از ۳: شماره تماس مشتری</b>\n"
+                        f"📱 <b>مرحله ۲ از ۴: شماره تماس مشتری</b>\n"
                         f"لطفاً شماره موبایل مشتری را ارسال فرمایید (مثال: <code>09123456789</code>).\n"
                         f"یا جهت رد کردن و عدم ثبت شماره، عبارت <b>«ندارد»</b> یا <code>skip</code> را ارسال نمایید:"
                     )
@@ -4641,7 +4802,7 @@ class ResellerBotInstance:
                     await update.message.reply_text(msg, reply_markup=kb, parse_mode="HTML")
                     return
 
-            # ۰.۴.۱. ساخت دستی اشتراک مشتری توسط نماینده - گام ۲: دریافت شماره تماس و نمایش پیش‌نمایش
+            # ۰.۴.۱. ساخت دستی اشتراک مشتری توسط نماینده - گام ۲: دریافت شماره تماس و درخواست تخفیف
             if context.user_data.get("waiting_res_create_phone") and context.user_data.get("res_create_plan_id"):
                 if is_adm and role != "finance":
                     raw_phone = text.strip()
@@ -4653,9 +4814,43 @@ class ResellerBotInstance:
 
                     context.user_data["res_create_phone"] = phone
                     context.user_data["waiting_res_create_phone"] = False
+                    context.user_data["waiting_res_create_discount"] = True
 
                     pid = context.user_data.get("res_create_plan_id")
                     desired_name = context.user_data.get("res_create_account_name")
+                    plan = db.get_reseller_plan(r_id, pid)
+                    pname = plan.get("display_name") or plan.get("master_name", "اشتراک") if plan else "اشتراک"
+                    w_price = plan.get("wholesale_price", 0) if plan else 0
+                    selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price if plan else 0
+                    phone_display = phone or "ثبت نشده (ندارد)"
+
+                    disc_msg = (
+                        f"👤 نام اکانت: <code>{desired_name}</code>\n"
+                        f"📱 شماره تماس: <code>{phone_display}</code>\n"
+                        f"📦 پلن انتخابی: <b>{pname}</b> ({selling_price:,} تومان)\n\n"
+                        f"🎁 <b>ساخت مشتری جدید (گام ۳ از ۴: مبلغ تخفیف به مشتری)</b>\n"
+                        f"لطفاً مبلغ تخفیف مورد نظر برای این مشتری را به <b>تومان</b> ارسال فرمایید (مثال: <code>10000</code> یا <code>20000</code>).\n"
+                        f"در صورتی که تخفیفی در نظر ندارید، دکمه <b>«بدون تخفیف»</b> را لمس کرده یا عدد <code>0</code> را ارسال فرمایید:"
+                    )
+                    kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("⚪ بدون تخفیف (0 تومان)", callback_data="res_adm_cskip_disc")],
+                        [InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")]
+                    ])
+                    await update.message.reply_text(disc_msg, reply_markup=kb, parse_mode="HTML")
+                    return
+
+            # ۰.۴.۲. ساخت دستی اشتراک مشتری توسط نماینده - گام ۳: دریافت تخفیف و نمایش پیش‌نمایش نهایی
+            if context.user_data.get("waiting_res_create_discount") and context.user_data.get("res_create_plan_id"):
+                if is_adm and role != "finance":
+                    raw_disc = text.strip()
+                    disc_digits = re.sub(r"[^\d]", "", raw_disc)
+                    discount_amount = int(disc_digits) if disc_digits else 0
+                    context.user_data["waiting_res_create_discount"] = False
+                    context.user_data["res_create_discount"] = discount_amount
+
+                    pid = context.user_data.get("res_create_plan_id")
+                    desired_name = context.user_data.get("res_create_account_name")
+                    phone = context.user_data.get("res_create_phone")
                     plan = db.get_reseller_plan(r_id, pid)
                     if not plan:
                         await update.message.reply_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
@@ -4668,20 +4863,25 @@ class ResellerBotInstance:
                     selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     phone_display = phone or "ثبت نشده (ندارد)"
+                    final_price = max(0, selling_price - discount_amount)
+                    context.user_data["res_create_final_price"] = final_price
+
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
                     preview_txt = (
-                        f"📋 <b>پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۳ از ۳)</b>\n\n"
+                        f"📋 <b>پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)</b>\n\n"
                         f"👤 نام اکانت: <code>{desired_name}</code>\n"
                         f"📱 شماره تماس: <code>{phone_display}</code>\n"
                         f"📦 پلن انتخابی: <b>{pname}</b>\n"
                         f"📊 حجم بسته: <b>{vol_str}</b> | ⏳ مدت اعتبار: <b>{days} روز</b>\n"
-                        f"💵 مبلغ فروش به مشتری: <b>{selling_price:,} تومان</b>\n"
+                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n"
+                        f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                         f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
                         f"لطفاً شیوه دریافت وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
                     )
                     buttons = [
-                        [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data="res_adm_cpay_debt")],
+                        [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data="res_adm_cpay_debt")],
                     ]
                     for c in cards:
                         c_num = str(c.get("card_number", ""))
@@ -4692,6 +4892,57 @@ class ResellerBotInstance:
                     buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")])
 
                     await update.message.reply_text(preview_txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                    return
+
+            # ۰.۴.۳. تخفیف تمدید مشتری توسط نماینده در چندربات
+            if context.user_data.get("waiting_res_renew_discount") and context.user_data.get("res_renew_sub_id"):
+                if is_adm and role != "finance":
+                    raw_disc = text.strip()
+                    disc_digits = re.sub(r"[^\d]", "", raw_disc)
+                    discount_amount = int(disc_digits) if disc_digits else 0
+                    context.user_data["waiting_res_renew_discount"] = False
+                    context.user_data["res_renew_discount"] = discount_amount
+
+                    s_id = context.user_data.get("res_renew_sub_id")
+                    p_id = context.user_data.get("res_renew_plan_id")
+                    plan = db.get_reseller_plan(r_id, p_id)
+                    sub = db.get_subscription(s_id)
+                    if not sub or not plan:
+                        await update.message.reply_text("❌ اشتراک یا پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                        return
+
+                    w_price = plan.get("wholesale_price", 0)
+                    selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+                    final_price = max(0, selling_price - discount_amount)
+                    context.user_data["res_renew_final_price"] = final_price
+
+                    days = plan.get("duration", 30)
+                    vol = plan.get("data_limit", 0)
+                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    acct_name = sub.get("account_name") or f"sub_{s_id}"
+                    cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+
+                    p_text = (
+                        f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)</b>\n\n"
+                        f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n"
+                        f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
+                        f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
+                        f"لطفاً نحوه تسویه وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
+                    )
+                    buttons = [
+                        [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data=f"res_adm_renpay_debt_{s_id}_{p_id}")],
+                    ]
+                    for c in cards:
+                        c_num = str(c.get("card_number", ""))
+                        c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                        b_name = c.get("bank_name") or "بانک"
+                        buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_renpay_card_{s_id}_{p_id}_{c['id']}")])
+                    buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data=f"res_adm_renpay_cash_{s_id}_{p_id}")])
+                    buttons.append([InlineKeyboardButton("🔙 انصراف", callback_data=f"res_adm_rsub_{s_id}")])
+                    await update.message.reply_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
                     return
 
             # ۰.۵. ساخت کد تخفیف جدید توسط نماینده

@@ -235,17 +235,31 @@
                     </div>
                     {% endif %}
 
-                    <!-- فیلد مبلغ تخفیف به مشتری -->
-                    <div class="p-3 bg-warning bg-opacity-10 border border-warning rounded-3 mb-4">
-                        <label class="form-label fw-bold text-dark mb-1">
-                            <i class="fas fa-tag text-warning me-1"></i> مبلغ تخفیف به مشتری (تومان - اختیاری):
-                        </label>
-                        <div class="input-group">
-                            <input type="number" step="1000" min="0" name="discount_amount" id="customerDiscountInput" class="form-control font-monospace" placeholder="مثلاً: 20000" value="0" oninput="updateCustomerDiscount()">
-                            <span class="input-group-text bg-white">تومان</span>
-                        </div>
-                        <div class="form-text small text-muted mt-1">
-                            در صورت وارد کردن، این مبلغ به عنوان تخفیف از قیمت نهایی یا بدهی ثبت‌شده مشتری کسر می‌گردد.
+                    <!-- بخش تخفیف به مشتری و نمایش همجوار مبلغ نهایی دریافتی -->
+                    <div class="card bg-warning bg-opacity-10 border border-warning rounded-3 mb-4 shadow-sm">
+                        <div class="card-body p-3">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label fw-bold text-dark mb-1 d-flex align-items-center justify-content-between">
+                                        <span><i class="fas fa-tag text-warning me-1"></i>مبلغ تخفیف به مشتری (تومان):</span>
+                                    </label>
+                                    <div class="input-group">
+                                        <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('customerDiscountInput', -10000)" title="کاهش ۱۰ هزار تومان">-</button>
+                                        <input type="number" step="10000" min="0" name="discount_amount" id="customerDiscountInput" class="form-control font-monospace text-center fw-bold fs-6" placeholder="0" value="" oninput="updateCustomerDiscount()">
+                                        <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('customerDiscountInput', 10000)" title="افزایش ۱۰ هزار تومان">+</button>
+                                    </div>
+                                    <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">اختیاری - کسر از مبلغ پرداختی یا بدهی مشتری</small>
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label fw-bold text-success mb-1 d-flex align-items-center justify-content-between">
+                                        <span><i class="fas fa-coins text-success me-1"></i>مبلغ نهایی دریافتی از مشتری:</span>
+                                    </label>
+                                    <div class="p-2 bg-white border border-success rounded text-center shadow-sm">
+                                        <div class="fs-5 fw-bold text-success font-monospace" id="displayResellerCustomerPayable">۰ تومان</div>
+                                        <div class="text-muted small" style="font-size: 0.7rem;" id="displayResellerDiscountBreakdown">قیمت مصوب پلن: ۰ ت (بدون تخفیف)</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -379,12 +393,40 @@
         }
     }
 
+    function stepDiscountInput(inputId, delta) {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        let val = parseInt(el.value || '0', 10);
+        if (isNaN(val)) val = 0;
+        val += delta;
+        if (val <= 0) {
+            el.value = '';
+        } else {
+            el.value = val;
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
     function updateCustomerDiscount() {
         const discInput = document.getElementById('customerDiscountInput');
         const discVal = discInput ? Math.max(0, parseInt(discInput.value) || 0) : 0;
+        const retail = currentRetailPrice || 0;
+        const custPayable = Math.max(0, retail - discVal);
+
+        const custPayableEl = document.getElementById('displayResellerCustomerPayable');
+        const custBreakdownEl = document.getElementById('displayResellerDiscountBreakdown');
+        if (custPayableEl) custPayableEl.innerText = custPayable.toLocaleString('fa-IR') + ' تومان';
+        if (custBreakdownEl) {
+            if (discVal > 0) {
+                custBreakdownEl.innerText = `قیمت مصوب: ${retail.toLocaleString('fa-IR')} ت - تخفیف: ${discVal.toLocaleString('fa-IR')} ت`;
+            } else {
+                custBreakdownEl.innerText = `قیمت مصوب پلن: ${retail.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
+            }
+        }
+
         const debtInput = document.getElementById('resellerDebtAmountInput');
         if (debtInput && currentRetailPrice > 0) {
-            debtInput.value = Math.max(0, currentRetailPrice - discVal);
+            debtInput.value = custPayable;
         }
     }
 
@@ -397,12 +439,7 @@
         document.getElementById('discountAmountText').innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('finalPriceText').innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
         
-        const debtInput = document.getElementById('resellerDebtAmountInput');
-        const discInput = document.getElementById('customerDiscountInput');
-        const discVal = discInput ? Math.max(0, parseInt(discInput.value) || 0) : 0;
-        if (debtInput) {
-            debtInput.value = Math.max(0, price - discVal);
-        }
+        updateCustomerDiscount();
 
         // هایلایت پلن فعال
         document.querySelectorAll('.plan-option').forEach(card => {
@@ -419,6 +456,16 @@
 
     // مقداردهی اولیه
     document.addEventListener('DOMContentLoaded', () => {
+        const discInput = document.getElementById('customerDiscountInput');
+        if (discInput) {
+            discInput.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowUp' && !discInput.value) {
+                    e.preventDefault();
+                    discInput.value = 10000;
+                    discInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        }
         const checked = document.querySelector('input[name="plan_id"]:checked');
         if (checked) checked.dispatchEvent(new Event('change'));
         updatePaymentSourceUI();

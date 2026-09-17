@@ -1191,10 +1191,31 @@
                                     </select>
                                     <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-bold text-dark"><i class="fas fa-tag text-warning me-1"></i>مبلغ تخفیف به مشتری (تومان):</label>
-                                    <input type="number" step="1000" min="0" name="discount_amount" id="adminRenewDiscountInput{{ sub['id'] }}" class="form-control font-monospace" placeholder="مثلاً: 10000" value="0" oninput="updateAdminRenewDiscount('{{ sub['id'] }}')">
-                                    <small class="text-muted" style="font-size: 11px;">از مبلغ پرداختی یا بدهی مشتری کسر می‌گردد.</small>
+                                <div class="col-12">
+                                    <div class="p-2 rounded-3 border border-warning bg-warning bg-opacity-10">
+                                        <div class="row g-2 align-items-center">
+                                            <div class="col-12 col-sm-6">
+                                                <label class="form-label fw-bold text-dark mb-1 d-flex align-items-center justify-content-between">
+                                                    <span><i class="fas fa-tag text-warning me-1"></i>مبلغ تخفیف به مشتری (تومان):</span>
+                                                </label>
+                                                <div class="input-group">
+                                                    <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('adminRenewDiscountInput{{ sub['id'] }}', -10000)" title="کاهش ۱۰ هزار تومان">-</button>
+                                                    <input type="number" step="10000" min="0" name="discount_amount" id="adminRenewDiscountInput{{ sub['id'] }}" class="form-control font-monospace text-center fw-bold" placeholder="0" value="" oninput="updateAdminRenewDiscount('{{ sub['id'] }}')">
+                                                    <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('adminRenewDiscountInput{{ sub['id'] }}', 10000)" title="افزایش ۱۰ هزار تومان">+</button>
+                                                </div>
+                                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">اختیاری - کسر از مبلغ دریافتی یا بدهی مشتری</small>
+                                            </div>
+                                            <div class="col-12 col-sm-6">
+                                                <label class="form-label fw-bold text-success mb-1 d-flex align-items-center justify-content-between">
+                                                    <span><i class="fas fa-coins text-success me-1"></i>مبلغ نهایی تمدید:</span>
+                                                </label>
+                                                <div class="p-2 bg-white border border-success rounded text-center shadow-sm">
+                                                    <div class="fs-5 fw-bold text-success font-monospace" id="adminRenewFinalPayable{{ sub['id'] }}">۰ تومان</div>
+                                                    <div class="text-muted small" style="font-size: 0.7rem;" id="adminRenewDiscountBreakdown{{ sub['id'] }}">قیمت مصوب پلن: ۰ ت (بدون تخفیف)</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-6" id="adminRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
@@ -2185,20 +2206,22 @@
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold small text-warning mb-1">
-                        <i class="fas fa-tag me-1"></i> مبلغ تخفیف (تومان):
-                    </label>
-                    <input type="number" step="1000" id="addDebtDiscountInput" class="form-control font-monospace" placeholder="مثال: 20000" value="0" oninput="calcAddDebtFinalAmount()">
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold small text-danger mb-1">
-                        <i class="fas fa-coins me-1"></i> مبلغ نهایی بدهی جهت ثبت (تومان): <span class="text-danger">*</span>
-                    </label>
-                    <input type="number" step="1000" id="addDebtAmountInput" class="form-control font-monospace border-danger fw-bold" placeholder="مثال: 150000" required>
-                    <div class="form-text small text-muted" style="font-size: 0.75rem;">
-                        در صورت انتخاب پلن، به صورت خودکار (قیمت پلن منهای تخفیف) محاسبه می‌شود.
+                <div class="row g-2 mb-3 align-items-center">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label fw-bold small text-warning mb-1">
+                            <i class="fas fa-tag me-1"></i> مبلغ تخفیف (تومان):
+                        </label>
+                        <div class="input-group">
+                            <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('addDebtDiscountInput', -10000)" title="کاهش ۱۰ هزار تومان">-</button>
+                            <input type="number" step="10000" min="0" id="addDebtDiscountInput" class="form-control font-monospace text-center fw-bold" placeholder="0" value="" oninput="calcAddDebtFinalAmount()">
+                            <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('addDebtDiscountInput', 10000)" title="افزایش ۱۰ هزار تومان">+</button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label fw-bold small text-danger mb-1">
+                            <i class="fas fa-coins me-1"></i> مبلغ نهایی بدهی جهت ثبت (تومان): <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" step="1000" id="addDebtAmountInput" class="form-control font-monospace border-danger fw-bold text-center" placeholder="مثال: 150000" required>
                     </div>
                 </div>
 
@@ -2557,6 +2580,20 @@ function generateNewUuid(elementId) {
     }
 }
 
+function stepDiscountInput(inputId, delta) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    let val = parseInt(el.value || 0);
+    if (isNaN(val)) val = 0;
+    val += delta;
+    if (val <= 0) {
+        el.value = '';
+    } else {
+        el.value = val;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function handleAdminRenewPlanChange(subId) {
     const modal = document.getElementById('renewModal' + subId);
     if (!modal) return;
@@ -2564,9 +2601,22 @@ function handleAdminRenewPlanChange(subId) {
     const price = checked ? parseInt(checked.getAttribute('data-price') || 0) : 0;
     const discInput = document.getElementById('adminRenewDiscountInput' + subId);
     const disc = discInput ? parseInt(discInput.value || 0) : 0;
+    const finalPrice = Math.max(0, price - disc);
+
+    const finalPayableEl = document.getElementById('adminRenewFinalPayable' + subId);
+    const breakdownEl = document.getElementById('adminRenewDiscountBreakdown' + subId);
+    if (finalPayableEl) finalPayableEl.innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
+    if (breakdownEl) {
+        if (disc > 0) {
+            breakdownEl.innerText = `قیمت مصوب: ${price.toLocaleString('fa-IR')} ت - تخفیف: ${disc.toLocaleString('fa-IR')} ت`;
+        } else {
+            breakdownEl.innerText = `قیمت مصوب پلن: ${price.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
+        }
+    }
+
     const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
     if (debtInput) {
-        debtInput.value = Math.max(0, price - disc);
+        debtInput.value = finalPrice;
         updateAdminRenewDebtBreakdown(subId);
     }
 }
@@ -2614,6 +2664,24 @@ function toggleAdminRenewDebtor(subId) {
         if (destBox) destBox.style.display = 'block';
     }
 }
+
+document.addEventListener('shown.bs.modal', function(event) {
+    const modal = event.target;
+    if (modal && modal.id && modal.id.startsWith('renewModal')) {
+        const subId = modal.id.replace('renewModal', '');
+        handleAdminRenewPlanChange(subId);
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowUp' && e.target && (e.target.id?.includes('RenewDiscountInput') || e.target.id === 'addDebtDiscountInput')) {
+        if (!e.target.value) {
+            e.preventDefault();
+            e.target.value = 10000;
+            e.target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+});
 
 let isTableEditingCustomSms = false;
 
@@ -3078,7 +3146,7 @@ function openAddDebtModal(subId, accountName) {
     document.getElementById('addDebtAccountDisplay').innerText = accountName || ('#' + subId);
     document.getElementById('addDebtPlanSelect').value = '';
     document.getElementById('addDebtDeliveryDate').value = '';
-    document.getElementById('addDebtDiscountInput').value = '0';
+    document.getElementById('addDebtDiscountInput').value = '';
     document.getElementById('addDebtAmountInput').value = '';
     document.getElementById('addDebtCustomTitleInput').value = '';
     document.getElementById('addDebtNotesInput').value = '';

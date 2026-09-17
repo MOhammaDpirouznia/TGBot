@@ -1584,6 +1584,7 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = it.get("title", "")
         st = it.get("style")
         kw = {"style": st} if st in ("primary", "success", "danger") else {}
+        title = db.format_styled_button_text(title, st)
         r = it.get("row", len(row_map))
         c = it.get("col", 0)
         if r not in row_map:
@@ -1738,11 +1739,42 @@ async def back_to_name_selection(update: Update, context: ContextTypes.DEFAULT_T
         f"• قیمت: {price_formatted} تومان\n\n"
         f"📝 نام اکانت خود را انتخاب کنید:"
     )
-    keyboard = [
-        [InlineKeyboardButton("🔄 انتخاب خودکار(آیدی تلگرام)", callback_data="name_telegram_id")],
-        [InlineKeyboardButton("✏️ نام دلخواه", callback_data="name_custom")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_plan")],
-    ]
+    naming_cfg = db.get_sub_menu_config("admin", "account_naming")
+    cb_map = {
+        "name_auto_tg": "name_telegram_id",
+        "name_telegram_id": "name_telegram_id",
+        "name_smart": "name_smart",
+        "name_custom": "name_custom",
+        "back_to_plans": "back_to_select_plan",
+    }
+    row_map = {}
+    for it in naming_cfg:
+        i_id = it.get("id")
+        if not it.get("enabled", True):
+            continue
+        cb = cb_map.get(i_id, i_id)
+        title = it.get("title", "")
+        st = it.get("style")
+        kw = {"style": st} if st in ("primary", "success", "danger") else {}
+        title = db.format_styled_button_text(title, st)
+        r = it.get("row", len(row_map))
+        c = it.get("col", 0)
+        if r not in row_map:
+            row_map[r] = []
+        row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+    keyboard = []
+    for r in sorted(row_map.keys()):
+        row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+        if row_btns:
+            keyboard.append(row_btns)
+
+    if not keyboard:
+        keyboard = [
+            [InlineKeyboardButton("🔄 انتخاب خودکار(آیدی تلگرام)", callback_data="name_telegram_id")],
+            [InlineKeyboardButton("✏️ نام دلخواه", callback_data="name_custom")],
+            [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_plan")],
+        ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup)
     return SELECTING_NAME_TYPE
@@ -3636,17 +3668,65 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["renew_subscription_id"] = sub_id
 
         plans = get_plans()
-        keyboard = []
+        sub_cfg = db.get_sub_menu_config("admin", "plans")
+        sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
+
+        row_map = {}
         for plan_id, plan in plans.items():
-            price_formatted = f"{plan['price']:,}".replace(",", "،")
-            emoji = get_plan_telegram_emoji(plan, plan_id)
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
-                    callback_data=f"renew_plan_{plan_id}",
-                )
-            ])
-        keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
+            item_id = plan_id if str(plan_id).startswith("plan_") else f"plan_{plan_id}"
+            cfg_it = sub_dict.get(item_id, {})
+            if not cfg_it.get("enabled", True):
+                continue
+
+            st = cfg_it.get("style")
+            st_arg = st if st in ("primary", "success", "danger") else None
+            kw = {"style": st_arg} if st_arg else {}
+
+            if cfg_it.get("title"):
+                btn_title = cfg_it["title"]
+            else:
+                price_formatted = f"{plan['price']:,}".replace(",", "،")
+                emoji = get_plan_telegram_emoji(plan, plan_id)
+                btn_title = f"{emoji} {plan['name']} - {plan.get('description', '')} - {price_formatted} تومان"
+
+            btn_title = db.format_styled_button_text(btn_title, st)
+
+            r = cfg_it.get("row", len(row_map))
+            c = cfg_it.get("col", 0)
+            if r not in row_map:
+                row_map[r] = []
+            row_map[r].append((c, InlineKeyboardButton(btn_title, callback_data=f"renew_plan_{plan_id}", **kw)))
+
+        back_it = sub_dict.get("back_to_menu", {})
+        if back_it.get("enabled", True):
+            b_st = back_it.get("style", "danger")
+            b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
+            b_kw = {"style": b_st_arg} if b_st_arg else {}
+            b_title = back_it.get("title") or "◀️ بازگشت"
+            b_title = db.format_styled_button_text(b_title, b_st)
+            r_back = back_it.get("row", 99)
+            c_back = back_it.get("col", 0)
+            if r_back not in row_map:
+                row_map[r_back] = []
+            row_map[r_back].append((c_back, InlineKeyboardButton(b_title, callback_data="back_to_menu", **b_kw)))
+
+        keyboard = []
+        for r in sorted(row_map.keys()):
+            row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+            if row_btns:
+                keyboard.append(row_btns)
+
+        if not keyboard:
+            for plan_id, plan in plans.items():
+                price_formatted = f"{plan['price']:,}".replace(",", "،")
+                emoji = get_plan_telegram_emoji(plan, plan_id)
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
+                        callback_data=f"renew_plan_{plan_id}",
+                    )
+                ])
+            keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -3735,10 +3815,21 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 آیا مایل به تایید و ادامه فرآیند پرداخت هستید؟
 """
+    conf_cfg = db.get_sub_menu_dict("admin", "confirm_subscription")
+    conf_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "confirm_purchase", default="success")
+    conf_kw = {"style": conf_st} if conf_st in ("primary", "success", "danger") else {}
+    conf_title = conf_cfg.get("confirm_pay", {}).get("title") or conf_cfg.get("confirm_purchase", {}).get("title") or "💳 تایید و ادامه پرداخت"
+    conf_title = db.format_styled_button_text(conf_title, conf_st)
+
+    cancel_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "cancel_order", default="danger")
+    cancel_kw = {"style": cancel_st} if cancel_st in ("primary", "success", "danger") else {}
+    cancel_title = conf_cfg.get("cancel_order", {}).get("title") or "❌ انصراف"
+    cancel_title = db.format_styled_button_text(cancel_title, cancel_st)
+
     keyboard = [
-        [InlineKeyboardButton("💳 تایید و ادامه پرداخت", callback_data="confirm_purchase")],
+        [InlineKeyboardButton(conf_title, callback_data="confirm_purchase", **conf_kw)],
         [InlineKeyboardButton("🎟️ ثبت کد تخفیف", callback_data="apply_discount")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu"), InlineKeyboardButton(cancel_title, callback_data="cancel", **cancel_kw)],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
@@ -4083,9 +4174,10 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     charge_row = [InlineKeyboardButton(card_title, callback_data="charge_wallet_card", **card_kw)]
     if crypto_cfg.get("enabled"):
         charge_row.append(InlineKeyboardButton(crypto_title, callback_data="charge_wallet_crypto", **crypto_kw))
-    keyboard.append(charge_row)
-    keyboard.append([InlineKeyboardButton("🛒 خرید پلن جدید", callback_data="buy_plan_from_wallet", style="success")])
-    keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
+    buy_title = db.format_styled_button_text("🛒 خرید پلن جدید", "success")
+    back_title = db.format_styled_button_text("◀️ بازگشت به منوی اصلی", "danger")
+    keyboard.append([InlineKeyboardButton(buy_title, callback_data="buy_plan_from_wallet", style="success")])
+    keyboard.append([InlineKeyboardButton(back_title, callback_data="back_to_menu", style="danger")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -5754,7 +5846,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, reply_markup=kb, parse_mode="Markdown")
             return ADMIN_MENU
 
-        # ۲.۱. نام دلخواه برای مشتری جدید - مرحله ۲: شماره تماس و نمایش پیش‌نمایش
+        # ۲.۱. نام دلخواه برای مشتری جدید - مرحله ۲: شماره تماس و رفتن به گام تخفیف
         if context.user_data.get("waiting_res_create_phone") and context.user_data.get("res_create_plan_id"):
             raw_phone = text.strip()
             phone = None
@@ -5765,9 +5857,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             context.user_data["res_create_phone"] = phone
             context.user_data["waiting_res_create_phone"] = False
+            context.user_data["waiting_res_create_discount"] = True
 
             plan_id = context.user_data.get("res_create_plan_id")
             clean_name = context.user_data.get("res_create_account_name")
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id) if plans_dict else None
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک") if plan else "اشتراک"
+            w_price = plan.get("wholesale_price", 0) if plan else 0
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price if plan else 0
+            phone_display = phone or "ثبت نشده (ندارد)"
+
+            disc_msg = (
+                f"👤 نام اکانت: `{clean_name}`\n"
+                f"📱 شماره تماس: `{phone_display}`\n"
+                f"📦 پلن انتخابی: **{pname}** ({selling_price:,} تومان)\n\n"
+                f"🎁 **ساخت مشتری جدید (گام ۳ از ۴: مبلغ تخفیف به مشتری)**\n"
+                f"لطفاً مبلغ تخفیف مورد نظر برای این مشتری را به **تومان** ارسال فرمایید (مثال: `10000` یا `20000`).\n"
+                f"در صورتی که تخفیفی در نظر ندارید، دکمه **«بدون تخفیف»** را لمس کرده یا عدد `0` را ارسال فرمایید:"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚪ بدون تخفیف (0 تومان)", callback_data="res_adm_cskip_disc")],
+                [InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")]
+            ])
+            await update.message.reply_text(disc_msg, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        # ۲.۲. نام دلخواه برای مشتری جدید - مرحله ۳: مبلغ تخفیف و نمایش پیش‌نمایش
+        if context.user_data.get("waiting_res_create_discount") and context.user_data.get("res_create_plan_id"):
+            raw_disc = text.strip()
+            disc_digits = re.sub(r"[^\d]", "", raw_disc)
+            discount_amount = int(disc_digits) if disc_digits else 0
+            context.user_data["waiting_res_create_discount"] = False
+            context.user_data["res_create_discount"] = discount_amount
+
+            plan_id = context.user_data.get("res_create_plan_id")
+            clean_name = context.user_data.get("res_create_account_name")
+            phone = context.user_data.get("res_create_phone")
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id)
             if not plan:
@@ -5782,20 +5908,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             phone_display = phone or "ثبت نشده (ندارد)"
 
             selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            final_price = max(0, selling_price - discount_amount)
+            context.user_data["res_create_final_price"] = final_price
+
             cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
             preview_txt = (
-                f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۳ از ۳)**\n\n"
+                f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)**\n\n"
                 f"👤 نام اکانت: `{clean_name}`\n"
                 f"📱 شماره تماس: `{phone_display}`\n"
                 f"📦 پلن انتخابی: **{pname}**\n"
                 f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-                f"💵 مبلغ فروش به مشتری: **{selling_price:,} تومان**\n"
+                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"🎁 مبلغ تخفیف: **{discount_amount:,} تومان**\n"
+                f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
                 f"لطفاً شیوه دریافت وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
             )
             buttons = [
-                [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data="res_adm_cpay_debt")],
+                [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data="res_adm_cpay_debt")],
             ]
             for c in cards:
                 c_num = str(c.get("card_number", ""))
@@ -5806,6 +5937,57 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")])
 
             await update.message.reply_text(preview_txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        # ۲.۳. تخفیف تمدید مشتری توسط نماینده
+        if context.user_data.get("waiting_res_renew_discount") and context.user_data.get("res_renew_sub_id"):
+            raw_disc = text.strip()
+            disc_digits = re.sub(r"[^\d]", "", raw_disc)
+            discount_amount = int(disc_digits) if disc_digits else 0
+            context.user_data["waiting_res_renew_discount"] = False
+            context.user_data["res_renew_discount"] = discount_amount
+
+            sub_id = context.user_data.get("res_renew_sub_id")
+            plan_id = context.user_data.get("res_renew_plan_id")
+            sub = db.get_subscription(sub_id)
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id) if plans_dict else None
+            if not sub or not plan:
+                await update.message.reply_text("❌ اشتراک یا پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                return ADMIN_MENU
+
+            wholesale_cost = plan.get("wholesale_price", 0)
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            final_price = max(0, selling_price - discount_amount)
+            context.user_data["res_renew_final_price"] = final_price
+
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            acct_name = sub.get("account_name") or f"sub_{sub_id}"
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+            cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+
+            p_text = (
+                f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)**\n\n"
+                f"📦 پلن: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"🎁 مبلغ تخفیف: **{discount_amount:,} تومان**\n"
+                f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
+                f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
+                f"لطفاً نحوه تسویه وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
+            )
+            buttons = [
+                [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data=f"res_adm_renpay_debt_{sub_id}_{plan_id}")],
+            ]
+            for c in cards:
+                c_num = str(c.get("card_number", ""))
+                c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                b_name = c.get("bank_name") or "بانک"
+                buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_renpay_card_{sub_id}_{plan_id}_{c['id']}")])
+            buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data=f"res_adm_renpay_cash_{sub_id}_{plan_id}")])
+            buttons.append([InlineKeyboardButton("🔙 انصراف", callback_data=f"res_adm_rsub_{sub_id}")])
+            await update.message.reply_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
             return ADMIN_MENU
 
         # ۳. ایجاد کد تخفیف جدید
@@ -7146,6 +7328,55 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return ADMIN_MENU
 
+        elif data == "res_adm_cskip_disc":
+            context.user_data["waiting_res_create_discount"] = False
+            context.user_data["res_create_discount"] = 0
+            pid = context.user_data.get("res_create_plan_id")
+            desired_name = context.user_data.get("res_create_account_name")
+            phone = context.user_data.get("res_create_phone")
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(pid) if plans_dict else None
+            if not plan:
+                await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                return ADMIN_MENU
+
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            wholesale_cost = plan.get("wholesale_price", 0)
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+            phone_display = phone or "ثبت نشده (ندارد)"
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            final_price = selling_price
+            context.user_data["res_create_final_price"] = final_price
+
+            cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+            preview_txt = (
+                f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)**\n\n"
+                f"👤 نام اکانت: `{desired_name}`\n"
+                f"📱 شماره تماس: `{phone_display}`\n"
+                f"📦 پلن انتخابی: **{pname}**\n"
+                f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
+                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"🎁 مبلغ تخفیف: **۰ تومان** (بدون تخفیف)\n"
+                f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
+                f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
+                f"لطفاً شیوه دریافت وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
+            )
+            buttons = [
+                [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data="res_adm_cpay_debt")],
+            ]
+            for c in cards:
+                c_num = str(c.get("card_number", ""))
+                c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                b_name = c.get("bank_name") or "بانک"
+                buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_cpay_card_{c['id']}")])
+            buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data="res_adm_cpay_cash")])
+            buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")])
+
+            await query.edit_message_text(preview_txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
         elif data == "res_adm_cconfirm" or data.startswith("res_adm_cpay_"):
             if r_role == "finance":
                 await query.answer("⛔ شما به عنوان مدیر مالی مجاز به صدور مشتری نیستید.", show_alert=True)
@@ -7170,14 +7401,16 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             days = plan.get("duration", 30)
             w_price = plan.get("wholesale_price", 0)
             selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+            discount_amount = int(context.user_data.get("res_create_discount") or 0)
+            final_price = max(0, selling_price - discount_amount)
 
             # تعیین وضعیت پرداخت و کارت مقصد
             target_card_id = None
             if data == "res_adm_cpay_debt":
                 payment_status = "debtor"
-                debt_amount = selling_price
+                debt_amount = final_price
                 payment_source = "debt"
-                pay_label = f"🔴 بدهکار ({selling_price:,} تومان)"
+                pay_label = f"🔴 بدهکار ({final_price:,} تومان)"
             elif data.startswith("res_adm_cpay_card_"):
                 target_card_id = int(data.replace("res_adm_cpay_card_", ""))
                 payment_status = "paid"
@@ -7186,17 +7419,17 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
                 c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
                 c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
-                pay_label = f"💳 واریز به {c_name}"
+                pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
             elif data == "res_adm_cpay_cash":
                 payment_status = "paid"
                 debt_amount = 0
                 payment_source = "cash"
-                pay_label = "💵 دریافت نقدی / صندوق"
+                pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
             else:
                 payment_status = "paid"
                 debt_amount = 0
                 payment_source = "cash"
-                pay_label = "💵 نقدی"
+                pay_label = f"💵 نقدی ({final_price:,} ت)"
 
             r_stats = db.get_reseller_stats(r_id) or {}
             power = r_stats.get("total_purchasing_power", 0)
@@ -7243,8 +7476,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     return ADMIN_MENU
 
                 creator_user = db.get_bot_creator_display_name(user.id, r_id)
-                profit_margin = 0 if payment_status == "debtor" else max(0, selling_price - w_price)
-                reseller_selling = 0 if payment_status == "debtor" else selling_price
+                profit_margin = 0 if payment_status == "debtor" else max(0, final_price - w_price)
+                reseller_selling = 0 if payment_status == "debtor" else final_price
 
                 db.deduct_reseller_balance(
                     reseller_id=r_id,
@@ -7274,8 +7507,9 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     phone_number=phone,
                     payment_status=payment_status,
                     debt_amount=debt_amount,
-                    debt_notes=f"ثبت بدهی هنگام صدور توسط {creator_user}" if payment_status == "debtor" else None,
-                    payment_source=payment_source
+                    debt_notes=f"ثبت بدهی هنگام صدور توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "") if payment_status == "debtor" else None,
+                    payment_source=payment_source,
+                    discount_amount=discount_amount
                 )
                 sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
@@ -7287,23 +7521,23 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         reseller_id=r_id,
                         action_type="create_debt",
                         plan_name=pname,
-                        amount=selling_price,
-                        notes=f"ثبت بدهی در ساخت اشتراک توسط {creator_user}",
+                        amount=final_price,
+                        notes=f"ثبت بدهی در ساخت اشتراک توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                         created_by=creator_user,
                         previous_debt=0
                     )
-                elif target_card_id and selling_price > 0:
+                elif target_card_id and final_price > 0:
                     try:
                         db.add_card_transaction(
                             card_id=target_card_id,
                             owner_type="reseller" if r_id else "admin",
                             owner_id=r_id or 0,
                             reseller_id=r_id or 0,
-                            amount=selling_price,
+                            amount=final_price,
                             tx_type="deposit",
                             category="فروش اشتراک",
                             title=f"فروش اشتراک {desired_name}",
-                            description=f"دریافت وجه فروش {pname} توسط {creator_user}",
+                            description=f"دریافت وجه فروش {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                             ref_type="subscription",
                             ref_id=str(sub_id),
                             actor=creator_user
@@ -7318,7 +7552,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         user_id=0,
                         username=desired_name,
                         plan_name=pname,
-                        amount=selling_price,
+                        amount=final_price,
                         gateway=f"card_{target_card_id}" if payment_source == "card" else ("cash_reseller" if payment_source == "cash" else "debt"),
                         tracking_code=f"BOT_{creator_user}",
                         status="approved",
@@ -7339,11 +7573,12 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         renewal_type="new_subscription",
                         reseller_id=r_id,
                         plan_price=selling_price,
+                        discount_amount=discount_amount,
                         cost_paid=w_price,
                         start_date=get_now_iso(),
                         period_offset=0,
                         period_label="دوره فعلی (دوره اولیه)",
-                        note="افتتاح و شروع اشتراک"
+                        note="افتتاح و شروع اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                     )
                 except Exception as e_rec:
                     logger.error(f"Error logging bot tx/history: {e_rec}")
@@ -7566,17 +7801,68 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             days = plan.get("duration", 30)
             acct_name = sub.get("account_name") or f"sub_{sub_id}"
             vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+
+            context.user_data["waiting_res_renew_discount"] = True
+            context.user_data["res_renew_sub_id"] = sub_id
+            context.user_data["res_renew_plan_id"] = plan_id
+            context.user_data["res_renew_discount"] = 0
+
+            p_text = (
+                f"🎁 **تخفیف به مشتری برای تمدید «{acct_name}» (گام ۲ از ۳)**\n\n"
+                f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 قیمت مصوب فروش: **{selling_price:,} تومان**\n\n"
+                f"در صورت تمایل، **مبلغ تخفیف** را به **تومان** تایپ و ارسال فرمایید:\n"
+                f"یا جهت ادامه بدون تخفیف، دکمه **«بدون تخفیف»** را لمس نمایید:"
+            )
+            buttons = [
+                [InlineKeyboardButton("⚪ بدون تخفیف (0 تومان)", callback_data=f"res_adm_rskip_disc_{sub_id}_{plan_id}")],
+                [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{sub_id}")]
+            ]
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_rskip_disc_"):
+            parts = data.replace("res_adm_rskip_disc_", "").split("_", 1)
+            sub_id = int(parts[0])
+            plan_id = parts[1]
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id)
+            if not plan:
+                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+
+            context.user_data["waiting_res_renew_discount"] = False
+            context.user_data["res_renew_sub_id"] = sub_id
+            context.user_data["res_renew_plan_id"] = plan_id
+            context.user_data["res_renew_discount"] = 0
+            wholesale_cost = plan.get("wholesale_price", 0)
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            final_price = selling_price
+            context.user_data["res_renew_final_price"] = final_price
+
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            acct_name = sub.get("account_name") or f"sub_{sub_id}"
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
             cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
 
             p_text = (
-                f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}»**\n\n"
+                f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۳ از ۳)**\n\n"
                 f"📦 پلن: **{pname}** ({vol_str} - {days} روز)\n"
-                f"💵 مبلغ دریافتی از مشتری: **{selling_price:,} تومان**\n"
+                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"🎁 مبلغ تخفیف: **0 تومان**\n"
+                f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
                 f"لطفاً نحوه تسویه وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
             )
             buttons = [
-                [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data=f"res_adm_renpay_debt_{sub_id}_{plan_id}")],
+                [InlineKeyboardButton(f"🔴 ثبت به عنوان مشتری بدهکار ({final_price:,} ت)", callback_data=f"res_adm_renpay_debt_{sub_id}_{plan_id}")],
             ]
             for c in cards:
                 c_num = str(c.get("card_number", ""))
@@ -7615,6 +7901,9 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             wholesale_cost = plan.get("wholesale_price", 0)
             selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            discount_amount = int(context.user_data.get("res_renew_discount") or 0)
+            final_price = max(0, selling_price - discount_amount)
+
             r_stats = db.get_reseller_stats(r_id) or {}
             power = r_stats.get("total_purchasing_power", 0)
             if power < wholesale_cost:
@@ -7627,8 +7916,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             acct_name = sub.get("account_name") or f"sub_{sub_id}"
 
             creator_user = db.get_bot_creator_display_name(user.id, r_id)
-            profit_margin = 0 if mode == "debt" else max(0, selling_price - wholesale_cost)
-            reseller_selling = 0 if mode == "debt" else selling_price
+            profit_margin = 0 if mode == "debt" else max(0, final_price - wholesale_cost)
+            reseller_selling = 0 if mode == "debt" else final_price
 
             db.deduct_reseller_balance(
                 r_id, wholesale_cost, pname, acct_name, 
@@ -7653,7 +7942,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if mode == "debt":
                 payment_status = "debtor"
                 old_debt = int(sub.get("debt_amount") or 0)
-                new_debt = old_debt + selling_price
+                new_debt = old_debt + final_price
                 db.update_subscription(
                     sub_id,
                     plan_id=plan_id,
@@ -7664,7 +7953,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     status="active",
                     payment_status="debtor",
                     debt_amount=new_debt,
-                    debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}"
+                    debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                 )
                 db.add_customer_debt_record(
                     subscription_id=sub_id,
@@ -7673,29 +7962,29 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     reseller_id=r_id,
                     action_type="renew_debt",
                     plan_name=pname,
-                    amount=selling_price,
-                    notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}",
+                    amount=final_price,
+                    notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                     created_by=creator_user,
                     previous_debt=old_debt
                 )
-                pay_label = f"🔴 بدهکار (+{selling_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
+                pay_label = f"🔴 بدهکار (+{final_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
             elif mode == "card" and target_card_id:
                 payment_status = "paid"
                 c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
                 c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
                 c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
-                pay_label = f"💳 واریز به {c_name}"
+                pay_label = f"💳 واریز به {c_name} ({final_price:,} ت)"
                 try:
                     db.add_card_transaction(
                         card_id=target_card_id,
                         owner_type="reseller" if r_id else "admin",
                         owner_id=r_id or 0,
                         reseller_id=r_id or 0,
-                        amount=selling_price,
+                        amount=final_price,
                         tx_type="deposit",
                         category="فروش اشتراک",
                         title=f"تمدید اشتراک {acct_name}",
-                        description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}",
+                        description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                         ref_type="subscription",
                         ref_id=str(sub_id),
                         actor=creator_user
@@ -7713,7 +8002,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     status="active"
                 )
             else:
-                pay_label = "💵 دریافت نقدی / صندوق"
+                pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
                 db.update_subscription(
                     sub_id,
                     plan_id=plan_id,
@@ -7731,7 +8020,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     user_id=sub.get("telegram_id") or 0,
                     username=acct_name,
                     plan_name=pname,
-                    amount=selling_price,
+                    amount=final_price,
                     gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
                     tracking_code=f"BOT_REN_{creator_user}",
                     status="approved",
@@ -7754,11 +8043,20 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     renewal_type="bot_renewal",
                     reseller_id=r_id,
                     plan_price=selling_price,
+                    discount_amount=discount_amount,
                     cost_paid=wholesale_cost,
-                    start_date=get_now_iso()
+                    start_date=get_now_iso(),
+                    note="تمدید اشتراک" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                 )
             except Exception as e_rec:
                 logger.error(f"Error recording renew tx/history in bot: {e_rec}")
+
+            # پاکسازی متغیرهای تمدید در کانتکست
+            context.user_data.pop("waiting_res_renew_discount", None)
+            context.user_data.pop("res_renew_sub_id", None)
+            context.user_data.pop("res_renew_plan_id", None)
+            context.user_data.pop("res_renew_discount", None)
+            context.user_data.pop("res_renew_final_price", None)
 
             # اطلاع‌رسانی به مشتری اگر تلگرام دارد
             if sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
@@ -7774,10 +8072,12 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception:
                     pass
 
+            disc_report = f"\n🎁 تخفیف: **{discount_amount:,} تومان**\n💵 دریافتی نهایی: **{final_price:,} تومان**" if discount_amount > 0 else ""
             await query.edit_message_text(
                 f"✅ **اشتراک «{acct_name}» با موفقیت تمدید شد!**\n\n"
                 f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
-                f"💰 کسر از پنل: **{wholesale_cost:,} تومان**\n"
+                f"💰 کسر از پنل: **{wholesale_cost:,} تومان**"
+                f"{disc_report}\n"
                 f"💳 وضعیت تسویه: **{pay_label}**\n"
                 f"✍️ صادرکننده: **{creator_user}**\n"
                 f"🔄 ترافیک مصرفی ریست شد و اعتبار جدید اعمال گردید.",

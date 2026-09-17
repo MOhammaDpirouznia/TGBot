@@ -566,6 +566,7 @@ def get_language_keyboard(is_reseller: bool = False, reseller_id: int = None) ->
             st = it.get("style")
             st_arg = st if st in ("primary", "success", "danger") else None
             kw = {"style": st_arg} if st_arg else {}
+            title = db.format_styled_button_text(title, st)
             r = it.get("row", len(row_map))
             c = it.get("col", 0)
             if r not in row_map:
