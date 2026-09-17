@@ -2002,15 +2002,20 @@
 
             {% if not is_new_customer %}
             <!-- گزینه فعال‌سازی آنی یا رزرو در صف -->
-            <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-4">
+            {% set is_sub_depleted = (sub.get('status') != 'active' or sub.get('is_expired') or sub.get('is_traffic_expired') or (sub.get('data_limit', 0) > 0 and (sub.get('data_used') or 0) >= sub.get('data_limit', 0)) or (days_left is defined and days_left is not none and days_left <= 0)) %}
+            <div class="p-3 rounded-3 bg-black bg-opacity-25 border {% if is_sub_depleted %}border-warning border-opacity-50{% else %}border-primary border-opacity-50{% endif %} mb-4">
                 <div class="form-check form-switch d-flex align-items-center gap-2 mb-0">
-                    <input class="form-check-input" type="checkbox" name="instant_activation" id="instantActivation" value="1" checked style="cursor: pointer; width: 2.5em; height: 1.3em;">
+                    <input class="form-check-input" type="checkbox" name="instant_activation" id="instantActivation" value="1" {% if is_sub_depleted %}checked{% endif %} style="cursor: pointer; width: 2.5em; height: 1.3em;">
                     <label class="form-check-label fw-bold text-white small" for="instantActivation" style="cursor: pointer;">
-                        <i class="fas fa-bolt text-warning me-1"></i> فعال‌سازی آنی بسته جدید (در لحظه تایید پرداخت)
+                        <i class="fas fa-bolt text-warning me-1"></i> فعال‌سازی آنی تمدید (ریست کامل و جایگزینی لحظه‌ای)
                     </label>
                 </div>
-                <div class="text-secondary small mt-1 ps-4" style="font-size: 0.8rem; margin-right: 2.8rem;">
-                    با غیرفعال کردن این گزینه، بسته خریداری‌شده در صف رزرو قرار می‌گیرد و پس از پایان حجم یا انقضای بسته فعلی به طور خودکار فعال می‌شود.
+                <div class="small mt-2 ps-4" style="font-size: 0.8rem; margin-right: 2.8rem;">
+                    {% if is_sub_depleted %}
+                    <div class="text-warning mb-1"><i class="fas fa-info-circle me-1"></i> <strong>وضعیت فعلی:</strong> اشتراک شما به پایان رسیده است؛ فعال‌سازی آنی به صورت پیش‌فرض فعال شد تا دسترسی شما بلافاصله وصل شود.</div>
+                    {% else %}
+                    <div class="text-info mb-1"><i class="fas fa-shield-halved me-1"></i> <strong>وضعیت فعلی:</strong> اشتراک فعلی شما هنوز به اتمام نرسیده است؛ جهت حفظ حجم و روزهای باقیمانده، تیک فعال‌سازی آنی پیش‌فرض <strong>غیرفعال</strong> است و بسته در <strong>صف رزرو</strong> قرار می‌گیرد (در صورت تمایل می‌توانید تیک را فعال کنید).</div>
+                    {% endif %}
                 </div>
             </div>
             {% else %}

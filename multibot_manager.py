@@ -2960,24 +2960,52 @@ class ResellerBotInstance:
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acc_title = html.escape(str(target_sub.get("account_name") or "اشتراک"))
 
+                    # بررسی وضعیت فعال یا منقضی بودن اشتراک
+                    is_sub_depleted = False
+                    if target_sub.get("status") != "active":
+                        is_sub_depleted = True
+                    elif target_sub.get("data_limit", 0) > 0 and (target_sub.get("data_used") or 0) >= target_sub.get("data_limit", 0):
+                        is_sub_depleted = True
+                    elif target_sub.get("expire_date"):
+                        try:
+                            exp_dt = datetime.fromisoformat(str(target_sub.get("expire_date")).replace("Z", ""))
+                            if exp_dt <= get_now_naive():
+                                is_sub_depleted = True
+                        except Exception:
+                            pass
+
+                    if is_sub_depleted:
+                        status_hint = "⚠️ <b>وضعیت فعلی اشتراک:</b> به پایان رسیده (منقضی یا اتمام حجم)\n💡 <b>پیشنهاد سیستم:</b> جهت برقراری فوری دسترسی اینترنت، گزینه <b>فعال‌سازی آنی</b> توصیه می‌شود."
+                        btn_instant_text = db.format_styled_button_text("⚡ فعال‌سازی آنی (پیشنهادی - اتصال فوری)", "success")
+                        btn_queue_text = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (رزرو)", "primary")
+                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
+                        buttons = [
+                            [InlineKeyboardButton(btn_instant_text, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
+                            [InlineKeyboardButton(btn_queue_text, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
+                            [InlineKeyboardButton(back_title, callback_data=f"r_renew_{sub_id}", style="danger")]
+                        ]
+                    else:
+                        status_hint = "🛡️ <b>وضعیت فعلی اشتراک:</b> دارای اعتبار فعال (روزها و حجم باقیمانده محفوظ است)\n💡 <b>پیشنهاد سیستم:</b> جهت جلوگیری از سوختن روزها و حجم باقیمانده، گزینه <b>قرارگیری در صف تمدید</b> توصیه می‌شود."
+                        btn_queue_text = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", "primary")
+                        btn_instant_text = db.format_styled_button_text("⚡ فعال‌سازی آنی (ریست دوره فعلی)", "success")
+                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
+                        buttons = [
+                            [InlineKeyboardButton(btn_queue_text, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
+                            [InlineKeyboardButton(btn_instant_text, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
+                            [InlineKeyboardButton(back_title, callback_data=f"r_renew_{sub_id}", style="danger")]
+                        ]
+
                     text = (
                         f"🔄 <b>نحوه تمدید اشتراک «{acc_title}»:</b>\n\n"
                         f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} | {days} روز)\n"
                         f"💰 مبلغ: <b>{price:,} تومان</b>\n\n"
+                        f"{status_hint}\n\n"
                         f"لطفاً روش اعمال این تمدید را مشخص فرمایید:\n\n"
                         f"⚡ <b>فعال‌سازی آنی:</b>\n"
                         f"بسته بلافاصله پس از پرداخت فعال می‌شود؛ دوره مصرف و زمان اشتراک ریست شده و حجم/روزهای باقیمانده فعلی صفر می‌گردد.\n\n"
-                        f"⏳ <b>قرارگیری در صف تمدید (پیشنهادی):</b>\n"
+                        f"⏳ <b>قرارگیری در صف تمدید:</b>\n"
                         f"بسته در صف رزرو اشتراک شما ذخیره می‌شود بدون اینکه حجم یا زمان فعلی شما بسوزد. به محض رسیدن مصرف به ۹۹.۹٪ یا پایان اعتبار فعلی، بسته رزرو شده خودکار فعال خواهد شد."
                     )
-                    q_title = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (رزرو خودکار)", "primary")
-                    inst_title = db.format_styled_button_text("⚡ فعال‌سازی آنی (ریست دوره فعلی)", "success")
-                    back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
-                    buttons = [
-                        [InlineKeyboardButton(q_title, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
-                        [InlineKeyboardButton(inst_title, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
-                        [InlineKeyboardButton(back_title, callback_data=f"r_renew_{sub_id}", style="danger")]
-                    ]
                     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
                     return
 
@@ -4402,22 +4430,47 @@ class ResellerBotInstance:
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
 
+                    # بررسی وضعیت فعال یا منقضی بودن اشتراک
+                    is_sub_depleted = False
+                    if sub.get("status") != "active":
+                        is_sub_depleted = True
+                    elif sub.get("data_limit", 0) > 0 and (sub.get("data_used") or 0) >= sub.get("data_limit", 0):
+                        is_sub_depleted = True
+                    elif sub.get("expire_date"):
+                        try:
+                            exp_dt = datetime.fromisoformat(str(sub.get("expire_date")).replace("Z", ""))
+                            if exp_dt <= get_now_naive():
+                                is_sub_depleted = True
+                        except Exception:
+                            pass
+
+                    if is_sub_depleted:
+                        status_hint = "⚠️ <b>وضعیت فعلی اشتراک:</b> منقضی شده / اتمام حجم\n💡 <b>پیشنهاد سیستم:</b> به دلیل قطع بودن دسترسی مشترک، <b>فعال‌سازی فوری و آنی</b> توصیه می‌شود تا بلافاصله وصل شود."
+                        buttons = [
+                            [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (پیشنهادی)", callback_data=f"res_adm_rmode_instant_{s_id}_{p_id}")],
+                            [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"res_adm_rmode_queue_{s_id}_{p_id}")],
+                            [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
+                        ]
+                    else:
+                        status_hint = "🛡️ <b>وضعیت فعلی اشتراک:</b> دارای روزها و حجم فعال\n💡 <b>پیشنهاد سیستم:</b> جهت جلوگیری از سوختن روزها و حجم باقیمانده مشترک، <b>قرارگیری در صف تمدید</b> توصیه می‌شود (در پایان دوره فعلی خودکار فعال می‌گردد)."
+                        buttons = [
+                            [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", callback_data=f"res_adm_rmode_queue_{s_id}_{p_id}")],
+                            [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (ریست دوره فعلی)", callback_data=f"res_adm_rmode_instant_{s_id}_{p_id}")],
+                            [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
+                        ]
+
                     p_text = (
                         f"🔄 <b>انتخاب نوع اعمال تمدید «{acct_name}» (گام ۲ از ۴)</b>\n\n"
                         f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n"
                         f"💰 کسر از پنل: <b>{w_price:,} تومان</b>\n\n"
+                        f"{status_hint}\n\n"
                         f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
                         f"⚡ <b>فعال‌سازی فوری و آنی:</b>\n"
                         f"میزان مصرف فعلی صفر شده و بسته جدید بلافاصله از اکنون فعال می‌گردد.\n\n"
                         f"⏳ <b>قرارگیری در صف تمدید (رزرو خودکار):</b>\n"
                         f"حجم و روزهای فعلی کاربر حفظ می‌شود و این بسته پس از پایان دوره فعلی، به طور خودکار فعال خواهد شد."
                     )
-                    buttons = [
-                        [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی", callback_data=f"res_adm_rmode_instant_{s_id}_{p_id}")],
-                        [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"res_adm_rmode_queue_{s_id}_{p_id}")],
-                        [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{s_id}")]
-                    ]
                     await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
             elif data.startswith("res_adm_rmode_"):

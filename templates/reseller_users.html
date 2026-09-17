@@ -1203,10 +1203,16 @@
                     </div>
 
                     <div class="border-top pt-3">
-                        <div class="form-check form-switch p-2 bg-light rounded-3 border">
-                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="resellerInstantActivate{{ sub['id'] }}" value="1" {% if sub['status'] == 'expired' or (sub['data_limit'] > 0 and (sub['data_used'] or 0) >= sub['data_limit']) or (sub.get('remaining_days', 10) <= 1) %}checked{% endif %}>
-                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="resellerInstantActivate{{ sub['id'] }}">
-                                ⚡ فعال‌سازی آنی تمدید (ریست کامل حجم و روزها)
+                        {% set is_sub_depleted = (sub['status'] != 'active' or sub.get('is_expired') or sub.get('is_traffic_expired') or (sub['data_limit'] > 0 and (sub['data_used'] or 0) >= sub['data_limit']) or (sub.get('remaining_days') is not none and sub.get('remaining_days') <= 0)) %}
+                        <div class="form-check form-switch p-2 {% if is_sub_depleted %}bg-warning bg-opacity-10 border-warning{% else %}bg-light border{% endif %} rounded-3 border">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="resellerInstantActivate{{ sub['id'] }}" value="1" {% if is_sub_depleted %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer d-flex align-items-center justify-content-between flex-wrap gap-2" for="resellerInstantActivate{{ sub['id'] }}">
+                                <span>⚡ فعال‌سازی آنی تمدید (ریست کامل حجم و روزها)</span>
+                                {% if is_sub_depleted %}
+                                <span class="badge bg-danger bg-opacity-15 text-danger border border-danger border-opacity-25 small" style="font-size: 0.72rem;">پیش‌فرض فعال: اشتراک منقضی/اتمام حجم</span>
+                                {% else %}
+                                <span class="badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 small" style="font-size: 0.72rem;">پیش‌فرض غیرفعال: حفظ روزها و رزرو در صف</span>
+                                {% endif %}
                             </label>
                             <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
                                 <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر تیک فعال باشد:</strong> مصرف کاربر در هیدیفای بلافاصله صفر شده و بسته جدید آغاز می‌شود.</div>

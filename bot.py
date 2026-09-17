@@ -7189,21 +7189,46 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             price = plan.get("price", 0)
             vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
+            # بررسی وضعیت فعال یا منقضی بودن اشتراک
+            is_sub_depleted = False
+            if sub.get("status") != "active":
+                is_sub_depleted = True
+            elif sub.get("data_limit", 0) > 0 and (sub.get("data_used") or 0) >= sub.get("data_limit", 0):
+                is_sub_depleted = True
+            elif sub.get("expire_date"):
+                try:
+                    exp_dt = datetime.fromisoformat(str(sub.get("expire_date")).replace("Z", ""))
+                    if exp_dt <= get_now_naive():
+                        is_sub_depleted = True
+                except Exception:
+                    pass
+
+            if is_sub_depleted:
+                status_desc = "⚠️ **وضعیت اشتراک:** منقضی شده یا حجم به پایان رسیده است.\n💡 **پیشنهاد سیستم:** به دلیل قطع بودن دسترسی، **فعال‌سازی فوری و آنی** توصیه می‌شود تا اتصال کاربر بلافاصله وصل شود."
+                buttons = [
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (پیشنهادی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                ]
+            else:
+                status_desc = "🛡️ **وضعیت اشتراک:** دارای حجم و روزهای فعال است.\n💡 **پیشنهاد سیستم:** جهت جلوگیری از سوختن روزها و حجم باقیمانده، **قرارگیری در صف تمدید** توصیه می‌شود تا در پایان دوره فعلی خودکار فعال گردد."
+                buttons = [
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (ریست دوره فعلی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                ]
+
             prompt_text = (
                 f"🔄 **انتخاب نحوه اعمال تمدید «{acct_name}»**\n\n"
                 f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
                 f"💵 مبلغ پلن: **{price:,} تومان**\n\n"
+                f"{status_desc}\n\n"
                 f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
                 f"⚡ **فعال‌سازی فوری و آنی:**\n"
                 f"میزان مصرف فعلی صفر شده و حجم و تاریخ جدید بلافاصله جایگزین می‌گردد.\n\n"
                 f"⏳ **قرارگیری در صف تمدید (رزرو خودکار):**\n"
                 f"حجم و روزهای باقیمانده فعلی کاربر حفظ می‌شود و این بسته پس از پایان سرویس فعلی، به طور خودکار فعال خواهد شد."
             )
-            buttons = [
-                [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
-                [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
-                [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
-            ]
             await query.edit_message_text(prompt_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
             return ADMIN_MENU
 
@@ -8005,22 +8030,47 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             acct_name = sub.get("account_name") or f"sub_{sub_id}"
             vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
+            # بررسی وضعیت فعال یا منقضی بودن اشتراک
+            is_sub_depleted = False
+            if sub.get("status") != "active":
+                is_sub_depleted = True
+            elif sub.get("data_limit", 0) > 0 and (sub.get("data_used") or 0) >= sub.get("data_limit", 0):
+                is_sub_depleted = True
+            elif sub.get("expire_date"):
+                try:
+                    exp_dt = datetime.fromisoformat(str(sub.get("expire_date")).replace("Z", ""))
+                    if exp_dt <= get_now_naive():
+                        is_sub_depleted = True
+                except Exception:
+                    pass
+
+            if is_sub_depleted:
+                status_desc = "⚠️ **وضعیت اشتراک:** منقضی شده یا حجم به پایان رسیده است.\n💡 **پیشنهاد سیستم:** به دلیل قطع بودن دسترسی مشترک، **فعال‌سازی فوری و آنی** توصیه می‌شود تا اتصال کاربر بلافاصله وصل شود."
+                buttons = [
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (پیشنهادی)", callback_data=f"res_adm_rmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"res_adm_rmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{sub_id}")]
+                ]
+            else:
+                status_desc = "🛡️ **وضعیت اشتراک:** دارای حجم و روزهای فعال است.\n💡 **پیشنهاد سیستم:** جهت جلوگیری از سوختن روزها و حجم باقیمانده مشترک، **قرارگیری در صف تمدید** توصیه می‌شود (در پایان دوره فعلی خودکار فعال می‌گردد)."
+                buttons = [
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", callback_data=f"res_adm_rmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (ریست دوره فعلی)", callback_data=f"res_adm_rmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{sub_id}")]
+                ]
+
             p_text = (
                 f"🔄 **انتخاب نوع اعمال تمدید «{acct_name}» (گام ۲ از ۴)**\n\n"
                 f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
                 f"💵 قیمت مصوب فروش: **{selling_price:,} تومان**\n"
                 f"💰 کسر از پنل: **{wholesale_cost:,} تومان**\n\n"
+                f"{status_desc}\n\n"
                 f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
                 f"⚡ **فعال‌سازی فوری و آنی:**\n"
                 f"میزان مصرف فعلی صفر شده و بسته جدید بلافاصله از اکنون فعال می‌گردد.\n\n"
                 f"⏳ **قرارگیری در صف تمدید (رزرو خودکار):**\n"
                 f"حجم و روزهای فعلی کاربر حفظ می‌شود و این بسته پس از پایان دوره فعلی، به طور خودکار فعال خواهد شد."
             )
-            buttons = [
-                [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی", callback_data=f"res_adm_rmode_instant_{sub_id}_{plan_id}")],
-                [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"res_adm_rmode_queue_{sub_id}_{plan_id}")],
-                [InlineKeyboardButton("🔙 انصراف و بازگشت", callback_data=f"res_adm_rsub_{sub_id}")]
-            ]
             await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
             return ADMIN_MENU
 
