@@ -1845,7 +1845,7 @@
                 <span class="text-secondary small">در انتظار واریز تتر...</span>
             </div>
             <div>
-                <a href="{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
+                <a href="{% if token %}{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}{% else %}{{ url_for('customer_cancel_invoice', order_id=invoice['order_id'], tg_id=telegram_id, r=reseller_id) }}{% endif %}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
                     <i class="fas fa-rotate-left me-1"></i> لغو فاکتور و انتخاب روش دیگر
                 </a>
             </div>
@@ -1918,7 +1918,7 @@
                 {% endif %}
             </div>
             <div>
-                <a href="{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
+                <a href="{% if token %}{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}{% else %}{{ url_for('customer_cancel_invoice', order_id=invoice['order_id'], tg_id=telegram_id, r=reseller_id) }}{% endif %}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
                     <i class="fas fa-rotate-left me-1"></i> لغو فاکتور و انتخاب روش دیگر
                 </a>
             </div>
@@ -1930,7 +1930,7 @@
 
     {% macro macro_renewal_card() %}
     <!-- بخش انتخاب پلن تمدید یا خرید جدید -->
-    {% if portal_enable_renewal %}
+    {% if portal_enable_renewal or is_new_customer %}
     <div class="glass-card p-4 mb-4">
         <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>{% if is_new_customer %}خرید اشتراک جدید{% else %}تمدید یا ارتقای اشتراک{% endif %}</h5>
         <p class="text-secondary small">{% if is_new_customer %}یک بسته را انتخاب کنید تا اشتراک اختصاصی شما صادر شود:{% else %}یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:{% endif %}</p>
@@ -3450,7 +3450,7 @@ function onDebtPaymentMethodChange(radio) {
 // سیستم جامع گفتگوی آنلاین پیام‌رسانی پورتال (Live Messenger Support Chat)
 // ═══════════════════════════════════════════════════════════════════════
 
-const PORTAL_TOKEN = "{{ token }}";
+const PORTAL_TOKEN = "{{ token or '' }}";
 let CUSTOMER_AVATAR_URL = "{{ avatar_url(sub.telegram_id if sub.telegram_id else (sub.account_name if sub.account_name else sub.id)) }}";
 let SUPPORT_AVATAR_URL = "{{ avatar_url(('reseller_' ~ sub.reseller_id) if sub.reseller_id else 'support') }}";
 let chatActiveTicket = null;
@@ -3650,6 +3650,9 @@ function updateSupportOnlineStatusUI(isOnline, supportName, statusText) {
 
 // مقداردهی اولیه سیستم چت در لود صفحه
 function initPortalChatSystem() {
+    if (!PORTAL_TOKEN || PORTAL_TOKEN === 'None' || PORTAL_TOKEN === '0') {
+        return;
+    }
     fetch('/api/portal/' + PORTAL_TOKEN + '/chat/init')
         .then(res => res.json())
         .then(data => {
@@ -4234,7 +4237,7 @@ function showInvoiceExpired() {
             </button>
         </div>
         <div class="pt-2 border-top border-secondary border-opacity-25 text-end">
-            <a href="{{ get_customer_portal_url(token, _external=False) }}" class="btn btn-sm btn-secondary rounded-pill px-3">
+            <a href="{% if token %}{{ get_customer_portal_url(token, _external=False) }}{% else %}{{ url_for('telegram_webapp', tg_id=telegram_id, r=reseller_id) }}{% endif %}" class="btn btn-sm btn-secondary rounded-pill px-3">
                 <i class="fas fa-redo me-1"></i> صدور فاکتور جدید
             </a>
         </div>
@@ -4375,6 +4378,12 @@ relocateModalsToBody();
 
             // در صورتی که کاربر از دکمه منوی ثابت تلگرام وارد شده باشد و tg_id در آدرس نباشد
             try {
+                if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+                    const detectedUid = tg.initDataUnsafe.user.id;
+                    document.querySelectorAll('input[name="telegram_id"]').forEach(function(el) {
+                        if (!el.value || el.value === '0') el.value = detectedUid;
+                    });
+                }
                 const urlParams = new URLSearchParams(window.location.search);
                 if (!urlParams.get('tg_id') && !urlParams.get('id') && !urlParams.get('token') && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
                     urlParams.set('tg_id', tg.initDataUnsafe.user.id);

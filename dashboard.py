@@ -20042,7 +20042,6 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             sub_id = 0
             reseller_id = reseller_id or 0
             days_left = 0
-            invoice = None
             sub_url = ""
             single_url = ""
             pending_queue = None
@@ -20066,31 +20065,33 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         if sub.get("is_expired") and days_left < 0:
             days_left = 0
 
-        # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
-        now_str = get_now_naive().isoformat()
-        conn = db.get_connection()
-        inv_row = None
-        req_order_id = request.args.get("order_id") if request else None
-        if req_order_id:
-            inv_row = conn.execute("""
-                SELECT * FROM smart_invoices 
-                WHERE order_id=? AND status='pending'
-            """, (req_order_id,)).fetchone()
-        if not inv_row and sub_id:
-            inv_row = conn.execute("""
-                SELECT * FROM smart_invoices 
-                WHERE sub_id=? AND status='pending' AND expires_at > ?
-                ORDER BY id DESC LIMIT 1
-            """, (sub_id, now_str)).fetchone()
-        elif not inv_row and telegram_id:
-            inv_row = conn.execute("""
-                SELECT * FROM smart_invoices 
-                WHERE telegram_id=? AND status='pending' AND expires_at > ?
-                ORDER BY id DESC LIMIT 1
-            """, (telegram_id, now_str)).fetchone()
-        conn.close()
-        invoice = dict(inv_row) if inv_row else None
+    # دریافت آخرین فاکتور فعال معلق برای این اشتراک یا کاربر (در صورت وجود)
+    now_str = get_now_naive().isoformat()
+    conn = db.get_connection()
+    inv_row = None
+    req_order_id = request.args.get("order_id") if request else None
+    if req_order_id:
+        inv_row = conn.execute("""
+            SELECT * FROM smart_invoices 
+            WHERE order_id=? AND status='pending'
+        """, (req_order_id,)).fetchone()
+    if not inv_row and sub_id:
+        inv_row = conn.execute("""
+            SELECT * FROM smart_invoices 
+            WHERE sub_id=? AND status='pending' AND expires_at > ?
+            ORDER BY id DESC LIMIT 1
+        """, (sub_id, now_str)).fetchone()
+    if not inv_row and telegram_id:
+        inv_row = conn.execute("""
+            SELECT s.* FROM smart_invoices s
+            LEFT JOIN transactions t ON s.order_id = t.order_id
+            WHERE (s.telegram_id=? OR t.user_id=?) AND s.status='pending' AND s.expires_at > ?
+            ORDER BY s.id DESC LIMIT 1
+        """, (telegram_id, telegram_id, now_str)).fetchone()
+    conn.close()
+    invoice = dict(inv_row) if inv_row else None
 
+    if sub_row:
         # لینک‌های اشتراک و کانفیگ تکی
         user_uuid = sub.get("hidify_uuid") or str(sub_id)
         acc_name = sub.get("account_name") or ""
@@ -20294,15 +20295,25 @@ def customer_portal_dynamic(portal_prefix: str, token: str):
     return _handle_customer_portal_view(token)
 
 
-@app.route("/renew/cancel-invoice/<token>", methods=["GET", "POST"])
+@app.route("/portal/cancel-invoice/<order_id>", methods=["GET", "POST"])
+@app.route("/renew/cancel-invoice/<order_id>", methods=["GET", "POST"])
 @app.route("/renew/cancel-invoice/<token>/<order_id>", methods=["GET", "POST"])
-def customer_cancel_invoice(token: str, order_id: str = None):
+@app.route("/renew/cancel-invoice/<token>", methods=["GET", "POST"])
+def customer_cancel_invoice(token: str = None, order_id: str = None):
     """لغو فاکتور معلق فعلی و بازگشت به انتخاب مجدد روش پرداخت توسط مشتری"""
-    conn = db.get_connection()
-    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
-    conn.close()
+    # اگر order_id به تنهایی در مسیر تک‌آرگومانی پاس داده شده باشد
+    if token and not order_id and (token.startswith("INV") or token.startswith("BUY_") or token.startswith("WAL_") or token.startswith("ONL_")):
+        order_id = token
+        token = None
 
-    sub_id = sub_row["id"] if sub_row else 0
+    sub_row = None
+    sub_id = 0
+    if token and token not in ("None", "0", "null", "portal", "webapp"):
+        conn = db.get_connection()
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+        conn.close()
+        sub_id = sub_row["id"] if sub_row else 0
+
     if not order_id and sub_id:
         now_str = get_now_naive().isoformat()
         conn = db.get_connection()
@@ -20315,6 +20326,9 @@ def customer_cancel_invoice(token: str, order_id: str = None):
         if inv_row:
             order_id = inv_row["order_id"]
 
+    if not order_id and request:
+        order_id = request.args.get("order_id")
+
     if order_id:
         db.cancel_smart_invoice(order_id, sub_id=sub_id)
         conn = db.get_connection()
@@ -20325,9 +20339,9 @@ def customer_cancel_invoice(token: str, order_id: str = None):
     else:
         flash("هیچ فاکتور فعالی برای لغو یافت نشد.", "warning")
 
-    tg_id = request.args.get("tg_id") if request else None
-    r_id = request.args.get("r") if request else None
-    if tg_id or (request and request.args.get("is_webapp")):
+    tg_id = request.args.get("tg_id") or request.args.get("id") if request else None
+    r_id = request.args.get("r") or request.args.get("reseller_id") if request else None
+    if tg_id or (request and (request.args.get("is_webapp") or request.path.startswith("/webapp") or request.path.startswith("/portal"))):
         return redirect(url_for("telegram_webapp", tg_id=tg_id, r=r_id))
     return redirect(url_for("customer_portal", token=token if sub_row else ""))
 
@@ -20946,7 +20960,8 @@ def customer_buy_new_plan():
             timeout_minutes=timeout,
             instant_activation=True,
             discount_code=valid_discount_code,
-            discount_amount=discount_val
+            discount_amount=discount_val,
+            telegram_id=telegram_id
         )
         order_id = invoice["order_id"]
         inv_amount = invoice.get("final_amount", price)
@@ -21286,6 +21301,37 @@ def api_portal_chat_init(token: str):
     conn.close()
 
     if not sub_row:
+        tg_id_arg = (request.args.get("tg_id") or request.args.get("id")) if request else None
+        tg_id = int(tg_id_arg) if (tg_id_arg and str(tg_id_arg).isdigit()) else 0
+        if not tg_id and token and str(token).isdigit():
+            tg_id = int(token)
+        
+        if tg_id or (request and (request.args.get("is_webapp") or token in ("None", "", "0"))):
+            r_arg = (request.args.get("r") or request.args.get("reseller_id")) if request else None
+            reseller_id = int(r_arg) if (r_arg and str(r_arg).isdigit()) else 0
+            u_info = db.get_user(tg_id) or {} if tg_id else {}
+            history = db.get_portal_chat_history(0, telegram_id=tg_id, portal_token=token) if tg_id else []
+            support_status_info = db.is_support_online_for_sub(0, reseller_id=reseller_id)
+            chat_cfg = db.get_chat_settings()
+            return jsonify({
+                "success": True,
+                "subscription_id": 0,
+                "customer_name": u_info.get("username") or "کاربر گرامی",
+                "customer_phone": u_info.get("phone_number") or "",
+                "active_ticket": history[0] if history else None,
+                "messages": db.get_ticket_messages(history[0]["id"]) if history else [],
+                "history_count": len(history),
+                "history": history,
+                "support_status": support_status_info.get("status", "online"),
+                "support_is_online": support_status_info.get("is_online", True),
+                "support_name": support_status_info.get("support_name") or chat_cfg.get("support_display_name", "پشتیبانی"),
+                "support_status_text": support_status_info.get("status_text", ""),
+                "chat_button_style": chat_cfg.get("chat_button_style", "floating_pill"),
+                "chat_button_text": chat_cfg.get("chat_button_text", "گفتگوی آنلاین"),
+                "chat_button_position": chat_cfg.get("chat_button_position", "bottom_right"),
+                "customer_avatar_url": f"/avatar/{tg_id}" if tg_id else "/static/images/default_avatar.png",
+                "support_avatar_url": f"/avatar/{('reseller_' + str(reseller_id)) if reseller_id else 'support'}"
+            })
         return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
 
     sub = dict(sub_row)

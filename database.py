@@ -1064,6 +1064,10 @@ class Database:
             cursor.execute("ALTER TABLE transactions ADD COLUMN is_debt_settlement INTEGER DEFAULT 0")
         except Exception:
             pass
+        try:
+            cursor.execute("ALTER TABLE smart_invoices ADD COLUMN telegram_id INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         try:
             cursor.execute("""
@@ -18977,7 +18981,7 @@ class Database:
         finally:
             conn.close()
 
-    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0, is_debt_settlement: int = 0) -> dict:
+    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0, is_debt_settlement: int = 0, telegram_id: int = 0) -> dict:
         """
         تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
         """
@@ -19029,15 +19033,16 @@ class Database:
         disc_code_clean = (discount_code or "").strip().upper() or None
         disc_amt_clean = int(discount_amount or 0)
         debt_settle_val = 1 if is_debt_settlement else 0
+        tg_id_val = int(telegram_id or 0)
 
         cursor.execute("""
             INSERT INTO smart_invoices (
                 order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
                 final_amount, target_card_id, card_number, card_holder, bank_name, 
                 status, token, expires_at, created_at, instant_activation,
-                discount_code, discount_amount, is_debt_settlement
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
-        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean, debt_settle_val))
+                discount_code, discount_amount, is_debt_settlement, telegram_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean, debt_settle_val, tg_id_val))
         conn.commit()
         conn.close()
 
