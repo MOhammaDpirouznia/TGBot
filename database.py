@@ -15998,8 +15998,8 @@ class Database:
                     "id": item_id,
                     "title": title,
                     "enabled": bool(p.get("is_active", True) if "is_active" in p else True),
-                    "row": idx,
-                    "col": 0,
+                    "row": idx // 2,
+                    "col": idx % 2,
                     "order": idx + 1,
                     "style": style
                 })
@@ -16010,7 +16010,7 @@ class Database:
                 "id": back_id,
                 "title": back_title,
                 "enabled": True,
-                "row": len(items),
+                "row": (len(all_plans) + 1) // 2 + 1,
                 "col": 0,
                 "order": len(items) + 1,
                 "style": "danger"
@@ -16073,6 +16073,8 @@ class Database:
             prefix = f"sub_menu_{menu_key}_admin"
 
         saved_raw = self.get_setting(prefix)
+        if not saved_raw and bot_kind == "reseller" and reseller_id:
+            saved_raw = self.get_setting(f"sub_menu_{menu_key}_reseller")
         if saved_raw:
             try:
                 saved = json.loads(saved_raw) if isinstance(saved_raw, str) else saved_raw
@@ -16084,8 +16086,17 @@ class Database:
                         result_items = []
                         for def_it in defaults:
                             d_id = def_it.get("id")
-                            if d_id in saved_dict:
-                                s_item = saved_dict[d_id]
+                            s_item = saved_dict.get(d_id)
+                            if not s_item:
+                                if str(d_id).startswith("plan_"):
+                                    pid_raw = str(d_id).replace("plan_", "")
+                                    s_item = saved_dict.get(pid_raw) or saved_dict.get(f"r_buy_{pid_raw}")
+                                elif str(d_id).startswith("bundle_"):
+                                    bid_raw = str(d_id).replace("bundle_", "")
+                                    s_item = saved_dict.get(bid_raw) or saved_dict.get(f"bsb_buy_bdl_{bid_raw}")
+                                elif d_id in ("back_to_menu", "r_back_plans", "back"):
+                                    s_item = saved_dict.get("back_to_menu") or saved_dict.get("r_back_plans") or saved_dict.get("back")
+                            if s_item:
                                 merged = copy.deepcopy(def_it)
                                 if s_item.get("title"):
                                     merged["title"] = s_item["title"]
@@ -16240,19 +16251,13 @@ class Database:
         return default or ""
 
     @staticmethod
-    def format_styled_button_text(title: str, style: Optional[str]) -> str:
-        """قالب‌بندی عنوان دکمه تلگرام بر اساس استایل رنگی با ایموجی دایره‌ای"""
+    def format_styled_button_text(title: str, style: Optional[str] = None) -> str:
+        """قالب‌بندی و تمیزکاری عنوان دکمه تلگرام بدون اضافه کردن ایموجی‌های دایره‌ای اضافی"""
         if not title:
             return ""
-        st_norm = str(style or "").strip().lower()
-        # پاکسازی نشانگرهای دایره‌ای قبلی
+        # پاکسازی نشانگرهای دایره‌ای در ابتدا یا انتهای عنوان دکمه
         clean_title = re.sub(r"^[🔵🟢🔴⚪]\s*", "", str(title).strip())
-        if st_norm == "primary":
-            return f"🔵 {clean_title}"
-        elif st_norm == "success":
-            return f"🟢 {clean_title}"
-        elif st_norm == "danger":
-            return f"🔴 {clean_title}"
+        clean_title = re.sub(r"\s*[🔵🟢🔴⚪]$", "", clean_title).strip()
         return clean_title
 
     def get_sub_menu_item_styled_title(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> str:

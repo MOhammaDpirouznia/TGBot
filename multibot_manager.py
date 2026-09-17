@@ -622,8 +622,8 @@ class ResellerBotInstance:
 
                     btn_text = db.format_styled_button_text(btn_text, st)
 
-                    r = cfg_it.get("row", idx)
-                    c = cfg_it.get("col", 0)
+                    r = cfg_it.get("row", idx // 2)
+                    c = cfg_it.get("col", idx % 2)
                     if r not in row_map:
                         row_map[r] = []
                     row_map[r].append((c, InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}", **kw)))
@@ -2887,12 +2887,11 @@ class ResellerBotInstance:
                 text = f"🔄 <b>تمدید اشتراک «{acc_title}»:</b>\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:\n"
 
                 sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
-                sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
-                buttons = []
-                for p in plans:
+                row_map = {}
+                for idx, p in enumerate(plans):
                     pid = p["plan_id"]
                     item_id = pid if str(pid).startswith("plan_") else f"plan_{pid}"
-                    cfg_it = sub_dict.get(item_id, {})
+                    cfg_it = sub_dict.get(item_id) or sub_dict.get(str(pid)) or sub_dict.get(f"r_buy_{pid}") or {}
                     if not cfg_it.get("enabled", True):
                         continue
                     st = cfg_it.get("style")
@@ -2911,7 +2910,18 @@ class ResellerBotInstance:
                     else:
                         btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
                     btn_text = db.format_styled_button_text(btn_text, st)
-                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}", **kw)])
+
+                    r = cfg_it.get("row", idx // 2)
+                    c = cfg_it.get("col", idx % 2)
+                    if r not in row_map:
+                        row_map[r] = []
+                    row_map[r].append((c, InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}", **kw)))
+
+                buttons = []
+                for r in sorted(row_map.keys()):
+                    row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+                    if row_btns:
+                        buttons.append(row_btns)
 
                 cancel_btn = db.format_styled_button_text("◀️ انصراف", "danger")
                 buttons.append([InlineKeyboardButton(cancel_btn, callback_data="r_cancel_buy", style="danger")])

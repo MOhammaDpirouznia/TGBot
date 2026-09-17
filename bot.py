@@ -1460,9 +1460,9 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
 
     row_map = {}
-    for plan_id, plan in plans.items():
+    for idx, (plan_id, plan) in enumerate(plans.items()):
         item_id = plan_id if str(plan_id).startswith("plan_") else f"plan_{plan_id}"
-        cfg_it = sub_dict.get(item_id, {})
+        cfg_it = sub_dict.get(item_id) or sub_dict.get(str(plan_id)) or {}
         if not cfg_it.get("enabled", True):
             continue
 
@@ -1479,8 +1479,8 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         btn_title = db.format_styled_button_text(btn_title, st)
 
-        r = cfg_it.get("row", len(row_map))
-        c = cfg_it.get("col", 0)
+        r = cfg_it.get("row", idx // 2)
+        c = cfg_it.get("col", idx % 2)
         if r not in row_map:
             row_map[r] = []
         row_map[r].append((c, InlineKeyboardButton(btn_title, callback_data=f"plan_{plan_id}", **kw)))
@@ -3672,9 +3672,9 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sub_dict = {it.get("id"): it for it in sub_cfg if isinstance(it, dict)}
 
         row_map = {}
-        for plan_id, plan in plans.items():
+        for idx, (plan_id, plan) in enumerate(plans.items()):
             item_id = plan_id if str(plan_id).startswith("plan_") else f"plan_{plan_id}"
-            cfg_it = sub_dict.get(item_id, {})
+            cfg_it = sub_dict.get(item_id) or sub_dict.get(str(plan_id)) or {}
             if not cfg_it.get("enabled", True):
                 continue
 
@@ -3691,8 +3691,8 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             btn_title = db.format_styled_button_text(btn_title, st)
 
-            r = cfg_it.get("row", len(row_map))
-            c = cfg_it.get("col", 0)
+            r = cfg_it.get("row", idx // 2)
+            c = cfg_it.get("col", idx % 2)
             if r not in row_map:
                 row_map[r] = []
             row_map[r].append((c, InlineKeyboardButton(btn_title, callback_data=f"renew_plan_{plan_id}", **kw)))
