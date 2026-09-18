@@ -13772,7 +13772,8 @@ class Database:
 
     def restore_subscription(self, sub_id: int, is_reseller: bool = False, reseller_id: int = None, cost: int = 0,
                              new_uuid: str = None, new_start_date: str = None, new_expire_date: str = None,
-                             new_data_used: float = None, payment_source: str = "auto") -> dict:
+                             new_data_used: float = None, payment_source: str = "auto",
+                             new_data_limit: float = None, new_duration: int = None) -> dict:
         """بازگردانی اشتراک از سطل زباله به لیست فعال، به‌روزرسانی مشخصات و کسر هزینه در صورت بازگردانی توسط نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -13823,6 +13824,12 @@ class Database:
             if new_data_used is not None:
                 update_sql += ", data_used = ?"
                 params.append(float(new_data_used))
+            if new_data_limit is not None:
+                update_sql += ", data_limit = ?"
+                params.append(float(new_data_limit))
+            if new_duration is not None:
+                update_sql += ", duration = ?"
+                params.append(int(new_duration))
 
             update_sql += " WHERE id = ?"
             params.append(sub_id)

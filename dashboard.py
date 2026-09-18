@@ -2469,7 +2469,7 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
     if main_admin_key and main_admin_key not in keys_to_try:
         keys_to_try.append(main_admin_key)
 
-    # محاسبه روزهای مصرف‌شده و روزهای باقی‌مانده
+    # محاسبه روزهای مصرف‌شده و باقی‌مانده
     now_dt = get_now_naive()
     today = now_dt.date()
 
@@ -2496,15 +2496,19 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
             has_started = False
             days_used = 0
 
+    remaining_gb = round(max(0.0, data_limit - data_used), 2)
+
     if has_started:
         days_used = min(days_used, duration)
-        remaining_days = max(1, duration - days_used) if duration > days_used else 0
-        new_start_date = (today - timedelta(days=days_used)).strftime("%Y-%m-%d")
-        new_expire_date = (today + timedelta(days=remaining_days)).strftime("%Y-%m-%d")
+        remaining_days = max(1, duration - days_used) if duration > days_used else 1
     else:
         remaining_days = duration
-        new_start_date = None
-        new_expire_date = None
+
+    new_data_limit = remaining_gb
+    new_duration = remaining_days
+    new_data_used = 0.0
+    new_start_date = None
+    new_expire_date = None
 
     # کامنت اشتراک
     phone = sub.get("phone_number") or ""
@@ -2535,17 +2539,17 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
 
     if not existing_user:
         # کاربر روی سرور هیدیفای یافت نشد -> ساخت مجدد
-        logger.info(f"User {clean_uuid} not found in Hiddify. Recreating with usage={data_used} GB, start={new_start_date}...")
+        logger.info(f"User {clean_uuid} not found in Hiddify. Recreating with usage={new_data_used} GB, start={new_start_date}...")
         recreated = True
         create_res = hidify_sync_create_user(
             name=account_name,
-            usage_limit_gb=data_limit,
-            package_days=duration,
+            usage_limit_gb=new_data_limit,
+            package_days=new_duration,
             comment=full_comment,
             api_key=active_api_key,
             reseller_id=r_id,
             uuid=clean_uuid,
-            current_usage_gb=data_used,
+            current_usage_gb=new_data_used,
             start_date=new_start_date,
             expire_date=new_expire_date,
             enable=True,
@@ -2565,9 +2569,9 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
     # ۲. به‌روزرسانی نهایی و تضمین ثبت current_usage_GB و تاریخ‌ها از طریق PATCH و PUT
     update_payload = {
         "name": account_name,
-        "usage_limit_GB": data_limit,
-        "current_usage_GB": data_used,
-        "package_days": duration,
+        "usage_limit_GB": new_data_limit,
+        "current_usage_GB": new_data_used,
+        "package_days": new_duration,
         "start_date": new_start_date,
         "expire_date": new_expire_date,
         "enable": True,
@@ -2595,9 +2599,9 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
         "recreated": recreated,
         "uuid": final_uuid,
         "account_name": account_name,
-        "data_used": data_used,
-        "data_limit": data_limit,
-        "duration": duration,
+        "data_used": new_data_used,
+        "data_limit": new_data_limit,
+        "duration": new_duration,
         "days_used": days_used,
         "remaining_days": remaining_days,
         "new_start_date": new_start_date,
@@ -7910,7 +7914,9 @@ def admin_subscription_restore(sub_id):
         new_uuid=h_res.get("uuid"),
         new_start_date=h_res.get("new_start_date"),
         new_expire_date=h_res.get("new_expire_date"),
-        new_data_used=h_res.get("data_used")
+        new_data_used=h_res.get("data_used"),
+        new_data_limit=h_res.get("data_limit"),
+        new_duration=h_res.get("duration")
     )
     if res.get("success"):
         recreated_text = "مجدداً در پنل هیدیفای ساخته شد" if h_res.get("recreated") else "در پنل هیدیفای فعال شد"
@@ -7986,7 +7992,9 @@ def admin_trash_bulk():
                     new_uuid=h_res.get("uuid"),
                     new_start_date=h_res.get("new_start_date"),
                     new_expire_date=h_res.get("new_expire_date"),
-                    new_data_used=h_res.get("data_used")
+                    new_data_used=h_res.get("data_used"),
+        new_data_limit=h_res.get("data_limit"),
+        new_duration=h_res.get("duration")
                 )
                 success_count += 1
         db.add_system_log(
@@ -15146,6 +15154,8 @@ def reseller_restore_user(sub_id: int):
         new_start_date=h_res.get("new_start_date"),
         new_expire_date=h_res.get("new_expire_date"),
         new_data_used=h_res.get("data_used"),
+        new_data_limit=h_res.get("data_limit"),
+        new_duration=h_res.get("duration"),
         payment_source=payment_source
     )
     if res.get("success"):
@@ -15254,7 +15264,9 @@ def reseller_trash_bulk():
                     new_uuid=h_res.get("uuid"),
                     new_start_date=h_res.get("new_start_date"),
                     new_expire_date=h_res.get("new_expire_date"),
-                    new_data_used=h_res.get("data_used")
+                    new_data_used=h_res.get("data_used"),
+        new_data_limit=h_res.get("data_limit"),
+        new_duration=h_res.get("duration")
                 )
                 success_count += 1
 
