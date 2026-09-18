@@ -20484,18 +20484,20 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             token = selected_sub.get("hidify_uuid") or str(selected_sub.get("id"))
 
     # همگام‌سازی بلادرنگ اطلاعات مصرف کاربر از پنل هیدیفای برای نمایش صحیح در پورتال مشتری
-    if sub_row and sub_row.get("hidify_uuid"):
+    sub_dict = dict(sub_row) if sub_row else {}
+    if sub_dict.get("hidify_uuid"):
         try:
-            h_uuid = sub_row["hidify_uuid"]
-            r_id = sub_row.get("reseller_id")
+            h_uuid = sub_dict["hidify_uuid"]
+            r_id = sub_dict.get("reseller_id")
             api_key = db.get_reseller_hiddify_key(r_id) if r_id else None
             user_data = hidify_sync_request("GET", f"/admin/user/{h_uuid}/", api_key=api_key, timeout_seconds=2.0)
             if isinstance(user_data, dict) and "uuid" in user_data:
                 db.sync_from_hidify([user_data])
                 # دریافت مجدد اطلاعات بروز شده از دیتابیس
-                sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_row["id"],)).fetchone()
+                sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_dict["id"],)).fetchone()
         except Exception as e:
-            logger.error(f"Error syncing user {h_uuid} in customer portal: {e}")
+            h_uuid_str = sub_dict.get("hidify_uuid", "unknown")
+            logger.error(f"Error syncing user {h_uuid_str} in customer portal: {e}")
 
     conn.close()
 
