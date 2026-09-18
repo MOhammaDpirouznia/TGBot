@@ -1,0 +1,21 @@
+def sync_hiddify_online_users(force: bool = False, async_mode: bool = True):
+    """
+    همگام‌سازی غیرمسدودکننده وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
+    در رکوئست‌های وب به صورت پس‌زمینه (Background Thread) اجرا می‌شود تا هیچ تاخیری
+    در بارگذاری صفحات ایجاد نگردد.
+    """
+    global _last_online_sync_time, _is_hiddify_syncing
+    now = time.time()
+    if not force and (now - _last_online_sync_time < 60):
+        return
+
+    if async_mode:
+        with _online_sync_lock:
+            if _is_hiddify_syncing:
+                return
+            if not force and (now - _last_online_sync_time < 60):
+                return
+            _is_hiddify_syncing = True
+            _last_online_sync_time = now
+
+        

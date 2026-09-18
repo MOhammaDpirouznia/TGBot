@@ -1,0 +1,41 @@
+def subscriptions():
+    """لیست مشتریان و اشتراک‌ها همراه با وضعیت آنلاین، تب بدهکاران، فیلتر نماینده و نشان وضعیت تیکت با صفحه‌بندی هوشمند"""
+    sync_hiddify_online_users()
+    conn = db.get_connection()
+    status_filter = request.args.get("status", "all")
+    reseller_filter_id = request.args.get("reseller_id", "")
+    search = request.args.get("search", "").strip()
+
+    # پارامترهای صفحه‌بندی
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+
+    per_page_param = request.args.get("per_page", "50").strip()
+    if per_page_param.lower() in ("all", "همه", "0", "-1"):
+        per_page = 0
+        per_page_str = "all"
+    else:
+        try:
+            per_page = max(1, int(per_page_param))
+            per_page_str = str(per_page)
+        except (ValueError, TypeError):
+            per_page = 50
+            per_page_str = "50"
+
+    base_conditions = []
+    params = []
+
+    if status_filter == "deleted":
+        base_conditions.append("is_deleted = 1")
+    elif status_filter == "queue":
+        base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
+        base_conditions.append("id IN (SELECT subscription_id FROM subscription_queue WHERE status = 'pending')")
+    else:
+        base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
+
+    if status_filter == "online":
+        base_conditions.append("is_online = 1")
+    elif status_filter == "vip":
+        base_conditions.append("is_vip = 1")

@@ -1,0 +1,30 @@
+me = "اشتراک تست"
+                else:
+                    plan_id = "custom"
+
+                name_clean = str(name).strip() if (name and str(name).strip()) else None
+                extracted_reseller_id = None
+                if "[RESELLER_ID:" in comment or "Reseller #" in comment or "[RESELLER_MANUAL:" in comment:
+                    try:
+                        import re
+                        m_res = re.search(r"\[RESELLER_(?:ID|MANUAL):\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
+                        if m_res:
+                            extracted_reseller_id = int(m_res.group(1))
+                    except Exception:
+                        pass
+
+                if existing_sub:
+                    # بررسی تغییر وضعیت به منقضی یا غیرفعال
+                    old_status = existing_sub["status"] if "status" in existing_sub.keys() else "active"
+                    status_changed_to_inactive = (old_status == "active" and status in ("expired", "disabled"))
+
+                    # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
+                    cursor.execute("""
+                        UPDATE subscriptions SET
+                            data_used = ?,
+                            data_limit = ?,
+                            duration = ?,
+                            start_date = ?,
+                            expire_date = ?,
+                            status = ?,
+                            account_name = COALE

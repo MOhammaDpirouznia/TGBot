@@ -1,0 +1,20 @@
+1941: {% endif %}
+1942: </div>
+1943: </div>
+1944: 
+1945: <!-- نوار پیشرفت مصرف حجم -->
+1946: {% set used_gb = sub.get('data_used', 0) | float %}
+1947: {% set total_gb = sub.get('data_limit', 0) | float %}
+1948: {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+1949: {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+1950: 
+1951: <div class="mb-3">
+1952: <div class="d-flex justify-content-between text-secondary small mb-1 align-items-center">
+1953: <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+1954: {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
+1955: <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
+1956: <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
+1957: </span>
+1958: {% else %}
+1959: <span>{{ percent }}٪</span>
+1960: {% endif %}
