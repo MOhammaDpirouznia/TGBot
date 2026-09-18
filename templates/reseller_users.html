@@ -1577,6 +1577,11 @@
                             <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
                                 <div>
                                     <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
+                                    {% if itm.get('payment_source') == 'credit' %}
+                                        <span class="badge bg-warning bg-opacity-25 text-dark border border-warning ms-1">اعتبار</span>
+                                    {% else %}
+                                        <span class="badge bg-info bg-opacity-25 text-dark border border-info ms-1">کیف پول</span>
+                                    {% endif %}
                                     <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
                                 </div>
                                 <div>
@@ -1597,8 +1602,27 @@
                             </span>
                         </div>
                         <hr class="my-2">
+                        {% if ref.get('wallet_refund', 0) > 0 and ref.get('credit_refund', 0) > 0 %}
+                        <div class="d-flex justify-content-between small text-success mb-1">
+                            <span><i class="fas fa-wallet me-1"></i> استرداد به کیف پول نقدی:</span>
+                            <strong>{{ "{:,}".format(ref.get('wallet_refund', 0)) }} تومان</strong>
+                        </div>
+                        <div class="d-flex justify-content-between small text-primary mb-1">
+                            <span><i class="fas fa-credit-card me-1"></i> استرداد به اعتبار خرید (کاهش بدهی):</span>
+                            <strong>{{ "{:,}".format(ref.get('credit_refund', 0)) }} تومان</strong>
+                        </div>
+                        <hr class="my-1">
+                        {% endif %}
                         <div class="d-flex justify-content-between fs-5 fw-bold {% if ref.get('refund_amount', 0) > 0 %}text-success{% else %}text-danger{% endif %}">
-                            <span>مبلغ برگشتی به کیف پول / اعتبار:</span>
+                            <span>
+                                {% if ref.get('credit_refund', 0) > 0 and ref.get('wallet_refund', 0) == 0 %}
+                                    مبلغ برگشتی به اعتبار خرید:
+                                {% elif ref.get('wallet_refund', 0) > 0 and ref.get('credit_refund', 0) == 0 %}
+                                    مبلغ برگشتی به کیف پول نقدی:
+                                {% else %}
+                                    مجموع مبلغ استرداد:
+                                {% endif %}
+                            </span>
                             <span>{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</span>
                         </div>
                     </div>

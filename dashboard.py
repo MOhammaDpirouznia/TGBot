@@ -2154,12 +2154,14 @@ def process_subscription_queue() -> dict:
 
                 conn = db.get_connection()
                 cursor = conn.cursor()
+                q_source = item.get("payment_source") or "wallet"
+                q_cost = item.get("cost") or 0
                 cursor.execute("""
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                        start_date=?, expire_date=?, updated_at=?
+                        start_date=?, expire_date=?, updated_at=?, payment_source=?, cost_paid=?
                     WHERE id=?
-                """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, sub_id))
+                """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, q_source, q_cost, sub_id))
                 conn.commit()
                 conn.close()
 
@@ -2260,13 +2262,15 @@ def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت"
         new_start_str = now.strftime("%Y-%m-%d")
         new_expire_str = (now + timedelta(days=new_duration)).isoformat()
 
+        q_source = item.get("payment_source") or "wallet"
+        q_cost = item.get("cost") or 0
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                start_date=?, expire_date=?, updated_at=?, last_renewed_by=?,
+                start_date=?, expire_date=?, updated_at=?, payment_source=?, cost_paid=?, last_renewed_by=?,
                 last_renewed_at=?, last_lifecycle_event_at=?
             WHERE id=?
-        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, triggered_by, now_str, now_str, sub_id))
+        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, q_source, q_cost, triggered_by, now_str, now_str, sub_id))
         conn.commit()
 
         # ۳. ثبت در سوابق مصرف
@@ -14909,11 +14913,18 @@ def reseller_delete_user(sub_id: int):
     del_res = db.delete_reseller_subscription(reseller_id, sub_id, reason=final_reason)
     if del_res.get("success"):
         refund_amount = del_res.get("refund_amount", 0)
-        refund_percent = del_res.get("refund_percent", 0)
+        wallet_ref = del_res.get("wallet_refund", 0)
+        credit_ref = del_res.get("credit_refund", 0)
         time_passed = del_res.get("time_passed_text", "")
 
         if refund_amount > 0:
-            flash(f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد و مبلغ {refund_amount:,} تومان ({refund_percent}٪ استرداد - مدت زمان گذشته: {time_passed}) به کیف پول شما بازگردانده شد. (علت: {final_reason})", "success")
+            refund_parts = []
+            if wallet_ref > 0:
+                refund_parts.append(f"{wallet_ref:,} تومان به کیف پول نقدی")
+            if credit_ref > 0:
+                refund_parts.append(f"{credit_ref:,} تومان به اعتبار خرید (کاهش بدهی)")
+            parts_str = " و ".join(refund_parts)
+            flash(f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد و مبلغ {parts_str} بازگردانده شد. (مدت زمان گذشته: {time_passed} - علت: {final_reason})", "success")
         else:
             flash(f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد. (علت: {final_reason} - بدون استرداد وجه به دلیل گذشت بیش از ۲۴ ساعت)", "warning")
 
@@ -15173,6 +15184,8 @@ def reseller_subscriptions_bulk():
 
     success_count = 0
     total_refund = 0
+    total_wallet_refund = 0
+    total_credit_refund = 0
 
     for sub_id in sub_ids:
         sub = db.get_reseller_subscription(reseller_id, sub_id)
@@ -15221,6 +15234,8 @@ def reseller_subscriptions_bulk():
             if del_res.get("success"):
                 success_count += 1
                 total_refund += del_res.get("refund_amount", 0)
+                total_wallet_refund += del_res.get("wallet_refund", 0)
+                total_credit_refund += del_res.get("credit_refund", 0)
         elif action == "clear_debt":
             raw_card = request.form.get("target_card_id")
             target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
@@ -15253,7 +15268,13 @@ def reseller_subscriptions_bulk():
 
     if action == "delete":
         if total_refund > 0:
-            flash(f"✅ تعداد {success_count} اشتراک با موفقیت حذف شدند و مبلغ {total_refund:,} تومان به کیف پول شما استرداد یافت.", "success")
+            refund_parts = []
+            if total_wallet_refund > 0:
+                refund_parts.append(f"{total_wallet_refund:,} تومان به کیف پول نقدی")
+            if total_credit_refund > 0:
+                refund_parts.append(f"{total_credit_refund:,} تومان به اعتبار خرید (کاهش بدهی)")
+            parts_str = " و ".join(refund_parts)
+            flash(f"✅ تعداد {success_count} اشتراک با موفقیت به سطل زباله منتقل شدند و مبلغ {parts_str} استرداد یافت.", "success")
         else:
             flash(f"✅ تعداد {success_count} اشتراک با موفقیت حذف شدند.", "success")
         r_after = db.get_reseller(reseller_id)

@@ -1412,6 +1412,7 @@ class Database:
                     activated_at TEXT,
                     note TEXT,
                     queue_order INTEGER DEFAULT 0,
+                    payment_source TEXT DEFAULT 'wallet',
                     FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
                 )
             """)
@@ -1422,6 +1423,7 @@ class Database:
         # ستون‌های مبدأ پرداخت کیف‌پول/اعتبار و رهگیری ویرایش اسناد حسابداری و بدهی‌ها
         for col_sql in [
             "ALTER TABLE subscription_queue ADD COLUMN queue_order INTEGER DEFAULT 0",
+            "ALTER TABLE subscription_queue ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE subscriptions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN subscription_id INTEGER",
@@ -12321,11 +12323,10 @@ class Database:
                 cursor.execute("""
                     INSERT INTO subscription_queue (
                         subscription_id, telegram_id, hidify_uuid, reseller_id,
-                        plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                        plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order, payment_source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
                 """, (sub_id, sub["telegram_id"] or 0, sub["hidify_uuid"] or "", reseller_id,
-                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})", next_order))
-                cursor.execute("UPDATE subscriptions SET payment_source=? WHERE id=?", (actual_source, sub_id))
+                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})", next_order, actual_source))
                 conn.commit()
                 try:
                     from services.renewal_guard import RenewalGuard
@@ -12355,7 +12356,8 @@ class Database:
     def add_to_subscription_queue(self, subscription_id: int, plan_id: str, plan_name: str,
                                   data_limit: float, duration: int, cost: int = 0,
                                   reseller_id: int = None, telegram_id: int = None,
-                                  hidify_uuid: str = None, note: str = None) -> dict:
+                                  hidify_uuid: str = None, note: str = None,
+                                  payment_source: str = "wallet") -> dict:
         """افزودن بسته تمدیدی به صف رزرو خودکار (بدون لغو بسته‌های قبلی و با تعیین شماره نوبت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -12378,9 +12380,9 @@ class Database:
             cursor.execute("""
                 INSERT INTO subscription_queue (
                     subscription_id, telegram_id, hidify_uuid, reseller_id,
-                    plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت", next_order))
+                    plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order, payment_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت", next_order, payment_source or "wallet"))
             queue_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "queue_id": queue_id, "queue_order": next_order}
@@ -12628,11 +12630,8 @@ class Database:
 
     def calculate_reseller_refund(self, reseller_id: int, sub_id: int):
         """
-        محاسبه هوشمند استرداد وجه حذف مشتری نماینده طبق تنظیمات مدیریت:
-        - عدم تاثیرپذیری از مبلغ بدهی مشتری (صرفاً بر اساس هزینه خرید پلن کسر شده از نماینده)
-        - محاسبه زمان بر اساس زمان ساخت اولیه مشتری یا آخرین اقدام (طبق تنظیمات)
-        - رعایت درصدهای سفارشی مدیریت و غیرفعال‌سازی سراسری یا برای نماینده خاص
-        - تفکیک مبدأ بازگشت وجه (کیف پول نقدی یا اعتبار خرید)
+        محاسبه هوشمند و دقیق استرداد هزینه خرید و تمدیدهای مشتری نماینده با تفکیک قطعی به مبدأ پرداخت (کیف پول و اعتبار)
+        و محاسبه ۱۰۰٪ استرداد برای بسته‌های معلق در صف تمدید (بدون جریمه زمانی به علت عدم مصرف)
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -12656,7 +12655,7 @@ class Database:
 
         is_disallowed = (not refund_enabled) or (reseller_id in disabled_resellers)
 
-        # تعیین مبدأ پرداخت (کیف پول یا اعتبار)
+        # تعیین مبدأ اولیه پرداخت اشتراک (کیف پول یا اعتبار)
         sub_source = str(sub_dict.get("payment_source") or "").lower()
         is_credit_sub = bool(sub_dict.get("is_credit") or (sub_dict.get("credit_debt_amount") or 0) > 0 or sub_source == "credit")
 
@@ -12670,6 +12669,15 @@ class Database:
         """, (reseller_id, sub_id, account_name))
         latest_refund_row = cursor.fetchone()
         latest_refund_time = latest_refund_row[0] if latest_refund_row and latest_refund_row[0] else None
+
+        # بسته‌های معلق در صف تمدید این اشتراک
+        cursor.execute("""
+            SELECT id, plan_name, cost, payment_source, created_at, queue_order, note
+            FROM subscription_queue
+            WHERE subscription_id = ? AND status = 'pending' AND (reseller_id = ? OR reseller_id IS NULL)
+            ORDER BY COALESCE(queue_order, id) ASC, id ASC
+        """, (sub_id, reseller_id))
+        pending_queue_rows = [dict(r) for r in cursor.fetchall()]
 
         # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (صرفاً اقدامات پس از آخرین استرداد سطل زباله)
         if latest_refund_time:
@@ -12691,12 +12699,10 @@ class Database:
                   AND type NOT IN ('renewal_cancelled', 'cancelled')
                 ORDER BY created_at ASC
             """, (reseller_id, sub_id, account_name, f"%{account_name}%"))
-        tx_rows = cursor.fetchall()
+        tx_rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
         items = []
-        total_paid = 0
-        total_refund = 0
         latest_elapsed_hours = 999999.0
         latest_time_passed_text = "بیش از ۲۴ ساعت پیش"
 
@@ -12722,12 +12728,11 @@ class Database:
         creation_elapsed_hours = _calc_elapsed(creation_dt_str)
         creation_time_passed_str = _format_time_passed(creation_elapsed_hours)
 
-        has_credit_tx = False
-        has_wallet_tx = False
+        # پیگیری بسته‌های صف که در تراکنش‌ها پردازش شده‌اند
+        matched_queue_ids = set()
 
         if tx_rows:
-            for tx in tx_rows:
-                tx_d = dict(tx)
+            for tx_d in tx_rows:
                 amount = int(tx_d.get("amount") or 0)
                 if amount <= 0:
                     continue
@@ -12736,57 +12741,111 @@ class Database:
                 if not tx_src:
                     tx_src = "credit" if (tx_d.get("type") in ("purchase_credit", "renewal_credit") or "اعتبار" in str(tx_d.get("description", ""))) else "wallet"
 
-                if tx_src == "credit":
-                    has_credit_tx = True
-                else:
-                    has_wallet_tx = True
+                # تشخیص بسته‌های رزرو در صف تمدید
+                tx_desc = str(tx_d.get("description") or "")
+                is_queue_tx = ("صف تمدید" in tx_desc or "رزرو" in tx_desc)
 
-                # تعیین زمان مبنا: برای خرید اولیه طبق تنظیمات، اما برای تمدیدها حتماً بر اساس زمان خود اقدام تمدید
+                matching_q = None
+                if pending_queue_rows:
+                    for q in pending_queue_rows:
+                        if q["id"] not in matched_queue_ids and (q.get("cost") == amount or is_queue_tx):
+                            matching_q = q
+                            matched_queue_ids.add(q["id"])
+                            is_queue_tx = True
+                            if q.get("payment_source"):
+                                tx_src = q["payment_source"]
+                            break
+
                 is_purchase_action = "purchase" in str(tx_d.get("type", "")).lower()
-                if is_purchase_action and calc_from_creation:
+
+                # تعیین زمان مبنا و درصد استرداد
+                if is_queue_tx:
+                    # بسته در صف رزرو تمدید هنوز شروع و فعال نشده، استرداد کامل ۱۰۰٪ بدون کسر جریمه
+                    percent = 100 if not is_disallowed else 0
+                    rate = 1.0 if not is_disallowed else 0.0
+                    created_str = tx_d.get("created_at") or (matching_q.get("created_at") if matching_q else get_now_iso())
+                    elapsed_hours = _calc_elapsed(created_str)
+                    time_passed_str = _format_time_passed(elapsed_hours)
+                    q_num = matching_q.get("queue_order") if matching_q else ""
+                    type_title = f"رزرو در صف تمدید (نوبت {q_num})" if q_num else "رزرو در صف تمدید"
+                elif is_purchase_action and calc_from_creation:
                     elapsed_hours = creation_elapsed_hours
                     time_passed_str = creation_time_passed_str
+                    type_title = "خرید اولیه"
+                    if is_disallowed:
+                        rate, percent = 0.0, 0
+                    elif elapsed_hours <= 12.0:
+                        rate, percent = rate_12h / 100.0, rate_12h
+                    elif elapsed_hours <= 24.0:
+                        rate, percent = rate_24h / 100.0, rate_24h
+                    else:
+                        rate, percent = 0.0, 0
                 else:
                     created_str = tx_d.get("created_at") or get_now_iso()
                     elapsed_hours = _calc_elapsed(created_str)
                     time_passed_str = _format_time_passed(elapsed_hours)
+                    type_title = "تمدید اشتراک (آنی)"
+                    if is_disallowed:
+                        rate, percent = 0.0, 0
+                    elif elapsed_hours <= 12.0:
+                        rate, percent = rate_12h / 100.0, rate_12h
+                    elif elapsed_hours <= 24.0:
+                        rate, percent = rate_24h / 100.0, rate_24h
+                    else:
+                        rate, percent = 0.0, 0
 
                 if elapsed_hours < latest_elapsed_hours:
                     latest_elapsed_hours = elapsed_hours
                     latest_time_passed_text = time_passed_str
 
-                if is_disallowed:
-                    rate = 0.0
-                    percent = 0
-                elif elapsed_hours <= 12.0:
-                    rate = rate_12h / 100.0
-                    percent = rate_12h
-                elif elapsed_hours <= 24.0:
-                    rate = rate_24h / 100.0
-                    percent = rate_24h
-                else:
-                    rate = 0.0
-                    percent = 0
-
                 ref_amount = int(amount * rate)
-                total_paid += amount
-                total_refund += ref_amount
 
                 items.append({
                     "tx_id": tx_d["id"],
+                    "queue_id": matching_q["id"] if matching_q else None,
                     "type": tx_d["type"],
                     "payment_source": tx_src,
-                    "type_title": "خرید اولیه" if "purchase" in tx_d["type"] else "تمدید اشتراک",
+                    "type_title": type_title,
                     "plan_name": tx_d.get("plan_name") or sub_dict.get("plan_name") or "پلن",
                     "amount": amount,
                     "elapsed_hours": round(elapsed_hours, 1),
                     "time_passed_text": time_passed_str,
                     "refund_percent": percent,
                     "refund_amount": ref_amount,
+                    "is_queue": is_queue_tx,
                     "created_at": tx_d.get("created_at")
                 })
 
-        # در صورتی که تراکنشی یافت نشد (اکانت‌های دستی یا ایجاد مستقیم)
+        # افزودن بسته‌های معلق در صف که در سوابق تراکنشی موجود نبودند
+        if pending_queue_rows:
+            for q in pending_queue_rows:
+                if q["id"] not in matched_queue_ids:
+                    q_cost = int(q.get("cost") or 0)
+                    if q_cost > 0:
+                        q_src = str(q.get("payment_source") or "wallet").lower()
+                        q_created = q.get("created_at") or get_now_iso()
+                        q_elapsed = _calc_elapsed(q_created)
+                        q_time_str = _format_time_passed(q_elapsed)
+                        if q_elapsed < latest_elapsed_hours:
+                            latest_elapsed_hours = q_elapsed
+                            latest_time_passed_text = q_time_str
+                        items.append({
+                            "tx_id": 0,
+                            "queue_id": q["id"],
+                            "type": "queued_renewal",
+                            "payment_source": q_src,
+                            "type_title": f"رزرو در صف تمدید (نوبت {q.get('queue_order', 1)})",
+                            "plan_name": q.get("plan_name") or "پلن تمدید",
+                            "amount": q_cost,
+                            "elapsed_hours": round(q_elapsed, 1),
+                            "time_passed_text": q_time_str,
+                            "refund_percent": 100 if not is_disallowed else 0,
+                            "refund_amount": q_cost if not is_disallowed else 0,
+                            "is_queue": True,
+                            "created_at": q_created
+                        })
+
+        # در صورتی که هیچ تراکنش یا آیتم صفی یافت نشد (اشتراک‌های دستی یا ثبت مستقیم)
         if not items:
             elapsed_hours = creation_elapsed_hours
             time_passed_str = creation_time_passed_str
@@ -12794,36 +12853,21 @@ class Database:
             latest_time_passed_text = time_passed_str
 
             if is_disallowed:
-                rate = 0.0
-                percent = 0
+                rate, percent = 0.0, 0
             elif elapsed_hours <= 12.0:
-                percent = rate_12h
-                rate = rate_12h / 100.0
+                rate, percent = rate_12h / 100.0, rate_12h
             elif elapsed_hours <= 24.0:
-                percent = rate_24h
-                rate = rate_24h / 100.0
+                rate, percent = rate_24h / 100.0, rate_24h
             else:
-                percent = 0
-                rate = 0.0
+                rate, percent = 0.0, 0
 
-            # اگر قبلاً استرداد شده و تراکنش جدیدی ندارد، مبلغ پرداختی ۰ است
-            if latest_refund_time:
-                cost_paid = 0
-            else:
-                cost_paid = int(sub_dict.get("cost_paid") or 0)
-
+            cost_paid = 0 if latest_refund_time else int(sub_dict.get("cost_paid") or 0)
             ref_amount = int(cost_paid * rate)
-            total_paid = cost_paid
-            total_refund = ref_amount
-
             fallback_src = "credit" if is_credit_sub else "wallet"
-            if fallback_src == "credit":
-                has_credit_tx = True
-            else:
-                has_wallet_tx = True
 
             items.append({
                 "tx_id": 0,
+                "queue_id": None,
                 "type": "purchase_credit" if is_credit_sub else "purchase",
                 "payment_source": fallback_src,
                 "type_title": "خرید اشتراک (سیستمی)",
@@ -12833,16 +12877,48 @@ class Database:
                 "time_passed_text": time_passed_str,
                 "refund_percent": percent,
                 "refund_amount": ref_amount,
+                "is_queue": False,
                 "created_at": creation_dt_str
             })
+
+        # جمع‌بندی تفکیک‌شده بر اساس مبدأ پرداخت (کیف پول نقدی و اعتبار خرید)
+        wallet_paid = 0
+        wallet_refund = 0
+        credit_paid = 0
+        credit_refund = 0
+
+        for itm in items:
+            amt = int(itm.get("amount") or 0)
+            ref = int(itm.get("refund_amount") or 0)
+            src = str(itm.get("payment_source") or "wallet").lower()
+            if src == "credit":
+                credit_paid += amt
+                credit_refund += ref
+            else:
+                wallet_paid += amt
+                wallet_refund += ref
+
+        total_paid = wallet_paid + credit_paid
+        total_refund = wallet_refund + credit_refund
 
         effective_percent = int(round((total_refund / total_paid) * 100)) if total_paid > 0 else (rate_12h if latest_elapsed_hours <= 12.0 else (rate_24h if latest_elapsed_hours <= 24.0 else 0))
         if is_disallowed:
             effective_percent = 0
             total_refund = 0
+            wallet_refund = 0
+            credit_refund = 0
 
-        # مبدأ کلی استرداد
-        final_payment_source = "credit" if (has_credit_tx and not has_wallet_tx) else ("wallet" if (has_wallet_tx and not has_credit_tx) else ("credit" if is_credit_sub else "wallet"))
+        # تعیین ماهیت مبدأ کلی جهت گزارش
+        if wallet_refund > 0 and credit_refund > 0:
+            final_payment_source = "mixed"
+        elif credit_refund > 0:
+            final_payment_source = "credit"
+        elif wallet_refund > 0:
+            final_payment_source = "wallet"
+        elif credit_paid > 0 and wallet_paid == 0:
+            final_payment_source = "credit"
+        else:
+            final_payment_source = "wallet"
 
         return {
             "sub_id": sub_id,
@@ -12853,6 +12929,10 @@ class Database:
             "refund_percent": effective_percent,
             "cost_paid": total_paid,
             "refund_amount": total_refund,
+            "wallet_paid": wallet_paid,
+            "wallet_refund": wallet_refund,
+            "credit_paid": credit_paid,
+            "credit_refund": credit_refund,
             "items": items,
             "actions_count": len(items),
             "payment_source": final_payment_source,
@@ -12861,7 +12941,7 @@ class Database:
         }
 
     def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None):
-        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (کیف پول یا اعتبار)"""
+        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (تفکیک کیف پول و اعتبار) و لغو صف تمدید"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
             return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
@@ -12871,41 +12951,55 @@ class Database:
         now = get_now_iso()
         try:
             refund_amount = refund_info["refund_amount"]
+            wallet_refund = refund_info.get("wallet_refund", 0)
+            credit_refund = refund_info.get("credit_refund", 0)
             refund_percent = refund_info["refund_percent"]
             account_name = refund_info["account_name"]
             actions_count = refund_info.get("actions_count", 1)
             payment_source = refund_info.get("payment_source", "wallet")
 
-            # ۱. در صورت تعلق استرداد وجه، برگشت به مبدأ اصلی انجام می‌شود
-            if refund_amount > 0:
-                r_row = cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,)).fetchone()
-                cur_r_bal = int(r_row[0] or 0) if r_row else 0
-                if payment_source == "credit":
-                    # کسر بدهی اعتباری نماینده (بازگشت به سقف اعتبار)
-                    cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
-                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (برگشت به اعتبار خرید - کاهش بدهی) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
-                    cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
-                    """, (reseller_id, refund_amount, cur_r_bal, account_name, desc_text, sub_id, now))
-                else:
-                    # افزایش موجودی کیف پول نقدی نماینده
-                    new_r_bal = cur_r_bal + refund_amount
-                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now, reseller_id))
-                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (واریز به کیف پول) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
-                    cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
-                    """, (reseller_id, refund_amount, new_r_bal, account_name, desc_text, sub_id, now))
+            r_row = cursor.execute("SELECT balance, credit_debt FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+            cur_r_bal = int(r_row[0] or 0) if r_row else 0
+            cur_credit_debt = int(r_row[1] or 0) if r_row else 0
 
-            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک تا در صف معلق نمانند و پس از بازگردانی دوبله استرداد نشوند
+            # ۱. استرداد وجه مجزا به هر مبدأ پرداختی اولیه
+            # الف) بازگشت به اعتبار خرید (کاهش بدهی اعتباری نماینده)
+            if credit_refund > 0:
+                new_debt = max(0, cur_credit_debt - credit_refund)
+                cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
+                desc_text = f"استرداد وجه بابت انتقال اشتراک «{account_name}» به سطل زباله (برگشت به اعتبار خرید - کاهش بدهی: {credit_refund:,} ت) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'refund_credit', ?, ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
+                """, (reseller_id, credit_refund, cur_r_bal, account_name, desc_text, sub_id, now))
+
+            # ب) بازگشت به کیف پول نقدی (افزایش موجودی نقدی نماینده)
+            if wallet_refund > 0:
+                new_r_bal = cur_r_bal + wallet_refund
+                cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now, reseller_id))
+                desc_text = f"استرداد وجه بابت انتقال اشتراک «{account_name}» به سطل زباله (واریز به کیف پول نقدی: {wallet_refund:,} ت) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'refund', ?, ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
+                """, (reseller_id, wallet_refund, new_r_bal, account_name, desc_text, sub_id, now))
+                cur_r_bal = new_r_bal
+
+            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک تا در صف معلق نمانند
             cursor.execute("""
                 UPDATE subscription_queue 
                 SET status = 'cancelled', note = 'لغو به علت حذف اشتراک و انتقال به سطل زباله'
                 WHERE subscription_id = ? AND status = 'pending'
             """, (sub_id,))
 
-            # ۳. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
+            # ۳. علامت‌گذاری تراکنش‌های تمدید رزرو در صف به عنوان لغو شده جهت شفافیت سوابق مالی
+            cursor.execute("""
+                UPDATE reseller_transactions
+                SET type = 'renewal_cancelled', description = description || ' [لغو شده به علت انتقال اشتراک به سطل زباله]'
+                WHERE reseller_id = ? AND subscription_id = ? AND type IN ('renewal', 'renewal_credit')
+                  AND (description LIKE '%صف تمدید%' OR description LIKE '%رزرو%')
+            """, (reseller_id, sub_id))
+
+            # ۴. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
             by_user = deleted_by or f"reseller_{reseller_id}"
             cursor.execute("""
                 UPDATE subscriptions 
@@ -12914,13 +13008,20 @@ class Database:
             """, (now, reason, by_user, now, sub_id, reseller_id))
             conn.commit()
 
-            # ثبت لاگ انتقال به سطل زباله توسط نماینده
+            # ۵. ثبت لاگ سیستم
             try:
+                refund_log_parts = []
+                if wallet_refund > 0:
+                    refund_log_parts.append(f"{wallet_refund:,} ت به کیف پول")
+                if credit_refund > 0:
+                    refund_log_parts.append(f"{credit_refund:,} ت به اعتبار")
+                ref_summary_str = " و ".join(refund_log_parts) if refund_log_parts else "بدون استرداد"
+
                 self.add_system_log(
                     category="reseller",
                     action="delete",
                     title=f"انتقال اشتراک «{account_name}» به سطل زباله",
-                    description=f"اشتراک «{account_name}» توسط نماینده ({by_user}) با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد وجه: {refund_amount:,} تومان به {payment_source})" if refund_amount > 0 else ""),
+                    description=f"اشتراک «{account_name}» توسط نماینده ({by_user}) با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد: {ref_summary_str})" if refund_amount > 0 else ""),
                     actor_type="reseller",
                     actor_id=reseller_id,
                     actor_name=by_user,
@@ -12932,6 +13033,8 @@ class Database:
                         "account_name": account_name,
                         "reason": reason,
                         "refund_amount": refund_amount,
+                        "wallet_refund": wallet_refund,
+                        "credit_refund": credit_refund,
                         "refund_percent": refund_percent,
                         "payment_source": payment_source
                     },
@@ -12943,6 +13046,10 @@ class Database:
             return {
                 "success": True,
                 "refund_amount": refund_amount,
+                "wallet_refund": wallet_refund,
+                "credit_refund": credit_refund,
+                "wallet_paid": refund_info.get("wallet_paid", 0),
+                "credit_paid": refund_info.get("credit_paid", 0),
                 "refund_percent": refund_percent,
                 "time_passed_text": refund_info["time_passed_text"],
                 "actions_count": actions_count,
