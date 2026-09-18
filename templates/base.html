@@ -2593,16 +2593,8 @@
                         }
                     }
 
-                    // ۲. ارسال خودکار فرم به سرور پس از مکث ۶۵۰ میلی‌ثانیه‌ای (Debounce)
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
-                        if (currentVal !== initialVal) {
-                            sessionStorage.setItem('keep_server_search_focus', 'true');
-                            const pageInput = form.querySelector('input[name="page"]');
-                            if (pageInput) pageInput.value = '1';
-                            form.submit();
-                        }
-                    }, 650);
+                    // ۲. فیلتر سروری فقط با زدن کلید Enter یا کلیک روی دکمه جستجو انجام شود
+                    // (ارسال خودکار برای جلوگیری از پرش صفحه و گم شدن متن حین تایپ غیرفعال شد)
                 });
 
                 // ارسال فوری با کلید Enter

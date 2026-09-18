@@ -271,6 +271,7 @@ def get_redirect_target(default_endpoint: str = "subscriptions", **fallback_kwar
                     full_path += "?" + ref_url.query
                 if ref_url.fragment:
                     full_path += "#" + ref_url.fragment
+                return full_path
         except Exception:
             pass
     if isinstance(default_endpoint, str) and (default_endpoint.startswith("/") or default_endpoint.startswith("http")):
