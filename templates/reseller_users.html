@@ -991,7 +991,8 @@
 <div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="renewModalLabel{{ sub['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
-            <form method="POST" action="{{ url_for('reseller_renew_user', sub_id=sub['id']) }}">
+            <form method="POST" action="{{ url_for('reseller_renew_user', sub_id=sub['id']) }}" class="sub-renew-form" onsubmit="return handleRenewalSubmit(this);">
+                <input type="hidden" name="renew_token" value="{{ generate_renew_token() }}">
                 <div class="modal-header bg-success text-white py-3">
                     <h5 class="modal-title fw-bold" id="renewModalLabel{{ sub['id'] }}">
                         <i class="fas fa-arrows-rotate me-2"></i>تمدید اشتراک «{{ sub['account_name'] }}»
@@ -1964,7 +1965,8 @@
 <div class="modal fade text-start" id="resellerBulkRenewModal" tabindex="-1" aria-labelledby="resellerBulkRenewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <form method="POST" action="{{ url_for('reseller_subscriptions_bulk_renew') }}">
+            <form method="POST" action="{{ url_for('reseller_subscriptions_bulk_renew') }}" class="sub-renew-form" onsubmit="return handleRenewalSubmit(this);">
+                <input type="hidden" name="renew_token" value="{{ generate_renew_token() }}">
                 <input type="hidden" name="selected_ids_str" id="resellerBulkRenewIds" value="">
                 <div class="modal-header bg-success text-white py-3">
                     <h5 class="modal-title fw-bold mb-0" id="resellerBulkRenewModalLabel">
@@ -2418,6 +2420,34 @@
 </style>
 
 <script>
+function handleRenewalSubmit(form) {
+    if (!form) return false;
+    if (form.dataset.submitting === "true") {
+        return false;
+    }
+    form.dataset.submitting = "true";
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تمدید...';
+    }
+    const cancelBtns = form.querySelectorAll('button[data-bs-dismiss="modal"]');
+    cancelBtns.forEach(btn => { btn.disabled = true; });
+    return true;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('form[action*="/renew"], form[action*="bulk-renew"]').forEach(function(f) {
+        f.addEventListener('submit', function(e) {
+            if (f.dataset.submitting === "true") {
+                e.preventDefault();
+                return false;
+            }
+            return handleRenewalSubmit(f);
+        });
+    });
+});
+
 function stepDiscountInput(inputId, delta) {
     const el = document.getElementById(inputId);
     if (!el) return;

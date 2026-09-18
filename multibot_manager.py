@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
+from services.renewal_guard import RenewalGuard
 from utils import (
     get_now_iso, get_now_naive, get_single_link_template, format_single_link,
     generate_qr_code_bytes, gregorian_to_shamsi, days_remaining_shamsi, get_now_shamsi
@@ -1248,88 +1249,107 @@ class ResellerBotInstance:
             renew_sub_id = context.user_data.get("renew_sub_id")
             instant_act = context.user_data.get("instant_activation", True)
 
+            if is_renewal and renew_sub_id:
+                target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
+                is_cooldown, remaining, cool_msg = RenewalGuard.check_cooldown(
+                    renew_sub_id, target_sub.get("last_renewed_at") if target_sub else None, cooldown_seconds=30
+                )
+                if is_cooldown:
+                    await query.answer(cool_msg, show_alert=True)
+                    return
+
+                if not RenewalGuard.acquire_lock(renew_sub_id):
+                    await query.answer("⚠️ عملیات تمدید این اشتراک در حال حاضر در حال پردازش است. لطفاً چند لحظه صبر کنید.", show_alert=True)
+                    return
+
             desc = f"تمدید اشتراک {pname}" if is_renewal else f"خرید آنی اشتراک {pname}"
             deduct_res = db.deduct_wallet_balance(user.id, price, desc)
             if not deduct_res.get("success"):
+                if is_renewal and renew_sub_id:
+                    RenewalGuard.release_lock(renew_sub_id)
                 await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
                 return
 
             bot_profit = max(0, price - wholesale_cost)
 
             if is_renewal and renew_sub_id:
-                target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
-                account_name = (target_sub.get("account_name") if target_sub else None) or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
+                try:
+                    target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
+                    account_name = (target_sub.get("account_name") if target_sub else None) or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
 
-                await query.edit_message_text("⏳ در حال پردازش و ثبت تمدید اشتراک شما...")
+                    await query.edit_message_text("⏳ در حال پردازش و ثبت تمدید اشتراک شما...")
 
-                if instant_act and target_sub and target_sub.get("hidify_uuid"):
-                    try:
-                        r_client = get_reseller_hidify_client(r_id)
-                        await r_client.update_user(
-                            uuid=target_sub["hidify_uuid"],
-                            usage_limit_gb=float(vol) if vol > 0 else None,
-                            package_days=int(days),
-                            enable=True,
-                            reset_usage=True
+                    if instant_act and target_sub and target_sub.get("hidify_uuid"):
+                        try:
+                            r_client = get_reseller_hidify_client(r_id)
+                            await r_client.update_user(
+                                uuid=target_sub["hidify_uuid"],
+                                usage_limit_gb=float(vol) if vol > 0 else None,
+                                package_days=int(days),
+                                enable=True,
+                                reset_usage=True
+                            )
+                        except Exception as e_ren:
+                            logger.error(f"Error renewing user in Hiddify via wallet: {e_ren}")
+
+                    db.renew_reseller_subscription(
+                        reseller_id=r_id,
+                        sub_id=renew_sub_id,
+                        plan_id=str(plan_id),
+                        plan_name=pname,
+                        cost=wholesale_cost,
+                        data_limit=float(vol),
+                        duration=int(days),
+                        instant_activate=instant_act,
+                        payment_source="auto",
+                        selling_price=price,
+                        profit_margin=bot_profit,
+                        created_by=f"Customer Wallet (User {user.id})"
+                    )
+                    RenewalGuard.record_successful_renewal(renew_sub_id)
+
+                    # پاک‌سازی استیت
+                    context.user_data.pop("is_renewal", None)
+                    context.user_data.pop("renew_sub_id", None)
+                    context.user_data.pop("instant_activation", None)
+
+                    brand = self.reseller_data.get("brand_name") or "ما"
+                    if not instant_act:
+                        cust_msg = (
+                            f"🎉 <b>بسته تمدیدی با موفقیت از کیف پول خریداری شد!</b>\n\n"
+                            f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
+                            f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                            f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                            f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
+                            f"⏳ <b>این بسته در صف رزرو اشتراک شما قرار گرفت.</b>\n"
+                            f"حجم و زمان فعلی شما محفوظ مانده و پس از اتمام بسته فعلی به صورت کاملاً خودکار فعال خواهد شد."
                         )
-                    except Exception as e_ren:
-                        logger.error(f"Error renewing user in Hiddify via wallet: {e_ren}")
-
-                db.renew_reseller_subscription(
-                    reseller_id=r_id,
-                    sub_id=renew_sub_id,
-                    plan_id=str(plan_id),
-                    plan_name=pname,
-                    cost=wholesale_cost,
-                    data_limit=float(vol),
-                    duration=int(days),
-                    instant_activate=instant_act,
-                    payment_source="auto",
-                    selling_price=price,
-                    profit_margin=bot_profit,
-                    created_by=f"Customer Wallet (User {user.id})"
-                )
-
-                # پاک‌سازی استیت
-                context.user_data.pop("is_renewal", None)
-                context.user_data.pop("renew_sub_id", None)
-                context.user_data.pop("instant_activation", None)
-
-                brand = self.reseller_data.get("brand_name") or "ما"
-                if not instant_act:
-                    cust_msg = (
-                        f"🎉 <b>بسته تمدیدی با موفقیت از کیف پول خریداری شد!</b>\n\n"
-                        f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
-                        f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                        f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
-                        f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
-                        f"⏳ <b>این بسته در صف رزرو اشتراک شما قرار گرفت.</b>\n"
-                        f"حجم و زمان فعلی شما محفوظ مانده و پس از اتمام بسته فعلی به صورت کاملاً خودکار فعال خواهد شد."
-                    )
-                    kb_btns = [
-                        [InlineKeyboardButton("📋 مشاهده اشتراک و صف تمدید", callback_data=f"r_sub_detail_{renew_sub_id}")],
-                        [InlineKeyboardButton("📱 منوی اصلی", callback_data="r_check_sub")]
-                    ]
-                    await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns), parse_mode="HTML")
-                else:
-                    uuid_val = target_sub.get("hidify_uuid") if target_sub else None
-                    sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if (uuid_val and HIDIFY_PANEL_URL) else ""
-                    cust_msg = (
-                        f"🎉 <b>اشتراک {brand} با موفقیت تمدید و فعال شد:</b>\n\n"
-                        f"📦 پلن: <b>{pname}</b>\n"
-                        f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                        f"📊 حجم جدید: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
-                        f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
-                        + (f"🔗 <b>لینک اتصال اختصاصی شما:</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
-                        + "💡 بسته جدید فوراً فعال و دوره مصرف شما از نو آغاز گردید."
-                    )
-                    kb_btns = []
-                    if renew_sub_id:
-                        kb_btns.append([InlineKeyboardButton("📱 دریافت بارکد QR", callback_data=f"r_sub_qr_{renew_sub_id}")])
-                    if uuid_val:
-                        kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{renew_sub_id}")])
-                    await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
-                return
+                        kb_btns = [
+                            [InlineKeyboardButton("📋 مشاهده اشتراک و صف تمدید", callback_data=f"r_sub_detail_{renew_sub_id}")],
+                            [InlineKeyboardButton("📱 منوی اصلی", callback_data="r_check_sub")]
+                        ]
+                        await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns), parse_mode="HTML")
+                    else:
+                        uuid_val = target_sub.get("hidify_uuid") if target_sub else None
+                        sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if (uuid_val and HIDIFY_PANEL_URL) else ""
+                        cust_msg = (
+                            f"🎉 <b>اشتراک {brand} با موفقیت تمدید و فعال شد:</b>\n\n"
+                            f"📦 پلن: <b>{pname}</b>\n"
+                            f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                            f"📊 حجم جدید: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                            f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
+                            + (f"🔗 <b>لینک اتصال اختصاصی شما:</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
+                            + "💡 بسته جدید فوراً فعال و دوره مصرف شما از نو آغاز گردید."
+                        )
+                        kb_btns = []
+                        if renew_sub_id:
+                            kb_btns.append([InlineKeyboardButton("📱 دریافت بارکد QR", callback_data=f"r_sub_qr_{renew_sub_id}")])
+                        if uuid_val:
+                            kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{renew_sub_id}")])
+                        await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
+                    return
+                finally:
+                    RenewalGuard.release_lock(renew_sub_id)
 
             account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
             db.deduct_reseller_balance(
@@ -4750,6 +4770,7 @@ class ResellerBotInstance:
                         note=f"تمدید در صف رزرو توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
                     )
                     q_order = q_res.get("queue_order", 1) if q_res.get("success") else 1
+                    RenewalGuard.record_successful_renewal(sub_id)
 
                     try:
                         db.save_transaction(
@@ -4855,7 +4876,9 @@ class ResellerBotInstance:
                             status="active",
                             payment_status="debtor",
                             debt_amount=new_debt,
-                            debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else "")
+                            debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                            last_renewed_at=get_now_iso(),
+                            last_lifecycle_event_at=get_now_iso()
                         )
                         db.add_customer_debt_record(
                             subscription_id=sub_id,
@@ -4901,7 +4924,9 @@ class ResellerBotInstance:
                             data_limit=float(vol),
                             duration=int(days),
                             data_used=0.0,
-                            status="active"
+                            status="active",
+                            last_renewed_at=get_now_iso(),
+                            last_lifecycle_event_at=get_now_iso()
                         )
                     else:
                         pay_label = f"💵 دریافت نقدی / صندوق ({final_price:,} ت)"
@@ -4912,8 +4937,12 @@ class ResellerBotInstance:
                             data_limit=float(vol),
                             duration=int(days),
                             data_used=0.0,
-                            status="active"
+                            status="active",
+                            last_renewed_at=get_now_iso(),
+                            last_lifecycle_event_at=get_now_iso()
                         )
+
+                    RenewalGuard.record_successful_renewal(sub_id)
 
                     # ثبت تاریخچه و تراکنش
                     try:

@@ -12197,6 +12197,18 @@ class Database:
             if not sub:
                 return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
 
+            # لایه محافظتی اتمیک دیتابیس در برابر تمدیدهای ناخواسته و متوالی (Cooldown امنیتی ۱۵ ثانیه)
+            last_ren = sub["last_renewed_at"] if "last_renewed_at" in sub.keys() else None
+            if last_ren:
+                try:
+                    from services.renewal_guard import RenewalGuard
+                    is_cool, rem, cool_msg = RenewalGuard.check_cooldown(sub_id, last_ren, cooldown_seconds=15)
+                    if is_cool:
+                        logger.warning(f"Database-level duplicate renewal blocked for sub #{sub_id} (reseller #{reseller_id})")
+                        return {"success": False, "error": f"این اشتراک لحظاتی پیش تمدید شده است ({cool_msg}). جهت حفظ امنیت مالی، عملیات تکراری لغو شد."}
+                except Exception as e_cool:
+                    logger.warning(f"Error checking cooldown in renew_reseller_subscription: {e_cool}")
+
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
             mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
             actual_source = "wallet"
@@ -12295,6 +12307,11 @@ class Database:
                     WHERE id=? AND reseller_id=?
                 """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, now, now, sub_id, reseller_id))
                 conn.commit()
+                try:
+                    from services.renewal_guard import RenewalGuard
+                    RenewalGuard.record_successful_renewal(sub_id)
+                except Exception:
+                    pass
                 return {"success": True, "mode": "instant", "payment_source": actual_source, "card_id": eff_card_id, "card_balance_after": card_bal_after}
             else:
                 # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار بدون لغو بسته‌های قبلی)
@@ -12310,6 +12327,11 @@ class Database:
                       plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})", next_order))
                 cursor.execute("UPDATE subscriptions SET payment_source=? WHERE id=?", (actual_source, sub_id))
                 conn.commit()
+                try:
+                    from services.renewal_guard import RenewalGuard
+                    RenewalGuard.record_successful_renewal(sub_id)
+                except Exception:
+                    pass
                 return {"success": True, "mode": "queued", "payment_source": actual_source, "queue_order": next_order}
         except Exception as e:
             return {"success": False, "error": str(e)}

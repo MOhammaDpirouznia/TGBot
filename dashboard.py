@@ -55,6 +55,7 @@ import tutorials_manager
 from palette_manager import (
     get_all_palettes, get_palette, get_active_palette_config, generate_palette_css
 )
+from services.renewal_guard import RenewalGuard
 
 logger = logging.getLogger(__name__)
 
@@ -3360,7 +3361,8 @@ def inject_global_branding():
         get_customer_portal_url=get_customer_portal_url,
         get_portal_proxy_path=get_portal_proxy_path,
         get_admin_login_proxy_path=get_admin_login_proxy_path,
-        get_login_url=get_login_url
+        get_login_url=get_login_url,
+        generate_renew_token=RenewalGuard.generate_token
     )
 
 
@@ -6892,6 +6894,20 @@ def admin_subscription_renew(sub_id: int):
         return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
+
+    # ۱. اعتبارسنجی توکن یکبار مصرف (جلوگیری از ارسال مجدد با رفرش صفحه مرورگر)
+    renew_token = request.form.get("renew_token")
+    token_valid, token_err = RenewalGuard.validate_and_consume_token(renew_token)
+    if not token_valid:
+        flash(f"⚠️ {token_err}", "warning")
+        return redirect(get_redirect_target("subscriptions"))
+
+    # ۲. بررسی بازه استراحت امنیتی (Cooldown Window) جهت جلوگیری از تمدید مجدد ناخواسته
+    is_cool, rem_sec, cool_msg = RenewalGuard.check_cooldown(sub_id, sub.get("last_renewed_at"), cooldown_seconds=30)
+    if is_cool:
+        flash(f"⚠️ {cool_msg}", "warning")
+        return redirect(get_redirect_target("subscriptions"))
+
     plan_key = request.form.get("plan_id", "").strip()
     custom_limit_raw = request.form.get("custom_limit", "").strip()
     custom_duration_raw = request.form.get("custom_duration", "").strip()
@@ -6955,194 +6971,104 @@ def admin_subscription_renew(sub_id: int):
 
     instant_activate = bool(request.form.get("instant_activate"))
 
-    if instant_activate:
-        # ۱. تمدید آنی در سرور هیدیفای با ریست کامل حجم (0) و روزها
-        renewal_res = {"renewal_type": "reset_and_replaced"}
-        if sub.get("hidify_uuid"):
-            try:
-                renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit, duration, force_instant=True)
-            except Exception as e:
-                logger.error(f"Admin renew Hiddify error: {e}")
+    # ۳. دریافت قفل همزمانی سرور (In-Flight Concurrency Lock)
+    lock_ok, lock_err = RenewalGuard.acquire_lock(sub_id)
+    if not lock_ok:
+        flash(f"⚠️ {lock_err}", "warning")
+        return redirect(get_redirect_target("subscriptions"))
 
-        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف، تنظیم تاریخ‌ها و وضعیت مالی بدهی/تسویه)
-        now = get_now_iso()
-        now_naive = get_now_naive()
-        new_start_date = now_naive.strftime("%Y-%m-%d")
-        new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
-        debt_created = now if debt_status == "unpaid" else None
-
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE subscriptions
-            SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                start_date=?, expire_date=?, status='active', updated_at=?,
-                last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?,
-                payment_status=?, debt_amount=?, debt_notes=?,
-                gift_traffic_gb=?, discount_amount=?,
-                debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
-            WHERE id=?
-        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, now, 0 if debt_status == "unpaid" else cost_paid,
-              debt_status, total_debt, renewal_notes or None, gift_traffic, discount_amount, debt_status, debt_created, sub_id))
-        conn.commit()
-        conn.close()
-
-        if debt_status == "unpaid":
-            try:
-                db.add_customer_debt_record(
-                    subscription_id=sub_id,
-                    account_name=sub.get("account_name"),
-                    telegram_id=sub.get("telegram_id") or 0,
-                    reseller_id=sub.get("reseller_id"),
-                    action_type="renew",
-                    plan_name=plan_name,
-                    amount=this_period_debt,
-                    notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط مدیریت",
-                    created_by=session.get("username") or "admin",
-                    previous_debt=old_debt
-                )
-            except Exception as ex_rec:
-                logger.error(f"Error recording debt record in admin renew: {ex_rec}")
-        else:
-            db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
-
-        # ۳. ثبت در تاریخچه دوره‌های اشتراک
-        try:
-            db.log_subscription_history(
-                subscription_id=sub_id,
-                telegram_id=sub.get("telegram_id") or 0,
-                hidify_uuid=sub.get("hidify_uuid") or "",
-                account_name=sub.get("account_name") or "",
-                plan_name=f"{plan_name} (تمدید رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
-                previous_usage_gb=sub.get("data_used") or 0,
-                previous_limit_gb=sub.get("data_limit") or 0,
-                period_days=duration,
-                renewal_type="reset_and_replaced",
-                reseller_id=sub.get("reseller_id"),
-                cost_paid=0 if debt_status == "unpaid" else cost_paid
-            )
-        except Exception as ex:
-            logger.error(f"Error logging subscription history in admin renew: {ex}")
-
-        # ثبت واریز تمدید در کارت/حساب مقصد یا صندوق نقدی
-        if debt_status != "unpaid" and cost_paid > 0:
-            payment_dest = request.form.get("payment_destination", "cash").strip()
-            if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
+    try:
+        if instant_activate:
+            # ۱. تمدید آنی در سرور هیدیفای با ریست کامل حجم (0) و روزها
+            renewal_res = {"renewal_type": "reset_and_replaced"}
+            if sub.get("hidify_uuid"):
                 try:
-                    c_id = int(re.sub(r"\D", "", payment_dest))
-                    db.add_card_transaction(
-                        card_id=c_id,
-                        owner_type="admin",
-                        tx_type="deposit",
-                        amount=cost_paid,
-                        category="تمدید اشتراک",
-                        title=f"تمدید {sub.get('account_name')} ({plan_name})",
-                        ref_type="subscription",
-                        ref_id=str(sub_id),
-                        actor=session.get("username") or "admin"
+                    renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit, duration, force_instant=True)
+                except Exception as e:
+                    logger.error(f"Admin renew Hiddify error: {e}")
+
+            # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف، تنظیم تاریخ‌ها و وضعیت مالی بدهی/تسویه)
+            now = get_now_iso()
+            now_naive = get_now_naive()
+            new_start_date = now_naive.strftime("%Y-%m-%d")
+            new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
+            debt_created = now if debt_status == "unpaid" else None
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE subscriptions
+                SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
+                    start_date=?, expire_date=?, status='active', updated_at=?,
+                    last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?,
+                    payment_status=?, debt_amount=?, debt_notes=?,
+                    gift_traffic_gb=?, discount_amount=?,
+                    debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
+                WHERE id=?
+            """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, now, 0 if debt_status == "unpaid" else cost_paid,
+                  debt_status, total_debt, renewal_notes or None, gift_traffic, discount_amount, debt_status, debt_created, sub_id))
+            conn.commit()
+            conn.close()
+
+            if debt_status == "unpaid":
+                try:
+                    db.add_customer_debt_record(
+                        subscription_id=sub_id,
+                        account_name=sub.get("account_name"),
+                        telegram_id=sub.get("telegram_id") or 0,
+                        reseller_id=sub.get("reseller_id"),
+                        action_type="renew",
+                        plan_name=plan_name,
+                        amount=this_period_debt,
+                        notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط مدیریت",
+                        created_by=session.get("username") or "admin",
+                        previous_debt=old_debt
                     )
-                except Exception as e_c:
-                    logger.error(f"Error depositing to target card in admin_subscription_renew: {e_c}")
+                except Exception as ex_rec:
+                    logger.error(f"Error recording debt record in admin renew: {ex_rec}")
             else:
-                try:
-                    desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
-                    db.add_cash_desk_log(
-                        owner_type="admin",
-                        amount=cost_paid,
-                        source="تمدید اشتراک",
-                        customer_name=sub.get("account_name"),
-                        ref_type="subscription",
-                        ref_id=str(sub_id),
-                        desk_id=desk_id,
-                        note=f"دریافت نقدی تمدید {sub.get('account_name')} توسط {session.get('username') or 'admin'}",
-                        actor=session.get("username") or "admin"
-                    )
-                except Exception as e_c:
-                    logger.error(f"Error recording cash desk in admin_subscription_renew: {e_c}")
+                db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
 
-        free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
-        debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی: تسویه شده)"
-        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag}{debt_tag} و حجم و روز آن ریست گردید.", "success")
-    else:
-        # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
-        if debt_status == "unpaid":
+            # ۳. ثبت در تاریخچه دوره‌های اشتراک
             try:
-                db.add_customer_debt_record(
+                db.log_subscription_history(
                     subscription_id=sub_id,
-                    account_name=sub.get("account_name"),
                     telegram_id=sub.get("telegram_id") or 0,
-                    reseller_id=sub.get("reseller_id"),
-                    action_type="renew",
-                    plan_name=plan_name,
-                    amount=this_period_debt,
-                    notes=renewal_notes or "ثبت بدهی تمدید در صف توسط مدیریت",
-                    created_by=session.get("username") or "admin",
-                    previous_debt=old_debt
-                )
-            except Exception as ex_rec:
-                logger.error(f"Error recording debt record in queue renew: {ex_rec}")
-        else:
-            db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
-            if renewal_notes:
-                conn = db.get_connection()
-                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=?", (renewal_notes, sub_id))
-                conn.commit()
-                conn.close()
-        q_res = db.add_to_subscription_queue(
-            subscription_id=sub_id,
-            plan_id=plan_key,
-            plan_name=f"{plan_name} (رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
-            data_limit=data_limit,
-            duration=duration,
-            cost=0 if debt_status == "unpaid" else cost_paid,
-            reseller_id=sub.get("reseller_id"),
-            telegram_id=sub.get("telegram_id") or 0,
-            hidify_uuid=sub.get("hidify_uuid") or "",
-            note="تمدید رایگان در صف توسط مدیریت" if is_free else ("تمدید بدهکار در صف توسط مدیریت" if debt_status == "unpaid" else "تمدید در صف توسط مدیریت")
-        )
-        if q_res.get("success"):
-            free_tag = " (رایگان با مبلغ ۰ تومان)" if is_free else ""
-            debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else ""
-            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}»{free_tag}{debt_tag} در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
-        else:
-            flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
-
-    # ثبت تراکنش و سند حسابداری فقط در صورتی که مشتری بدهکار نباشد
-    if debt_status != "unpaid":
-        if cost_paid > 0:
-            try:
-                payment_dest = request.form.get("payment_destination", "cash").strip()
-                r_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
-                db.save_transaction(
-                    order_id=r_order_id,
-                    user_id=sub.get("telegram_id") or 0,
-                    username=sub.get("account_name") or "",
-                    plan_name=plan_name,
-                    amount=cost_paid,
-                    gateway=payment_dest if payment_dest.startswith("card_") else "cash_admin",
-                    tracking_code=f"RENEW_{session.get('username') or 'admin'}",
-                    status="approved",
+                    hidify_uuid=sub.get("hidify_uuid") or "",
                     account_name=sub.get("account_name") or "",
-                    source="admin"
+                    plan_name=f"{plan_name} (تمدید رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
+                    previous_usage_gb=sub.get("data_used") or 0,
+                    previous_limit_gb=sub.get("data_limit") or 0,
+                    period_days=duration,
+                    renewal_type="reset_and_replaced",
+                    reseller_id=sub.get("reseller_id"),
+                    cost_paid=0 if debt_status == "unpaid" else cost_paid
                 )
-                if payment_dest.startswith("card_"):
+            except Exception as ex:
+                logger.error(f"Error logging subscription history in admin renew: {ex}")
+
+            # ثبت واریز تمدید در کارت/حساب مقصد یا صندوق نقدی
+            if debt_status != "unpaid" and cost_paid > 0:
+                payment_dest = request.form.get("payment_destination", "cash").strip()
+                if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
                     try:
-                        c_id = int(payment_dest.replace("card_", ""))
+                        c_id = int(re.sub(r"\D", "", payment_dest))
                         db.add_card_transaction(
                             card_id=c_id,
                             owner_type="admin",
                             tx_type="deposit",
                             amount=cost_paid,
                             category="تمدید اشتراک",
-                            title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
+                            title=f"تمدید {sub.get('account_name')} ({plan_name})",
                             ref_type="subscription",
                             ref_id=str(sub_id),
                             actor=session.get("username") or "admin"
                         )
                     except Exception as e_c:
-                        logger.error(f"Error depositing to target card in admin renew: {e_c}")
+                        logger.error(f"Error depositing to target card in admin_subscription_renew: {e_c}")
                 else:
                     try:
+                        desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
                         db.add_cash_desk_log(
                             owner_type="admin",
                             amount=cost_paid,
@@ -7150,60 +7076,168 @@ def admin_subscription_renew(sub_id: int):
                             customer_name=sub.get("account_name"),
                             ref_type="subscription",
                             ref_id=str(sub_id),
-                            note=f"دریافت نقدی تمدید توسط {session.get('username') or 'admin'}",
+                            desk_id=desk_id,
+                            note=f"دریافت نقدی تمدید {sub.get('account_name')} توسط {session.get('username') or 'admin'}",
                             actor=session.get("username") or "admin"
                         )
                     except Exception as e_c:
-                        logger.error(f"Error recording cash desk in admin renew: {e_c}")
-                db.add_accounting_record(
-                    type="income",
-                    category="تمدید اشتراک",
-                    title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
-                    amount=cost_paid,
-                    source="admin_panel",
-                    ref_type="subscription",
-                    ref_id=str(sub_id),
-                    description=f"تمدید توسط مدیریت ({session.get('username') or 'admin'}) - مقصد: {payment_dest}",
-                    date=get_now_iso()[:10]
-                )
-            except Exception as e_rev:
-                logger.error(f"Error recording revenue for admin renew: {e_rev}")
-        elif is_free:
-            try:
-                r_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
-                db.save_transaction(
-                    order_id=r_order_id,
-                    user_id=sub.get("telegram_id") or 0,
-                    username=sub.get("account_name") or "",
-                    plan_name=f"{plan_name} (تمدید رایگان)",
-                    amount=0,
-                    gateway="free_admin",
-                    tracking_code=f"FREE_{session.get('username') or 'admin'}",
-                    status="approved",
-                    account_name=sub.get("account_name") or "",
-                    source="admin"
-                )
-                db.add_accounting_record(
-                    type="income",
-                    category="تمدید رایگان اشتراک",
-                    title=f"تمدید رایگان اشتراک {sub.get('account_name')} ({plan_name})",
-                    amount=0,
-                    source="admin_panel",
-                    ref_type="subscription",
-                    ref_id=str(sub_id),
-                    description=f"تمدید رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
-                    date=get_now_iso()[:10]
-                )
-            except Exception as e_rev:
-                logger.error(f"Error recording free renewal: {e_rev}")
+                        logger.error(f"Error recording cash desk in admin_subscription_renew: {e_c}")
 
-    return redirect(get_redirect_target("subscriptions"))
+            free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
+            debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی: تسویه شده)"
+            flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag}{debt_tag} و حجم و روز آن ریست گردید.", "success")
+        else:
+            # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
+            if debt_status == "unpaid":
+                try:
+                    db.add_customer_debt_record(
+                        subscription_id=sub_id,
+                        account_name=sub.get("account_name"),
+                        telegram_id=sub.get("telegram_id") or 0,
+                        reseller_id=sub.get("reseller_id"),
+                        action_type="renew",
+                        plan_name=plan_name,
+                        amount=this_period_debt,
+                        notes=renewal_notes or "ثبت بدهی تمدید در صف توسط مدیریت",
+                        created_by=session.get("username") or "admin",
+                        previous_debt=old_debt
+                    )
+                except Exception as ex_rec:
+                    logger.error(f"Error recording debt record in queue renew: {ex_rec}")
+            else:
+                db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
+                if renewal_notes:
+                    conn = db.get_connection()
+                    conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=?", (renewal_notes, sub_id))
+                    conn.commit()
+                    conn.close()
+            q_res = db.add_to_subscription_queue(
+                subscription_id=sub_id,
+                plan_id=plan_key,
+                plan_name=f"{plan_name} (رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
+                data_limit=data_limit,
+                duration=duration,
+                cost=0 if debt_status == "unpaid" else cost_paid,
+                reseller_id=sub.get("reseller_id"),
+                telegram_id=sub.get("telegram_id") or 0,
+                hidify_uuid=sub.get("hidify_uuid") or "",
+                note="تمدید رایگان در صف توسط مدیریت" if is_free else ("تمدید بدهکار در صف توسط مدیریت" if debt_status == "unpaid" else "تمدید در صف توسط مدیریت")
+            )
+            if q_res.get("success"):
+                free_tag = " (رایگان با مبلغ ۰ تومان)" if is_free else ""
+                debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else ""
+                flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}»{free_tag}{debt_tag} در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
+            else:
+                flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
+
+        # ثبت تراکنش و سند حسابداری فقط در صورتی که مشتری بدهکار نباشد
+        if debt_status != "unpaid":
+            if cost_paid > 0:
+                try:
+                    payment_dest = request.form.get("payment_destination", "cash").strip()
+                    r_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                    db.save_transaction(
+                        order_id=r_order_id,
+                        user_id=sub.get("telegram_id") or 0,
+                        username=sub.get("account_name") or "",
+                        plan_name=plan_name,
+                        amount=cost_paid,
+                        gateway=payment_dest if payment_dest.startswith("card_") else "cash_admin",
+                        tracking_code=f"RENEW_{session.get('username') or 'admin'}",
+                        status="approved",
+                        account_name=sub.get("account_name") or "",
+                        source="admin"
+                    )
+                    if payment_dest.startswith("card_"):
+                        try:
+                            c_id = int(payment_dest.replace("card_", ""))
+                            db.add_card_transaction(
+                                card_id=c_id,
+                                owner_type="admin",
+                                tx_type="deposit",
+                                amount=cost_paid,
+                                category="تمدید اشتراک",
+                                title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                actor=session.get("username") or "admin"
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error depositing to target card in admin renew: {e_c}")
+                    else:
+                        try:
+                            desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
+                            db.add_cash_desk_log(
+                                owner_type="admin",
+                                amount=cost_paid,
+                                source="تمدید اشتراک",
+                                customer_name=sub.get("account_name"),
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                desk_id=desk_id,
+                                note=f"دریافت نقدی تمدید {sub.get('account_name')} توسط {session.get('username') or 'admin'}",
+                                actor=session.get("username") or "admin"
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error recording cash desk in admin renew: {e_c}")
+                    db.add_accounting_record(
+                        type="income",
+                        category="تمدید اشتراک",
+                        title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
+                        amount=cost_paid,
+                        source="admin_panel",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        description=f"تمدید توسط مدیریت ({session.get('username') or 'admin'}) - مقصد: {payment_dest}",
+                        date=get_now_iso()[:10]
+                    )
+                except Exception as e_rev:
+                    logger.error(f"Error recording revenue for admin renew: {e_rev}")
+            elif is_free:
+                try:
+                    r_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                    db.save_transaction(
+                        order_id=r_order_id,
+                        user_id=sub.get("telegram_id") or 0,
+                        username=sub.get("account_name") or "",
+                        plan_name=f"{plan_name} (تمدید رایگان)",
+                        amount=0,
+                        gateway="free_admin",
+                        tracking_code=f"FREE_{session.get('username') or 'admin'}",
+                        status="approved",
+                        account_name=sub.get("account_name") or "",
+                        source="admin"
+                    )
+                    db.add_accounting_record(
+                        type="income",
+                        category="تمدید رایگان اشتراک",
+                        title=f"تمدید رایگان اشتراک {sub.get('account_name')} ({plan_name})",
+                        amount=0,
+                        source="admin_panel",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        description=f"تمدید رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
+                        date=get_now_iso()[:10]
+                    )
+                except Exception as e_rev:
+                    logger.error(f"Error recording free renewal: {e_rev}")
+
+        RenewalGuard.record_successful_renewal(sub_id)
+        return redirect(get_redirect_target("subscriptions"))
+    finally:
+        RenewalGuard.release_lock(sub_id)
 
 
 @app.route("/admin/subscriptions/bulk-renew", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscriptions_bulk_renew():
     """تمدید گروهی اشتراک‌های انتخاب‌شده در پنل مدیریت (آنی یا در صف)"""
+    renew_token = request.form.get("renew_token")
+    token_valid, token_err = RenewalGuard.validate_and_consume_token(renew_token)
+    if not token_valid:
+        flash(f"⚠️ {token_err}", "warning")
+        return redirect(url_for("subscriptions"))
+
     selected_ids_str = request.form.get("selected_ids_str", "").strip()
     if not selected_ids_str:
         flash("هیچ اشتراکی برای تمدید گروهی انتخاب نشده است.", "warning")
@@ -14356,6 +14390,19 @@ def reseller_renew_user(sub_id: int):
         flash("اشتراک مورد نظر یافت نشد.", "danger")
         return redirect(get_redirect_target("reseller_users"))
 
+    # ۱. اعتبارسنجی توکن یکبار مصرف (جلوگیری کامل از تمدید مجدد با رفرش صفحه مرورگر)
+    renew_token = request.form.get("renew_token")
+    token_valid, token_err = RenewalGuard.validate_and_consume_token(renew_token)
+    if not token_valid:
+        flash(f"⚠️ {token_err}", "warning")
+        return redirect(get_redirect_target("reseller_users"))
+
+    # ۲. بررسی بازه استراحت امنیتی (Cooldown Window) جهت جلوگیری از کلیک مجدد یا تمدید دوبار
+    is_cool, rem_sec, cool_msg = RenewalGuard.check_cooldown(sub_id, sub.get("last_renewed_at"), cooldown_seconds=30)
+    if is_cool:
+        flash(f"⚠️ {cool_msg}", "warning")
+        return redirect(get_redirect_target("reseller_users"))
+
     plan_key = request.form.get("plan_id")
     payment_source = request.form.get("payment_source", "auto").strip()
     plans = get_reseller_plans_dict(reseller_id)
@@ -14401,194 +14448,212 @@ def reseller_renew_user(sub_id: int):
     effective_limit_gb = data_limit_gb + gift_traffic
     plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
 
-    # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
-    renewal_res = {"renewal_type": "reset_and_replaced"}
-    if instant_activate and sub.get("hidify_uuid"):
-        try:
-            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True)
-        except Exception as e:
-            logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
+    # ۳. دریافت قفل همزمانی سرور (In-Flight Concurrency Lock)
+    lock_ok, lock_err = RenewalGuard.acquire_lock(sub_id)
+    if not lock_ok:
+        flash(f"⚠️ {lock_err}", "warning")
+        return redirect(get_redirect_target("reseller_users"))
 
-    # کسر سهمیه حجم هدیه نماینده
-    if gift_traffic > 0:
-        db.deduct_reseller_gift_traffic(reseller_id, gift_traffic)
-
-    # دریافت وضعیت مالی مشتری (تسویه یا بدهکار)، مبلغ تخفیف و یادداشت تمدید
-    payment_status = request.form.get("payment_status", "paid").strip()
-    debt_amount_raw = request.form.get("debt_amount", "").strip()
-    renewal_notes = request.form.get("renewal_notes", "").strip()
-    discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
-    customer_selling_price = max(0, original_price - discount_amount)
-
-    if payment_status in ("unpaid", "debtor"):
-        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
-        debt_status = "unpaid"
-    else:
-        debt_amount = 0
-        debt_status = "paid"
-
-    # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
-    creator_user = session.get("username") or f"reseller_{reseller_id}"
-    profit_margin = 0 if debt_status == "unpaid" else max(0, customer_selling_price - final_price)
-    renew_selling_price = 0 if debt_status == "unpaid" else customer_selling_price
-    renew_db = db.renew_reseller_subscription(
-        reseller_id=reseller_id,
-        sub_id=sub_id,
-        plan_id=plan_key,
-        plan_name=plan_title,
-        cost=final_price,
-        data_limit=effective_limit_gb,
-        duration=duration_days,
-        instant_activate=instant_activate,
-        renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
-        payment_source=payment_source,
-        selling_price=renew_selling_price,
-        profit_margin=profit_margin,
-        created_by=creator_user
-    )
-
-    # ذخیره حجم هدیه و مبلغ تخفیف روی اشتراک
     try:
-        conn_sub = db.get_connection()
-        conn_sub.execute("UPDATE subscriptions SET gift_traffic_gb = ?, discount_amount = ? WHERE id = ?", (gift_traffic, discount_amount, sub_id))
-        conn_sub.commit()
-        conn_sub.close()
-    except Exception as e_sub:
-        logger.error(f"Error updating gift_traffic_gb/discount_amount on sub {sub_id}: {e_sub}")
-
-    if renew_db.get("success"):
-        # تنظیم یا تسویه وضعیت مالی و بدهی مشتری
-        old_debt = int(sub.get("debt_amount") or 0)
-        total_sub_debt = old_debt + debt_amount if debt_status == "unpaid" else 0
-
-        if debt_status == "unpaid":
+        # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
+        renewal_res = {"renewal_type": "reset_and_replaced"}
+        if instant_activate and sub.get("hidify_uuid"):
             try:
-                db.add_customer_debt_record(
-                    subscription_id=sub_id,
-                    account_name=sub.get("account_name"),
-                    telegram_id=sub.get("telegram_id") or 0,
-                    reseller_id=reseller_id,
-                    action_type="renew",
-                    plan_name=plan_title,
-                    amount=debt_amount,
-                    notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط نماینده",
-                    created_by=creator_user,
-                    previous_debt=old_debt
-                )
-            except Exception as e_rec:
-                logger.error(f"Error logging customer debt record in reseller_renew_user: {e_rec}")
-        else:
-            db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=creator_user)
-            if renewal_notes:
-                conn = db.get_connection()
-                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=? AND reseller_id=?", (renewal_notes, sub_id, reseller_id))
-                conn.commit()
-                conn.close()
-
-        debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} ت | مجموع بدهی: {total_sub_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی مشتری: تسویه شده)"
-
-        # ثبت فیش پرداخت و درآمد مشتری در صورت تسویه و عدم بدهکاری
-        if debt_status != "unpaid" and original_price > 0:
-            payment_dest = request.form.get("payment_destination", "cash").strip()
-            try:
-                rx_order_id = f"RNW_RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
-                db.save_transaction(
-                    order_id=rx_order_id,
-                    user_id=sub.get("telegram_id") or 0,
-                    username=sub.get("account_name") or "",
-                    plan_name=plan_title,
-                    amount=original_price,
-                    gateway=payment_dest if payment_dest.startswith("card_") else "cash_reseller",
-                    tracking_code=f"RENEW_{creator_user}",
-                    status="approved",
-                    account_name=sub.get("account_name") or "",
-                    source="reseller",
-                    reseller_id=reseller_id,
-                    subscription_id=sub_id,
-                    is_renewal=1
-                )
-                if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
-                    try:
-                        c_id = int(re.sub(r"\D", "", payment_dest))
-                        db.add_card_transaction(
-                            card_id=c_id,
-                            owner_type="reseller",
-                            owner_id=reseller_id,
-                            tx_type="deposit",
-                            amount=original_price,
-                            category="تمدید اشتراک",
-                            title=f"تمدید {sub.get('account_name')} ({plan_title})",
-                            ref_type="subscription",
-                            ref_id=str(sub_id),
-                            actor=creator_user
-                        )
-                    except Exception as e_c:
-                        logger.error(f"Error depositing to target card in reseller_renew_user: {e_c}")
-                else:
-                    try:
-                        desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
-                        db.add_cash_desk_log(
-                            owner_type="reseller",
-                            owner_id=reseller_id,
-                            amount=original_price,
-                            source="تمدید اشتراک",
-                            customer_name=sub.get("account_name"),
-                            ref_type="subscription",
-                            ref_id=str(sub_id),
-                            desk_id=desk_id,
-                            note=f"دریافت نقدی تمدید توسط {creator_user}",
-                            actor=creator_user
-                        )
-                    except Exception as e_c:
-                        logger.error(f"Error recording cash desk in reseller_renew_user: {e_c}")
-            except Exception as e_rx:
-                logger.error(f"Error saving customer renew transaction in reseller_renew_user: {e_rx}")
-
-        if instant_activate:
-            # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
-            try:
-                db.log_subscription_history(
-                    subscription_id=sub_id,
-                    telegram_id=sub.get("telegram_id") or 0,
-                    hidify_uuid=sub.get("hidify_uuid") or "",
-                    account_name=sub["account_name"],
-                    plan_name=plan_title,
-                    previous_usage_gb=sub.get("data_used") or 0,
-                    previous_limit_gb=sub.get("data_limit") or 0,
-                    period_days=duration_days,
-                    renewal_type="reset_and_replaced",
-                    reseller_id=reseller_id,
-                    cost_paid=final_price,
-                    created_by=creator_user
-                )
+                renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True)
             except Exception as e:
-                logger.warning(f"Failed to log subscription history on reseller renew: {e}")
+                logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
-            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.{debt_tag}", "success")
+        # کسر سهمیه حجم هدیه نماینده
+        if gift_traffic > 0:
+            db.deduct_reseller_gift_traffic(reseller_id, gift_traffic)
+
+        # دریافت وضعیت مالی مشتری (تسویه یا بدهکار)، مبلغ تخفیف و یادداشت تمدید
+        payment_status = request.form.get("payment_status", "paid").strip()
+        debt_amount_raw = request.form.get("debt_amount", "").strip()
+        renewal_notes = request.form.get("renewal_notes", "").strip()
+        discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
+        customer_selling_price = max(0, original_price - discount_amount)
+
+        if payment_status in ("unpaid", "debtor"):
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
+            debt_status = "unpaid"
         else:
-            flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد.{debt_tag} پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+            debt_amount = 0
+            debt_status = "paid"
 
-        r_after = db.get_reseller(reseller_id)
-        if r_after:
-            session["balance"] = r_after.get("balance", 0)
-            c_lim = r_after.get("credit_limit", 0)
-            c_debt = r_after.get("credit_debt", 0)
-            c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
-            session["credit_enabled"] = c_en
-            session["credit_limit"] = c_lim
-            session["credit_debt"] = c_debt
-            session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
-            session["total_purchasing_power"] = session["balance"] + session["available_credit"]
-    else:
-        flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
+        # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
+        creator_user = session.get("username") or f"reseller_{reseller_id}"
+        profit_margin = 0 if debt_status == "unpaid" else max(0, customer_selling_price - final_price)
+        renew_selling_price = 0 if debt_status == "unpaid" else customer_selling_price
+        renew_db = db.renew_reseller_subscription(
+            reseller_id=reseller_id,
+            sub_id=sub_id,
+            plan_id=plan_key,
+            plan_name=plan_title,
+            cost=final_price,
+            data_limit=effective_limit_gb,
+            duration=duration_days,
+            instant_activate=instant_activate,
+            renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
+            payment_source=payment_source,
+            selling_price=renew_selling_price,
+            profit_margin=profit_margin,
+            created_by=creator_user
+        )
 
-    return redirect(get_redirect_target("reseller_users"))
+        # ذخیره حجم هدیه و مبلغ تخفیف روی اشتراک
+        try:
+            conn_sub = db.get_connection()
+            conn_sub.execute("UPDATE subscriptions SET gift_traffic_gb = ?, discount_amount = ? WHERE id = ?", (gift_traffic, discount_amount, sub_id))
+            conn_sub.commit()
+            conn_sub.close()
+        except Exception as e_sub:
+            logger.error(f"Error updating gift_traffic_gb/discount_amount on sub {sub_id}: {e_sub}")
+
+        if renew_db.get("success"):
+            # تنظیم یا تسویه وضعیت مالی و بدهی مشتری
+            old_debt = int(sub.get("debt_amount") or 0)
+            total_sub_debt = old_debt + debt_amount if debt_status == "unpaid" else 0
+
+            if debt_status == "unpaid":
+                try:
+                    db.add_customer_debt_record(
+                        subscription_id=sub_id,
+                        account_name=sub.get("account_name"),
+                        telegram_id=sub.get("telegram_id") or 0,
+                        reseller_id=reseller_id,
+                        action_type="renew",
+                        plan_name=plan_title,
+                        amount=debt_amount,
+                        notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط نماینده",
+                        created_by=creator_user,
+                        previous_debt=old_debt
+                    )
+                except Exception as e_rec:
+                    logger.error(f"Error logging customer debt record in reseller_renew_user: {e_rec}")
+            else:
+                db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=creator_user)
+                if renewal_notes:
+                    conn = db.get_connection()
+                    conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=? AND reseller_id=?", (renewal_notes, sub_id, reseller_id))
+                    conn.commit()
+                    conn.close()
+
+            debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} ت | مجموع بدهی: {total_sub_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی مشتری: تسویه شده)"
+
+            # ثبت فیش پرداخت و درآمد مشتری در صورت تسویه و عدم بدهکاری
+            if debt_status != "unpaid" and original_price > 0:
+                payment_dest = request.form.get("payment_destination", "cash").strip()
+                try:
+                    rx_order_id = f"RNW_RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                    db.save_transaction(
+                        order_id=rx_order_id,
+                        user_id=sub.get("telegram_id") or 0,
+                        username=sub.get("account_name") or "",
+                        plan_name=plan_title,
+                        amount=original_price,
+                        gateway=payment_dest if payment_dest.startswith("card_") else "cash_reseller",
+                        tracking_code=f"RENEW_{creator_user}",
+                        status="approved",
+                        account_name=sub.get("account_name") or "",
+                        source="reseller",
+                        reseller_id=reseller_id,
+                        subscription_id=sub_id,
+                        is_renewal=1
+                    )
+                    if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
+                        try:
+                            c_id = int(re.sub(r"\D", "", payment_dest))
+                            db.add_card_transaction(
+                                card_id=c_id,
+                                owner_type="reseller",
+                                owner_id=reseller_id,
+                                tx_type="deposit",
+                                amount=original_price,
+                                category="تمدید اشتراک",
+                                title=f"تمدید {sub.get('account_name')} ({plan_title})",
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                actor=creator_user
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error depositing to target card in reseller_renew_user: {e_c}")
+                    else:
+                        try:
+                            desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
+                            db.add_cash_desk_log(
+                                owner_type="reseller",
+                                owner_id=reseller_id,
+                                amount=original_price,
+                                source="تمدید اشتراک",
+                                customer_name=sub.get("account_name"),
+                                ref_type="subscription",
+                                ref_id=str(sub_id),
+                                desk_id=desk_id,
+                                note=f"دریافت نقدی تمدید توسط {creator_user}",
+                                actor=creator_user
+                            )
+                        except Exception as e_c:
+                            logger.error(f"Error recording cash desk in reseller_renew_user: {e_c}")
+                except Exception as e_rx:
+                    logger.error(f"Error saving customer renew transaction in reseller_renew_user: {e_rx}")
+
+            if instant_activate:
+                # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
+                try:
+                    db.log_subscription_history(
+                        subscription_id=sub_id,
+                        telegram_id=sub.get("telegram_id") or 0,
+                        hidify_uuid=sub.get("hidify_uuid") or "",
+                        account_name=sub["account_name"],
+                        plan_name=plan_title,
+                        previous_usage_gb=sub.get("data_used") or 0,
+                        previous_limit_gb=sub.get("data_limit") or 0,
+                        period_days=duration_days,
+                        renewal_type="reset_and_replaced",
+                        reseller_id=reseller_id,
+                        cost_paid=final_price,
+                        created_by=creator_user
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to log subscription history on reseller renew: {e}")
+
+                flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.{debt_tag}", "success")
+            else:
+                flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد.{debt_tag} پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+
+            r_after = db.get_reseller(reseller_id)
+            if r_after:
+                session["balance"] = r_after.get("balance", 0)
+                c_lim = r_after.get("credit_limit", 0)
+                c_debt = r_after.get("credit_debt", 0)
+                c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
+                session["credit_enabled"] = c_en
+                session["credit_limit"] = c_lim
+                session["credit_debt"] = c_debt
+                session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
+                session["total_purchasing_power"] = session["balance"] + session["available_credit"]
+
+            # ثبت زمان آخرین تمدید در کش امنیتی سریع
+            RenewalGuard.record_successful_renewal(sub_id)
+        else:
+            flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
+
+        return redirect(get_redirect_target("reseller_users"))
+    finally:
+        RenewalGuard.release_lock(sub_id)
 
 
 @app.route("/reseller/subscriptions/bulk-renew", methods=["POST"])
 @reseller_required
 def reseller_subscriptions_bulk_renew():
     """تمدید گروهی اشتراک‌های انتخابی نماینده (آنی یا در صف) با محاسبه مجموع هزینه و کسر از کیف‌پول/اعتبار"""
+    renew_token = request.form.get("renew_token")
+    token_valid, token_err = RenewalGuard.validate_and_consume_token(renew_token)
+    if not token_valid:
+        flash(f"⚠️ {token_err}", "warning")
+        return redirect(url_for("reseller_users"))
+
     reseller_id = session.get("reseller_id")
     selected_ids_str = request.form.get("selected_ids_str", "").strip()
     if not selected_ids_str:
@@ -16585,8 +16650,6 @@ def reseller_payment_approve(payment_id):
         smart_inv = db.get_smart_invoice_by_order_id(tx.get("order_id"))
         instant_act = bool(smart_inv.get("instant_activation", 1)) if smart_inv else True
 
-        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user, payment_source="auto")
-        
         if instant_act and target_sub.get("hidify_uuid"):
             try:
                 hidify_sync_renew_user(target_sub["hidify_uuid"], data_limit, duration, force_instant=True)
@@ -16598,18 +16661,22 @@ def reseller_payment_approve(payment_id):
             reseller_id=reseller_id,
             sub_id=target_sub["id"],
             plan_id=plan_id_val,
+            plan_name=plan_name,
             cost=wholesale_price,
+            data_limit=data_limit,
+            duration=duration,
             instant_activate=instant_act,
             payment_source="auto",
             selling_price=original_price,
             profit_margin=res_profit,
-            creator=approver_user
+            created_by=approver_user
         )
         sub_uuid = target_sub.get("hidify_uuid") or str(target_sub["id"])
         h_url = get_hiddify_url()
         u_proxy = get_user_proxy()
         sub_link = f"{h_url}/{u_proxy}/{sub_uuid}/" if (h_url and sub_uuid) else f"https://vpn.service/sub/{account_name}"
     else:
+        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user, payment_source="auto")
         # ساخت اکانت جدید در هیدیفای و دیتابیس
         account_name = tx.get("account_name") or f"r_{reseller_id}_{user_id}_{int(time.time()) % 10000}"
         user_comment = f"Reseller #{reseller_id} ({session.get('name')}) via Web"
