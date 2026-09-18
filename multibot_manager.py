@@ -1085,6 +1085,8 @@ class ResellerBotInstance:
                     msg += f"به نام: <b>{card_holder}</b>\n"
                 if bank_name:
                     msg += f"بانک: <b>{bank_name}</b>\n"
+                if invoice.get("shaba_number"):
+                    msg += f"شماره شبا:\n<code>{invoice['shaba_number']}</code>\n"
                 msg += "\n⚡ <b>نکته بسیار مهم درباره تایید خودکار:</b>\n"
                 msg += "سیستم مجهز به <b>تایید خودکار با پیامک بانکی اختصاصی نماینده</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی واریزی شما، لطفاً مبلغ را با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست فرمایید تا اشتباهی رخ ندهد.\n\n"
                 msg += "⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>"
@@ -1136,6 +1138,19 @@ class ResellerBotInstance:
                         [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)), style="primary")],
                         [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style="danger")]
                     ]
+
+                if invoice.get("shaba_number"):
+                    shaba_btn = InlineKeyboardButton("📋 کپی شماره شبا", copy_text=CopyTextButton(invoice["shaba_number"]), style="primary")
+                    inserted = False
+                    for i, row in enumerate(buttons):
+                        for b in row:
+                            if hasattr(b, 'copy_text') and b.copy_text and ("شماره کارت" in (b.text or "") or "card" in str(b.callback_data or "")):
+                                buttons.insert(i + 1, [shaba_btn])
+                                inserted = True
+                                break
+                        if inserted: break
+                    if not inserted:
+                        buttons.insert(0, [shaba_btn])
 
                 kb = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")

@@ -15724,12 +15724,10 @@ def reseller_bundles_create_smart_invoice():
     if not bundle:
         return jsonify({"success": False, "error": "بسته اعتباری مورد نظر یافت نشد."}), 404
 
-    admin_cards = db.get_active_bank_cards()
-    if not admin_cards:
-        return jsonify({"success": False, "error": "شماره کارت فعالی برای مدیریت در سیستم تعریف نشده است."}), 400
-
-    target_card = admin_cards[0]
     price = bundle["price"]
+    target_card = db.get_best_active_card(owner_type="admin", incoming_amount=price)
+    if not target_card:
+        return jsonify({"success": False, "error": "شماره کارت فعالی برای مدیریت در سیستم تعریف نشده است."}), 400
 
     sms_cfg = db.get_admin_bank_sms_config()
     digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
@@ -21304,23 +21302,17 @@ def customer_create_invoice(token: str):
     target_card = None
     sms_cfg = {}
     if reseller_id:
-        r_cards = db.get_reseller_cards(reseller_id)
-        active_r_cards = [c for c in r_cards if c.get("is_active")]
-        if active_r_cards:
-            target_card = random.choice(active_r_cards)
+        target_card = db.get_best_active_card(owner_type="reseller", reseller_id=reseller_id, incoming_amount=price)
+        if target_card:
             sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
         else:
-            adm_cards = db.get_all_bank_cards()
-            active_adm_cards = [c for c in adm_cards if c.get("is_active")]
-            if active_adm_cards:
-                target_card = random.choice(active_adm_cards)
+            target_card = db.get_best_active_card(owner_type="admin", incoming_amount=price)
+            if target_card:
                 sms_cfg = db.get_admin_bank_sms_config()
                 logger.warning(f"Reseller {reseller_id} has no active bank cards. Falling back to admin cards for sub {sub_id}.")
     else:
-        adm_cards = db.get_all_bank_cards()
-        active_adm_cards = [c for c in adm_cards if c.get("is_active")]
-        if active_adm_cards:
-            target_card = random.choice(active_adm_cards)
+        target_card = db.get_best_active_card(owner_type="admin", incoming_amount=price)
+        if target_card:
             sms_cfg = db.get_admin_bank_sms_config()
 
     if not target_card:
@@ -21787,22 +21779,16 @@ def customer_settle_debt_invoice(token: str):
     target_card = None
     sms_cfg = {}
     if reseller_id:
-        r_cards = db.get_reseller_cards(reseller_id)
-        active_r_cards = [c for c in r_cards if c.get("is_active")]
-        if active_r_cards:
-            target_card = random.choice(active_r_cards)
+        target_card = db.get_best_active_card(owner_type="reseller", reseller_id=reseller_id, incoming_amount=debt_amount)
+        if target_card:
             sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
         else:
-            adm_cards = db.get_all_bank_cards()
-            active_adm_cards = [c for c in adm_cards if c.get("is_active")]
-            if active_adm_cards:
-                target_card = random.choice(active_adm_cards)
+            target_card = db.get_best_active_card(owner_type="admin", incoming_amount=debt_amount)
+            if target_card:
                 sms_cfg = db.get_admin_bank_sms_config()
     else:
-        adm_cards = db.get_all_bank_cards()
-        active_adm_cards = [c for c in adm_cards if c.get("is_active")]
-        if active_adm_cards:
-            target_card = random.choice(active_adm_cards)
+        target_card = db.get_best_active_card(owner_type="admin", incoming_amount=debt_amount)
+        if target_card:
             sms_cfg = db.get_admin_bank_sms_config()
 
     if not target_card:

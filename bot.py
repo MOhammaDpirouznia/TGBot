@@ -2428,6 +2428,8 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 text += f"\n👤 <b>نام صاحب حساب:</b> {card_holder}"
             if bank_name:
                 text += f"\n🏦 <b>بانک:</b> {bank_name}"
+            if invoice.get("shaba_number"):
+                text += f"\n🔢 <b>شماره شبا:</b>\n<code>{invoice['shaba_number']}</code>"
 
             text += f"""
 
@@ -2438,9 +2440,13 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 """
             keyboard = [
                 [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_number), style="primary")],
+            ]
+            if invoice.get("shaba_number"):
+                keyboard.append([InlineKeyboardButton("📋 کپی شماره شبا", copy_text=CopyTextButton(invoice["shaba_number"]), style="primary")])
+            keyboard.extend([
                 [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_amount)), style="primary")],
                 [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")],
-            ]
+            ])
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
             return ENTERING_TRACKING_CODE

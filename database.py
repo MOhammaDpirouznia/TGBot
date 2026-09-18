@@ -1039,6 +1039,10 @@ class Database:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_smart_invoices_token ON smart_invoices(token)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_smart_invoices_match ON smart_invoices(reseller_id, final_amount, status)")
+            try:
+                cursor.execute("ALTER TABLE smart_invoices ADD COLUMN shaba_number TEXT")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -15593,11 +15597,23 @@ class Database:
 
             for c in rows:
                 c_id = c["id"]
+                card_number = c.get("card_number")
+                
+                # محاسبه گردش موفق از جدول تراکنش‌های اصلی بات و پرتال
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                    WHERE card_number = ? AND status IN ('approved', 'completed', 'paid') AND created_at LIKE ?
+                """, (card_number, f"{today_str}%"))
+                vol_transactions = cursor.fetchone()[0] or 0
+                
+                # محاسبه مبالغ اضافه شده به صورت دستی یا سایر روش‌ها در سیستم مالی کارت‌ها
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
                     WHERE card_id = ? AND owner_type = ? AND type = 'deposit' AND created_at LIKE ?
                 """, (c_id, owner_type, f"{today_str}%"))
-                vol_today = cursor.fetchone()[0] or 0
+                vol_card_tx = cursor.fetchone()[0] or 0
+                
+                vol_today = vol_transactions + vol_card_tx
                 c["daily_volume_today"] = vol_today
                 c_limit = c.get("daily_limit") or 50000000
                 has_capacity = (vol_today + incoming_amount) <= c_limit
@@ -20329,6 +20345,7 @@ class Database:
         c_num = target_card.get("card_number") if target_card else ""
         c_holder = target_card.get("card_holder") if target_card else ""
         b_name = target_card.get("bank_name") if target_card else ""
+        shaba_num = target_card.get("shaba_number") if target_card else ""
         inst_act_val = 1 if instant_activation else 0
         disc_code_clean = (discount_code or "").strip().upper() or None
         disc_amt_clean = int(discount_amount or 0)
@@ -20340,9 +20357,9 @@ class Database:
                 order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
                 final_amount, target_card_id, card_number, card_holder, bank_name, 
                 status, token, expires_at, created_at, instant_activation,
-                discount_code, discount_amount, is_debt_settlement, telegram_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean, debt_settle_val, tg_id_val))
+                discount_code, discount_amount, is_debt_settlement, telegram_id, shaba_number
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean, debt_settle_val, tg_id_val, shaba_num))
         conn.commit()
         conn.close()
 
@@ -20357,6 +20374,7 @@ class Database:
             "card_number": c_num,
             "card_holder": c_holder,
             "bank_name": b_name,
+            "shaba_number": shaba_num,
             "status": "pending",
             "token": token,
             "expires_at": expires_str,

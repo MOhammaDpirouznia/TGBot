@@ -302,12 +302,11 @@ def get_bundle_smart_sms_payload(bundle_id: str, reseller_id: int) -> Tuple[str,
     if not bundle:
         return "❌ بسته مورد نظر یافت نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_bundles")]])
         
-    admin_cards = db.get_active_bank_cards()
-    if not admin_cards:
-        return "❌ در حال حاضر هیچ کارت بانکی فعالی برای مدیریت ثبت نشده است.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"res_adm_bdl_{bundle_id}")]])
-
-    target_card = admin_cards[0]
     price = bundle["price"]
+    target_card = db.get_best_active_card(owner_type="admin", incoming_amount=price)
+    if not target_card:
+        return "❌ هیچ شماره کارت فعالی برای دریافت وجه تعریف نشده است.", InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data=f"res_adm_bdl_{bundle_id}")]])
+
     sms_cfg = db.get_admin_bank_sms_config()
     digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
     timeout = sms_cfg.get("timeout", 20) if isinstance(sms_cfg, dict) else 20
@@ -356,7 +355,10 @@ def get_bundle_smart_sms_payload(bundle_id: str, reseller_id: int) -> Tuple[str,
 💳 **شماره کارت مقصد (مدیریت):**
 `{raw_c}`
 👤 به نام: **{holder}** | بانک: **{bank}**
-⏳ مهلت واریز: **{timeout} دقیقه**
+"""
+    if invoice.get("shaba_number"):
+        text += f"🔢 **شماره شبا:**\n`{invoice['shaba_number']}`\n"
+    text += f"""⏳ مهلت واریز: **{timeout} دقیقه**
 
 ⚠️ **نکات بسیار مهم:**
 ۱. حتماً مبلغ را **دقیقاً به میزان `{final_amt:,}` تومان** (با ارقام خرد انتهایی) انتقال دهید.
@@ -364,10 +366,14 @@ def get_bundle_smart_sms_payload(bundle_id: str, reseller_id: int) -> Tuple[str,
 """
     buttons = [
         [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_c))],
+    ]
+    if invoice.get("shaba_number"):
+        buttons.append([InlineKeyboardButton("📋 کپی شماره شبا", copy_text=CopyTextButton(invoice["shaba_number"]))])
+    buttons.extend([
         [InlineKeyboardButton("📋 کپی مبلغ دقیق", copy_text=CopyTextButton(str(final_amt)))],
         [InlineKeyboardButton("🔄 استعلام وضعیت شارژ", callback_data="res_adm_menu")],
         [InlineKeyboardButton("🔙 بازگشت به روش‌های پرداخت", callback_data=f"res_adm_bdl_{bundle_id}")]
-    ]
+    ])
     return text, InlineKeyboardMarkup(buttons)
 
 

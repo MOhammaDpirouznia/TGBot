@@ -2204,6 +2204,17 @@
                     <i class="fas fa-copy me-1"></i> کپی کارت
                 </button>
             </div>
+            {% if invoice.get('shaba_number') %}
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary border-opacity-25">
+                <div class="d-flex flex-column">
+                    <span class="text-secondary small mb-1">شماره شبا:</span>
+                    <span class="fs-6 font-monospace text-info fw-bold" dir="ltr">{{ invoice['shaba_number'] }}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-light copy-btn mt-3" onclick="copyText('{{ invoice['shaba_number'] }}', 'شماره شبا')">
+                    <i class="fas fa-copy me-1"></i> کپی شبا
+                </button>
+            </div>
+            {% endif %}
         </div>
 
         <!-- وضعیت انتظار زنده و دکمه لغو فاکتور -->
