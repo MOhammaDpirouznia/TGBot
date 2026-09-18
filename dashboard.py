@@ -13700,6 +13700,9 @@ def reseller_create_user():
             session["available_credit"] = max(0, c_lim - c_debt)
 
         now = get_now_iso()
+        now_naive = get_now_naive()
+        start_date = now_naive.strftime("%Y-%m-%d")
+        expire_date = (now_naive + timedelta(days=int(duration_days))).isoformat()
         debt_created = now if debt_amount > 0 else None
         is_credit_sub = 1 if deduct_res.get("is_credit") else 0
         credit_used_amount = deduct_res.get("credit_used", 0)
@@ -13712,12 +13715,12 @@ def reseller_create_user():
         cursor.execute("""
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
-             data_limit, duration, status, reseller_id, user_limit, cost_paid,
+             data_limit, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
              payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, gift_traffic_gb, discount_amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
-            effective_limit_gb, duration_days, reseller_id, user_limit, final_price,
+            effective_limit_gb, duration_days, start_date, expire_date, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
             actual_payment_source, reseller_creator, gift_traffic, discount_amount, now, now
         ))
@@ -17993,6 +17996,8 @@ def admin_create_customer():
             debt_amount = 0
 
         now = get_now_iso()
+        now_naive = get_now_naive()
+        expire_date = (now_naive + timedelta(days=int(duration))).isoformat()
         debt_created = now if debt_amount > 0 else None
 
         # ذخیره در دیتابیس
@@ -18009,6 +18014,9 @@ def admin_create_customer():
             user_limit=user_limit,
             created_by=admin_creator
         )
+        if isinstance(sub_res, dict) and not sub_res.get("success"):
+            flash(f"خطا در ثبت اشتراک در پایگاه داده: {sub_res.get('error')}", "danger")
+            return redirect(url_for("admin_create_customer"))
         sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
         # بروزرسانی شماره تماس، وضعیت پرداخت، تخفیف، حجم هدیه و بدهی در جدول subscriptions
