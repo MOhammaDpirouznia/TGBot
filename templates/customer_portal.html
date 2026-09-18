@@ -1861,7 +1861,18 @@
     {% endmacro %}
 
     {% macro macro_sub_card() %}
-    <div class="glass-card p-4 mb-4">
+    <div class="glass-card p-4 mb-4 border border-primary border-opacity-25">
+        <!-- عنوان وضعیت بسته فعلی -->
+        <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom border-primary border-opacity-25">
+            <span class="badge bg-primary text-white rounded-circle p-2 d-inline-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                <i class="fas fa-box-open"></i>
+            </span>
+            <div>
+                <h6 class="fw-bold text-primary mb-0">وضعیت بسته فعلی</h6>
+                <small class="text-secondary" style="font-size: 0.75rem;">اطلاعات مصرف و اتصال به سرویس</small>
+            </div>
+        </div>
+
         <!-- سربرگ نام مشتری و دکمه‌های فشرده دسترسی سریع -->
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary border-opacity-25">
             <div>
@@ -1930,10 +1941,7 @@
                 {% endif %}
             </div>
         </div>
-
-        <!-- اعلان و مدیریت بسته‌های رزرو در صف تمدید -->
-        {{ macro_queue_card() }}
-
+        
         <!-- نوار پیشرفت مصرف حجم -->
         {% set used_gb = sub.get('data_used', 0) | float %}
         {% set total_gb = sub.get('data_limit', 0) | float %}
@@ -2632,7 +2640,6 @@
         <div class="bento-grid-wrapper">
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
-            {{ macro_queue_card() }}
 
             <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
             <div class="row g-3 mb-3">
@@ -2724,6 +2731,9 @@
                     </div>
                 </div>
             </div>
+
+            <!-- صف بسته‌های رزرو -->
+            {{ macro_queue_card() }}
 
             <!-- ردیف ۳ بنتو: تمدید و انتخاب پلن‌ها -->
             <div class="mb-3">
