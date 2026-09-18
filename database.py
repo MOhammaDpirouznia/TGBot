@@ -14774,17 +14774,25 @@ class Database:
                           account_type: str = "bank_card", connected_gateway: str = None,
                           is_default_customer: int = 0, profit_percent: float = 0,
                           assigned_to: str = None) -> dict:
-        """افزودن کارت بانکی یا حساب مالی جدید برای نماینده با موجودی اولیه و نقش حساب"""
+        """افزودن کارت بانکی یا حساب مالی جدید نماینده با موجودی اولیه و نقش حساب"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            if card_number:
+                card_number = card_number.replace(" ", "").replace("-", "")
+                
+            cursor.execute("SELECT COUNT(*) FROM reseller_cards WHERE reseller_id = ?", (reseller_id,))
+            count_result = cursor.fetchone()
+            if count_result and count_result[0] == 0:
+                is_default = 1
+                
             init_bal = max(0, int(initial_balance or 0))
             def_val = 1 if is_default else 0
             back_val = 1 if (is_backup and not def_val) else 0
             def_cust = 1 if is_default_customer else 0
 
-            # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض بودن خارج می‌کنیم
+            # اگر کارت جدید پیش‌فرض باشد، بقیه از این حالت خارج می‌شوند
             if def_val:
                 cursor.execute("UPDATE reseller_cards SET is_default = 0 WHERE reseller_id = ?", (reseller_id,))
             elif back_val:
@@ -15454,17 +15462,25 @@ class Database:
                       account_type: str = "bank_card", connected_gateway: str = None,
                       is_default_customer: int = 0, profit_percent: float = 0,
                       assigned_to: str = None):
-        """افزودن کارت بانکی یا حساب مالی جدید برای مدیریت با موجودی اولیه و نقش حساب"""
+        """افزودن کارت بانکی یا حساب مالی جدید مدیر (پشتیبانی از مدیریت موجودی و ثبت اولیه)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            if card_number:
+                card_number = card_number.replace(" ", "").replace("-", "")
+                
+            cursor.execute("SELECT COUNT(*) FROM bank_cards")
+            count_result = cursor.fetchone()
+            if count_result and count_result[0] == 0:
+                is_default = 1
+                
             init_bal = max(0, int(initial_balance or 0))
             def_val = 1 if is_default else 0
             back_val = 1 if (is_backup and not def_val) else 0
             def_cust = 1 if is_default_customer else 0
 
-            # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض خارج می‌کنیم
+            # اگر کارت جدید پیش‌فرض باشد، بقیه از این حالت خارج می‌شوند
             if def_val:
                 cursor.execute("UPDATE bank_cards SET is_default = 0")
             elif back_val:
@@ -15708,6 +15724,10 @@ class Database:
         """ویرایش مشخصات، اطلاعات شبا و تنظیم مانده حساب کارت"""
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance", "account_type", "connected_gateway", "is_default_customer", "profit_percent", "assigned_to"]
+        
+        if "card_number" in kwargs and kwargs["card_number"]:
+            kwargs["card_number"] = kwargs["card_number"].replace(" ", "").replace("-", "")
+            
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
             return {"success": False, "error": "فیلدی برای به‌روزرسانی ارسال نشده است."}
