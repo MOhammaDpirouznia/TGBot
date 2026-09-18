@@ -2079,7 +2079,7 @@ class Database:
                 diff_tehran = (now_tehran - dt).total_seconds()
                 
                 # کاربر فقط در صورتی آنلاین است که اتصال واقعی در ۵ دقیقه (۳۰۰ ثانیه) اخیر رخ داده باشد
-                if (0 <= diff_utc <= 300) or (0 <= diff_tehran <= 300):
+                if (-300 <= diff_utc <= 300) or (-300 <= diff_tehran <= 300):
                     is_online = 1
                 else:
                     is_online = 0
@@ -2278,7 +2278,7 @@ class Database:
                         lo_dt = datetime.strptime(clean_lo[:19], "%Y-%m-%d %H:%M:%S")
                         diff_tehran = (now_dt - lo_dt).total_seconds()
                         diff_utc = (now_utc - lo_dt).total_seconds()
-                        if (0 <= diff_tehran <= 600) or (0 <= diff_utc <= 600):
+                        if (-300 <= diff_tehran <= 600) or (-300 <= diff_utc <= 600):
                             is_still_online = True
                     except Exception:
                         pass
