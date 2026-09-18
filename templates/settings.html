@@ -904,7 +904,7 @@ function generateRandomSecret() {
                                                             {% endif %}
                                                         {% endif %}
                                                     </span>
-                                                    <span>نسخه: <span id="livePreviewVersionText">{{ store_branding_config.store_version or 'v0.0.1 Beta' }}</span></span>
+                                                    <span id="livePreviewVersionText">{{ store_branding_config.store_version or 'v0.0.1 Beta' }}</span>
                                                 </span>
                                             </div>
                                         </div>
@@ -2210,16 +2210,76 @@ function selectPalette(pid) {
 
                             <div id="aiApiConfigBox" class="row g-2 border-top pt-3" style="{% if chat_settings.chat_ai_mode != 'external_api' %}display: none;{% endif %}">
                                 <div class="col-md-5">
-                                    <label class="form-label small mb-1">آدرس API Endpoint:</label>
-                                    <input type="text" name="chat_ai_api_url" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_url }}" placeholder="https://api.openai.com/v1/chat/completions">
+                                    <label class="form-label small mb-1 fw-bold">آدرس API Endpoint:</label>
+                                    <input type="text" name="chat_ai_api_url" id="chatAiApiUrl" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_url or 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' }}" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label small mb-1">کلید دسترسی (API Key):</label>
-                                    <input type="password" name="chat_ai_api_key" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_key }}" placeholder="sk-...">
+                                    <label class="form-label small mb-1 fw-bold">کلید دسترسی (API Key):</label>
+                                    <input type="password" name="chat_ai_api_key" id="chatAiApiKey" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_key or '' }}" placeholder="AIzaSy... یا sk-...">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label small mb-1">نام مدل (Model):</label>
-                                    <input type="text" name="chat_ai_model" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_model }}" placeholder="gpt-4o-mini">
+                                    <label class="form-label small mb-1 fw-bold">نام مدل (Model):</label>
+                                    <input type="text" name="chat_ai_model" id="chatAiModel" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_model or 'gemini-1.5-pro' }}" placeholder="gemini-1.5-pro">
+                                </div>
+
+                                <!-- الگوهای آماده سریع و دکمه تست اتصال -->
+                                <div class="col-12 mt-2 d-flex flex-wrap justify-content-between align-items-center gap-2 pt-2 border-top">
+                                    <div class="d-flex align-items-center flex-wrap gap-1">
+                                        <small class="text-muted me-1"><i class="fas fa-magic me-1"></i>تنظیم سریع:</small>
+                                        <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size: 0.75rem;" onclick="applyAiPreset('gemini')">
+                                            🌟 Gemini (Google)
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-success py-0 px-2" style="font-size: 0.75rem;" onclick="applyAiPreset('openai')">
+                                            🤖 OpenAI (ChatGPT)
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-info py-0 px-2" style="font-size: 0.75rem;" onclick="applyAiPreset('deepseek')">
+                                            ⚡ DeepSeek
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="btnTestAiConn" onclick="testAiConnection()">
+                                        <i class="fas fa-plug-circle-check me-1"></i> تست اتصال به هوش مصنوعی
+                                    </button>
+                                </div>
+
+                                <!-- کانتینر نتیجه تست زنده اتصال -->
+                                <div class="col-12 mt-2" id="aiConnectionTestResult" style="display: none;"></div>
+                            </div>
+
+                            <!-- بخش مدیریت محدودیت مصرف و جلوگیری از سواستفاده (Rate Limiting) -->
+                            <div class="border-top pt-3 mt-3">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <label class="form-label small fw-bold mb-0 text-dark">
+                                        <i class="fas fa-shield-halved text-warning me-1"></i> تنظیمات کنترل مصرف، سقف پیام‌ها و ضد اسپم (Rate Limiting):
+                                    </label>
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1" style="font-size: 0.72rem;">
+                                        محافظت از اعتبار API و جلوگیری از سوءاستفاده
+                                    </span>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label small mb-1">سقف پیام در ساعت (برای هر کاربر):</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" name="chat_ai_rate_limit_hourly" class="form-control font-monospace" min="1" max="500" value="{{ chat_settings.chat_ai_rate_limit_hourly or 15 }}">
+                                            <span class="input-group-text small">پیام/ساعت</span>
+                                        </div>
+                                        <div class="form-text small" style="font-size: 0.7rem;">حداکثر دفعاتی که کاربر در ۶۰ دقیقه می‌تواند با هوش مصنوعی گفتگو کند.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small mb-1">حداقل فاصله زمانی بین پیام‌ها (Cooldown):</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" name="chat_ai_cooldown_seconds" class="form-control font-monospace" min="0" max="60" value="{{ chat_settings.chat_ai_cooldown_seconds or 5 }}">
+                                            <span class="input-group-text small">ثانیه</span>
+                                        </div>
+                                        <div class="form-text small" style="font-size: 0.7rem;">تاخیر اجباری بین ارسال دو پیام متوالی جهت جلوگیری از اسپم.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small mb-1">سقف توکن پاسخ (Max Output Tokens):</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" name="chat_ai_max_tokens" class="form-control font-monospace" min="100" max="2000" step="50" value="{{ chat_settings.chat_ai_max_tokens or 400 }}">
+                                            <span class="input-group-text small">توکن</span>
+                                        </div>
+                                        <div class="form-text small" style="font-size: 0.7rem;">محدود کردن طول پاسخ جهت کاهش مصرف کردیت و هزینه API.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2262,6 +2322,126 @@ function toggleAiApiBox() {
     if (extRadio && box) {
         box.style.display = extRadio.checked ? "flex" : "none";
     }
+}
+
+function applyAiPreset(provider) {
+    const urlInput = document.getElementById("chatAiApiUrl");
+    const modelInput = document.getElementById("chatAiModel");
+    if (provider === 'gemini') {
+        if (urlInput) urlInput.value = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        if (modelInput) modelInput.value = "gemini-1.5-pro";
+    } else if (provider === 'openai') {
+        if (urlInput) urlInput.value = "https://api.openai.com/v1/chat/completions";
+        if (modelInput) modelInput.value = "gpt-4o-mini";
+    } else if (provider === 'deepseek') {
+        if (urlInput) urlInput.value = "https://api.deepseek.com/v1/chat/completions";
+        if (modelInput) modelInput.value = "deepseek-chat";
+    }
+}
+
+function testAiConnection() {
+    const btn = document.getElementById("btnTestAiConn");
+    const resultBox = document.getElementById("aiConnectionTestResult");
+    const urlInput = document.getElementById("chatAiApiUrl");
+    const keyInput = document.getElementById("chatAiApiKey");
+    const modelInput = document.getElementById("chatAiModel");
+
+    const apiUrl = (urlInput ? urlInput.value : '').trim();
+    const apiKey = (keyInput ? keyInput.value : '').trim();
+    const model = (modelInput ? modelInput.value : '').trim();
+
+    if (!apiKey) {
+        resultBox.style.display = "block";
+        resultBox.innerHTML = `
+            <div class="alert alert-warning py-2 px-3 small border mb-0">
+                <i class="fas fa-triangle-exclamation me-1"></i>
+                <strong>کلید دسترسی خالی است:</strong> لطفاً ابتدا کلید API Key خود را وارد نمایید.
+            </div>
+        `;
+        if (keyInput) keyInput.focus();
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ارسال درخواست تست...';
+    resultBox.style.display = "block";
+    resultBox.innerHTML = `
+        <div class="alert alert-info py-2 px-3 small border mb-0 d-flex align-items-center gap-2">
+            <span class="spinner-border spinner-border-sm text-primary"></span>
+            <span>در حال برقراری ارتباط با مدل <code>${model || 'پیش‌فرض'}</code> و تست رفت‌وبرگشت... لطفاً چند ثانیه صبر نمایید.</span>
+        </div>
+    `;
+
+    fetch('/api/admin/test-ai-connection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            api_url: apiUrl,
+            api_key: apiKey,
+            model: model
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug-circle-check me-1"></i> تست اتصال به هوش مصنوعی';
+
+        if (data.success) {
+            resultBox.innerHTML = `
+                <div class="alert alert-success py-2 px-3 small border mb-0">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong class="text-success"><i class="fas fa-circle-check me-1"></i> اتصال با موفقیت برقرار شد! ✅</strong>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            ⏱️ زمان پاسخ: ${data.latency_ms} ms
+                        </span>
+                    </div>
+                    <div class="mb-1"><strong>مدل پاسخ‌دهنده:</strong> <code class="text-dark">${data.model}</code></div>
+                    <div class="p-2 bg-white rounded border mt-1 text-dark" style="line-height: 1.6;">
+                        <i class="fas fa-comment-dots text-primary me-1"></i>
+                        <em>${escapeHtml(data.reply)}</em>
+                    </div>
+                </div>
+            `;
+        } else {
+            let errorDetails = '';
+            if (data.raw) {
+                try {
+                    const rawPretty = typeof data.raw === 'object' ? JSON.stringify(data.raw, null, 2) : data.raw;
+                    errorDetails = `<pre class="mb-0 mt-2 p-2 bg-dark text-white rounded font-monospace small" style="max-height: 140px; overflow-y: auto; font-size: 0.72rem; direction: ltr;">${escapeHtml(rawPretty)}</pre>`;
+                } catch(e) {}
+            }
+            resultBox.innerHTML = `
+                <div class="alert alert-danger py-2 px-3 small border mb-0">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong class="text-danger"><i class="fas fa-circle-xmark me-1"></i> خطا در برقراری ارتباط با هوش مصنوعی ❌</strong>
+                        ${data.status_code ? `<span class="badge bg-danger">HTTP ${data.status_code}</span>` : ''}
+                    </div>
+                    <div class="text-danger-emphasis mb-1"><strong>علت خطا:</strong> ${escapeHtml(data.error || 'خطای ناشناخته')}</div>
+                    <div class="text-muted small">
+                        💡 <em>راهنمایی:</em> صحت کلید API Key، نام دقیق مدل (مثلاً <code>gemini-1.5-pro</code>) و فیلترینگ سرور را بررسی نمایید.
+                    </div>
+                    ${errorDetails}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug-circle-check me-1"></i> تست اتصال به هوش مصنوعی';
+        resultBox.innerHTML = `
+            <div class="alert alert-danger py-2 px-3 small border mb-0">
+                <i class="fas fa-circle-xmark me-1"></i>
+                <strong>خطا در فراخوانی وب‌سرویس:</strong> ${escapeHtml(err.message || 'عدم دسترسی به سرور')}
+            </div>
+        `;
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 </script>
 

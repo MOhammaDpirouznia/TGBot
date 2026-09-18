@@ -3574,6 +3574,35 @@ class ResellerBotInstance:
                 buttons = get_tutorial_inline_buttons(tutorial_url, troubleshoot_url, is_reseller=True, reseller_id=r_id)
                 return await query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
+            if data == "wiz_ai_chat":
+                user_id = query.from_user.id
+                sub = None
+                try:
+                    subs = db.get_user_subscriptions(user_id)
+                    if subs:
+                        sub = subs[0]
+                except Exception:
+                    pass
+
+                dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+                portal_url = None
+                if sub and sub.get("hidify_uuid") and dashboard_url:
+                    portal_url = f"{dashboard_url}/portal/{sub['hidify_uuid']}"
+
+                text = (
+                    "🤖 <b>چت و عیب‌یابی با هوش مصنوعی اختصاصی</b>\n\n"
+                    "هوش مصنوعی آماده پاسخگویی به کلیه سوالات شما درباره:\n"
+                    "• رفع قطعی و پینگ بالا در اپراتورهای مختلف\n"
+                    "• آموزش و دانلود نرم‌افزارهای استاندارد (Streisand, v2rayNG, FoXray)\n"
+                    "• استعلام وضعیت حجم، روزهای باقیمانده و تمدید اشتراک\n\n"
+                    "💡 برای گفتگوی زنده با هوش مصنوعی و حل مشکل، دکمه زیر را لمس نمایید:"
+                )
+                buttons = []
+                target_url = portal_url or tutorial_url
+                buttons.append([InlineKeyboardButton("💬 ورود به گفتگوی آنلاین با هوش مصنوعی", url=target_url, style="primary")])
+                buttons.append([InlineKeyboardButton("◀️ بازگشت به راهنما", callback_data="wiz_menu")])
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
             if data == "wiz_tb_start":
                 text = (
                     "🧭 <b>سامانه هوشمند عیب‌یابی اتصال (گام ۱ از ۶)</b>\n\n"

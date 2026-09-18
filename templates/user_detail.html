@@ -151,7 +151,18 @@
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     <tr>
                         <td>{{ sub['plan_name'] or '-' }}</td>
-                        <td>{{ sub['account_name'] or '-' }}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-1">
+                                <span>{{ sub['account_name'] or '-' }}</span>
+                                {% set has_sub_note = bool(sub.get('admin_note') or sub.get('customer_note')) %}
+                                <button type="button" 
+                                        class="btn btn-link p-0 text-decoration-none sub-note-btn {% if has_sub_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
+                                        onclick="event.stopPropagation(); openQuickSubNote('{{ sub['id'] }}', '{{ sub['account_name']|default('', true)|e }}', this);" 
+                                        title="{% if sub.get('admin_note') %}یادداشت: {{ sub['admin_note']|striptags|truncate(50) }}{% elif sub.get('customer_note') %}پیام به مشتری: {{ sub['customer_note']|striptags|truncate(50) }}{% else %}افزودن یادداشت / پیام به مشتری{% endif %}">
+                                    <i class="fas {% if has_sub_note %}fa-note-sticky text-warning{% else %}fa-note-sticky{% endif %}" style="font-size: 0.82rem;"></i>
+                                </button>
+                            </div>
+                        </td>
                         <td>{{ sub['data_limit'] or '-' }} GB</td>
                         <td>{{ sub['duration'] or '-' }} روز</td>
                         <td><small>{{ sub['start_date'][:10] if sub['start_date'] else '-' }}</small></td>

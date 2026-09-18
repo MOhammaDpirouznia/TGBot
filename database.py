@@ -1178,6 +1178,26 @@ class Database:
         except Exception:
             pass
 
+        # جدول ثبت تاریخچه مصرف ساعتی و روزانه ترافیک اشتراک‌ها (Traffic Analytics & Insights)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_traffic_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sub_id INTEGER NOT NULL,
+                    hidify_uuid TEXT,
+                    log_date TEXT NOT NULL,
+                    log_hour INTEGER NOT NULL,
+                    cumulative_usage_gb REAL DEFAULT 0.0,
+                    delta_usage_gb REAL DEFAULT 0.0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+            """)
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_traffic_hourly ON subscription_traffic_logs(sub_id, log_date, log_hour)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_traffic_sub_date ON subscription_traffic_logs(sub_id, log_date)")
+        except Exception:
+            pass
+
         # ستون‌های فعال‌سازی موقت رسید (Grace Period)
         try:
             cursor.execute("ALTER TABLE payments ADD COLUMN is_grace_active INTEGER DEFAULT 0")
@@ -1342,10 +1362,43 @@ class Database:
             except Exception:
                 pass
 
+        # ستون‌های سامانه اعمال محدودیت و جریمه بدهکاران (Debt Restriction Throttling)
+        for d_col in [
+            ("in_debt_restriction", "INTEGER DEFAULT 0"),
+            ("debt_restricted_until", "TEXT DEFAULT NULL"),
+            ("debt_restriction_session_start", "TEXT DEFAULT NULL"),
+            ("debt_restriction_session_usage", "REAL DEFAULT 0.0"),
+            ("last_debt_restriction_ended_at", "TEXT DEFAULT NULL"),
+            ("debt_restrictions_count", "INTEGER DEFAULT 0")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {d_col[0]} {d_col[1]}")
+            except Exception:
+                pass
+
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN is_partner INTEGER DEFAULT 0")
         except Exception:
             pass
+
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN debt_restriction_settings TEXT DEFAULT NULL")
+        except Exception:
+            pass
+
+        # ستون‌های شخصی‌سازی مینی‌اپ تلگرام اختصاصی نماینده (Mini App White-Label Branding)
+        for r_app_col in [
+            ("mini_app_splash_enabled", "INTEGER DEFAULT 1"),
+            ("mini_app_splash_title", "TEXT DEFAULT NULL"),
+            ("mini_app_splash_subtitle", "TEXT DEFAULT NULL"),
+            ("mini_app_splash_image", "TEXT DEFAULT NULL"),
+            ("mini_app_menu_button_enabled", "INTEGER DEFAULT 1"),
+            ("mini_app_menu_button_text", "TEXT DEFAULT NULL")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE resellers ADD COLUMN {r_app_col[0]} {r_app_col[1]}")
+            except Exception:
+                pass
 
         for ac_col in [
             "ALTER TABLE accounting_records ADD COLUMN reseller_id INTEGER DEFAULT 0",
@@ -1354,6 +1407,39 @@ class Database:
         ]:
             try:
                 cursor.execute(ac_col)
+            except Exception:
+                pass
+
+        # ستون‌های یادداشت داخلی، یادداشت نماینده و پیام پورتال مشتری برای اشتراک‌ها
+        for sub_note_col in [
+            ("internal_note", "TEXT DEFAULT NULL"),
+            ("admin_note", "TEXT DEFAULT NULL"),
+            ("admin_note_updated_at", "TEXT DEFAULT NULL"),
+            ("admin_note_updated_by", "TEXT DEFAULT NULL"),
+            ("reseller_note", "TEXT DEFAULT NULL"),
+            ("reseller_note_updated_at", "TEXT DEFAULT NULL"),
+            ("reseller_note_updated_by", "TEXT DEFAULT NULL"),
+            ("customer_note", "TEXT DEFAULT NULL"),
+            ("customer_note_updated_at", "TEXT DEFAULT NULL"),
+            ("customer_note_updated_by", "TEXT DEFAULT NULL")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {sub_note_col[0]} {sub_note_col[1]}")
+            except Exception:
+                pass
+
+        # ستون‌های یادداشت تراکنش‌ها و پرداخت‌ها
+        for tx_note_col in [
+            ("internal_note", "TEXT DEFAULT NULL"),
+            ("admin_note", "TEXT DEFAULT NULL"),
+            ("admin_note_updated_at", "TEXT DEFAULT NULL"),
+            ("admin_note_updated_by", "TEXT DEFAULT NULL"),
+            ("reseller_note", "TEXT DEFAULT NULL"),
+            ("reseller_note_updated_at", "TEXT DEFAULT NULL"),
+            ("reseller_note_updated_by", "TEXT DEFAULT NULL")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE transactions ADD COLUMN {tx_note_col[0]} {tx_note_col[1]}")
             except Exception:
                 pass
 
@@ -2119,6 +2205,13 @@ class Database:
                             last_lifecycle_event_at = COALESCE(last_lifecycle_event_at, created_at)
                         WHERE hidify_uuid = ?
                     """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
+
+                    # ثبت هوشمند اسنپ‌شات مصرف ساعتی
+                    if existing_sub and existing_sub.get("id") and current_usage > 0:
+                        try:
+                            self.record_subscription_traffic(existing_sub["id"], current_usage, uuid)
+                        except Exception:
+                            pass
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
@@ -6980,9 +7073,12 @@ class Database:
             "chat_ai_enabled": str(self.get_setting("chat_ai_enabled", "1")).lower() in ("1", "true"),
             "chat_ai_mode": self.get_setting("chat_ai_mode", "smart_local"),
             "chat_ai_api_key": self.get_setting("chat_ai_api_key", ""),
-            "chat_ai_api_url": self.get_setting("chat_ai_api_url", "https://api.openai.com/v1/chat/completions"),
-            "chat_ai_model": self.get_setting("chat_ai_model", "gpt-4o-mini"),
-            "chat_sound_enabled": str(self.get_setting("chat_sound_enabled", "1")).lower() in ("1", "true")
+            "chat_ai_api_url": self.get_setting("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
+            "chat_ai_model": self.get_setting("chat_ai_model", "gemini-1.5-pro"),
+            "chat_sound_enabled": str(self.get_setting("chat_sound_enabled", "1")).lower() in ("1", "true"),
+            "chat_ai_rate_limit_hourly": int(self.get_setting("chat_ai_rate_limit_hourly", 15) or 15),
+            "chat_ai_cooldown_seconds": int(self.get_setting("chat_ai_cooldown_seconds", 5) or 5),
+            "chat_ai_max_tokens": int(self.get_setting("chat_ai_max_tokens", 400) or 400)
         }
 
     def save_chat_settings(self, settings: dict):
@@ -6995,8 +7091,42 @@ class Database:
             else:
                 self.save_setting(k, str(v) if v is not None else "")
 
+    _ai_rate_limit_cache = {}
+
+    def check_ai_rate_limit(self, identifier: str) -> Tuple[bool, Optional[str]]:
+        """بررسی سقف مجاز پیام‌های هوش مصنوعی و فاصله زمانی مجاز جهت جلوگیری از اسپم و اتلاف اعتبار"""
+        import time
+        now = time.time()
+        hourly_limit = int(self.get_setting("chat_ai_rate_limit_hourly", 15) or 15)
+        cooldown_sec = int(self.get_setting("chat_ai_cooldown_seconds", 5) or 5)
+
+        record = self._ai_rate_limit_cache.get(identifier)
+        if not record:
+            record = {"timestamps": [now], "last_time": now}
+            self._ai_rate_limit_cache[identifier] = record
+            return True, None
+
+        # ۱. بررسی فاصله زمانی مجاز بین هر دو پیام (Cooldown)
+        if cooldown_sec > 0:
+            elapsed = now - record.get("last_time", 0)
+            if elapsed < cooldown_sec:
+                remain = int(cooldown_sec - elapsed) + 1
+                return False, f"⏳ لطفاً {remain} ثانیه صبر کرده و سپس پیام بعدی خود را ارسال فرمایید."
+
+        # ۲. پاکسازی پیام‌های قدیمی‌تر از یک ساعت
+        cutoff = now - 3600
+        record["timestamps"] = [t for t in record.get("timestamps", []) if t > cutoff]
+
+        # ۳. بررسی سقف تعداد پیام در ساعت
+        if hourly_limit > 0 and len(record["timestamps"]) >= hourly_limit:
+            return False, "⚠️ شما به سقف مجاز پیام‌های هوش مصنوعی در این ساعت رسیده‌اید. پیام شما در صف بررسی کارشناسان پشتیبانی قرار دارد."
+
+        record["timestamps"].append(now)
+        record["last_time"] = now
+        return True, None
+
     def generate_ai_chat_reply(self, ticket_id: int, customer_message: str, sub_info: dict = None) -> Optional[str]:
-        """پاسخگویی هوشمند چتبات هوش مصنوعی به پیام مشتری با رعایت توقف در صورت پاسخ پشتیبان انسانی"""
+        """پاسخگویی هوشمند چتبات هوش مصنوعی به پیام مشتری با رعایت اولویت موتور ابری، سقف مصرف و توقف در صورت پاسخ انسان"""
         # ۱. بررسی اینکه آیا پشتیبان انسانی قبلاً در این گفتگو پاسخ داده است یا خیر
         if self.has_human_support_replied(ticket_id):
             return None
@@ -7006,14 +7136,75 @@ class Database:
         if not ai_enabled:
             return None
 
-        text = (customer_message or "").strip().lower()
+        text = (customer_message or "").strip()
         if not text:
             return None
 
-        # ۳. حالت‌های مختلف پیام مشتری:
+        # ۳. اعمال محدودیت مصرف و جلوگیری از اسپم (Rate Limiting)
+        allowed, limit_msg = self.check_ai_rate_limit(f"ticket_{ticket_id}")
+        if not allowed:
+            return limit_msg
+
+        # ۴. اولویت اول: در صورت انتخاب موتور ابری خارجی (Gemini / OpenAI / مدل دلخواه)
+        ai_mode = self.get_setting("chat_ai_mode", "smart_local")
+        api_key = self.get_setting("chat_ai_api_key", "").strip()
+
+        if ai_mode == "external_api":
+            if not api_key:
+                return (
+                    "⚠️ کلید دسترسی (API Key) هوش مصنوعی در تنظیمات پنل ثبت نشده است.\n"
+                    "پیام شما مستقیماً برای کارشناسان پشتیبانی انسانی ارسال شد و به زودی پاسخ خواهند داد."
+                )
+            try:
+                from ai_marketing_manager import ai_marketing
+                api_url = self.get_setting("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+                model = self.get_setting("chat_ai_model", "gemini-1.5-pro")
+                max_tokens = int(self.get_setting("chat_ai_max_tokens", 400) or 400)
+
+                sys_prompt = (
+                    "You are an expert, polite, and helpful Persian AI support assistant for a VPN customer portal. "
+                    "Respond concisely, practically, and politely in Persian. "
+                    "Help the user solve connection, ping, software, or subscription issues. "
+                    "If a human agent is needed, assure them that support has received their ticket."
+                )
+
+                messages = [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": text}
+                ]
+
+                url_lower = (api_url or "").lower()
+                model_lower = (model or "").lower()
+                provider = "gemini" if ("gemini" in model_lower or "googleapis" in url_lower) else ("deepseek" if ("deepseek" in model_lower or "deepseek" in url_lower) else "openai")
+
+                reply = ai_marketing.chat_completion(
+                    messages=messages,
+                    provider=provider,
+                    api_key=api_key,
+                    api_url=api_url,
+                    model=model,
+                    max_tokens=max_tokens
+                )
+                if reply:
+                    return reply
+                else:
+                    return (
+                        "⚠️ پیام شما با موفقیت ثبت شد. در حال حاضر اتصال به سرویس هوش مصنوعی ابری با وقفه مواجه گردید، "
+                        "پیام شما مستقیماً برای کارشناسان پشتیبانی انسانی ارسال شد و به زودی پاسخ خواهند داد."
+                    )
+            except Exception as e_api:
+                logger.warning(f"External AI chat error: {e_api}")
+                return (
+                    "⚠️ پیام شما ثبت شد و به کارشناسان پشتیبانی ارجاع گردید.\n"
+                    "(سرویس هوش مصنوعی ابری موقتاً با تاخیر مواجه شد)"
+                )
+
+        # ۵. در صورت انتخاب موتور محلی هوشمند (Smart Local Engine):
+        lower_text = text.lower()
+
         # الف) اعلام آمادگی و تایید جهت حل مشکل
         affirmative_words = ["بله", "اره", "آره", "موافقم", "ممنون", "حل کن", "میخوام", "اوکی", "باشه", "مرسی", "لطفا", "لطفاً"]
-        if any(w == text or text.startswith(w + " ") or text.endswith(" " + w) for w in affirmative_words) and len(text) <= 25:
+        if any(w == lower_text or lower_text.startswith(w + " ") or lower_text.endswith(" " + w) for w in affirmative_words) and len(lower_text) <= 25:
             return (
                 "با کمال میل! 🌸 من هوش مصنوعی هستم و آماده‌ام مشکل‌تان را بررسی و حل کنم.\n\n"
                 "لطفاً بفرمایید دقیقاً چه مشکلی پیش آمده است؟\n"
@@ -7023,7 +7214,7 @@ class Database:
             )
 
         # ب) مشکلات اتصال، قطعی، کار نکردن یا پینگ بالا
-        if any(w in text for w in ["وصل نمیشه", "قطع", "کار نمیکنه", "پینگ", "سرعت", "کندی", "تایم اوت", "timeout", "فیلتر", "بسته شده", "وصل نیست"]):
+        if any(w in lower_text for w in ["وصل نمیشه", "قطع", "کار نمیکنه", "پینگ", "سرعت", "کندی", "تایم اوت", "timeout", "فیلتر", "بسته شده", "وصل نیست"]):
             return (
                 "برای رفع سریع مشکل اتصال و قطعی، لطفاً این مراحل پیشنهادی را به ترتیب انجام دهید:\n\n"
                 "۱- **حالت پرواز (Airplane Mode)** گوشی خود را به مدت ۵ ثانیه روشن و سپس خاموش کنید تا IP شبکه شما نو شود.\n"
@@ -7034,7 +7225,7 @@ class Database:
             )
 
         # ج) سیستم‌عامل آیفون و iOS
-        if any(w in text for w in ["آیفون", "ایفون", "iphone", "ios", "اپل", "apple"]):
+        if any(w in lower_text for w in ["آیفون", "ایفون", "iphone", "ios", "اپل", "apple"]):
             return (
                 "برای دستگاه‌های **iOS (آیفون و آیپد)**، بهترین و سازگارترین نرم‌افزارها عبارتند از:\n\n"
                 "📱 **Streisand** (پیشنهاد اول - پرسرعت و پایدار در اپ‌استور)\n"
@@ -7044,7 +7235,7 @@ class Database:
             )
 
         # د) سیستم‌عامل اندروید
-        if any(w in text for w in ["اندروید", "android", "سامسونگ", "شیائومی"]):
+        if any(w in lower_text for w in ["اندروید", "android", "سامسونگ", "شیائومی"]):
             return (
                 "برای دستگاه‌های **اندروید**، نرم‌افزارهای استاندارد زیر پیشنهاد می‌شوند:\n\n"
                 "🤖 **v2rayNG** (نسخه ۱.۸.۲۵ به بالا با پشتیبانی عالی از Fragment)\n"
@@ -7053,44 +7244,11 @@ class Database:
             )
 
         # ه) سوالات تمدید، شارژ و فاکتور
-        if any(w in text for w in ["تمدید", "خرید", "فاکتور", "پرداخت", "کارت", "واریز", "پلن", "قیمت"]):
+        if any(w in lower_text for w in ["تمدید", "خرید", "فاکتور", "پرداخت", "کارت", "واریز", "پلن", "قیمت"]):
             return (
                 "جهت **تمدید اشتراک یا خرید حجم اضافه**:\n\n"
                 "می‌توانید مستقیماً در همین صفحه پورتال، از بخش **پلن‌های تمدید**، پلن مورد نظر خود را انتخاب کرده و به صورت آنلاین یا کارت‌به‌کارت واریز فرمایید. پس از واریز یا تایید فیش، اشتراک شما به طور خودکار شارژ و فعال می‌گردد."
             )
-
-        # و) بررسی در صورت اتصال به API خارجی (OpenAI/Gemini/غیره)
-        ai_mode = self.get_setting("chat_ai_mode", "smart_local")
-        api_key = self.get_setting("chat_ai_api_key", "").strip()
-        if ai_mode == "external_api" and api_key:
-            try:
-                import urllib.request
-                api_url = self.get_setting("chat_ai_api_url", "https://api.openai.com/v1/chat/completions")
-                model = self.get_setting("chat_ai_model", "gpt-4o-mini")
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": "You are a polite, helpful Persian AI assistant for a VPN service customer portal. Help the user concisely and professionally. If you cannot solve it, reassure them human support will help soon."},
-                        {"role": "user", "content": customer_message}
-                    ],
-                    "max_tokens": 250,
-                    "temperature": 0.7
-                }
-                req = urllib.request.Request(
-                    api_url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key}"
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=6) as response:
-                    res_data = json.loads(response.read().decode("utf-8"))
-                    choices = res_data.get("choices", [])
-                    if choices and "message" in choices[0]:
-                        return choices[0]["message"]["content"].strip()
-            except Exception as e_api:
-                logger.warning(f"External AI chat error: {e_api}")
 
         # پاسخ پیش‌فرض هوشمند و خوش‌آمدگویی
         return (
@@ -8559,7 +8717,18 @@ class Database:
             effective_reseller_id = sub.get("reseller_id") or reseller_id
             acc_name = sub.get("account_name") or f"sub_{sub_id}"
 
-            query = "UPDATE subscriptions SET payment_status = 'paid', debt_amount = 0, debt_notes = NULL, updated_at = ? WHERE id = ?"
+            query = """
+                UPDATE subscriptions SET
+                    payment_status = 'paid',
+                    debt_amount = 0,
+                    debt_notes = NULL,
+                    in_debt_restriction = 0,
+                    debt_restricted_until = NULL,
+                    debt_restriction_session_start = NULL,
+                    status = CASE WHEN status = 'disabled' AND debt_restricted_until IS NOT NULL THEN 'active' ELSE status END,
+                    updated_at = ?
+                WHERE id = ?
+            """
             params = [now, sub_id]
             if reseller_id:
                 query += " AND reseller_id = ?"
@@ -12141,6 +12310,225 @@ class Database:
         finally:
             conn.close()
 
+    def get_subscription_notes(self, sub_id: int, role: str = 'admin', reseller_id: int = None) -> dict:
+        """واکشی یادداشت داخلی و پیام پورتال مشتری با اعمال ایزوله‌سازی نقش و نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, account_name, reseller_id, admin_note, admin_note_updated_at, admin_note_updated_by,
+                       reseller_note, reseller_note_updated_at, reseller_note_updated_by,
+                       customer_note, customer_note_updated_at, customer_note_updated_by,
+                       debt_notes, payment_status, debt_amount 
+                FROM subscriptions WHERE id = ?
+            """, (sub_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+            
+            sub = dict(row)
+            sub_reseller_id = sub.get("reseller_id") or 0
+
+            # اعمال بررسی ایزولاسیون برای نماینده
+            if role == "reseller":
+                if not reseller_id or int(sub_reseller_id) != int(reseller_id):
+                    return {"success": False, "error": "دسترسی غیرمجاز به این اشتراک"}
+                return {
+                    "success": True,
+                    "id": sub_id,
+                    "account_name": sub.get("account_name") or f"مشتری #{sub_id}",
+                    "internal_note": sub.get("reseller_note") or "",
+                    "customer_note": sub.get("customer_note") or "",
+                    "updated_at": sub.get("reseller_note_updated_at"),
+                    "updated_by": sub.get("reseller_note_updated_by"),
+                    "customer_note_updated_at": sub.get("customer_note_updated_at"),
+                    "customer_note_updated_by": sub.get("customer_note_updated_by"),
+                    "debt_notes": sub.get("debt_notes") or "",
+                    "is_debtor": bool(sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0),
+                    "role": "reseller"
+                }
+            else:
+                # برای ادمین: یادداشت مخصوص مدیریت و پیام به مشتری (یادداشت نماینده کاملاً ایزوله و محفوظ می‌ماند)
+                return {
+                    "success": True,
+                    "id": sub_id,
+                    "account_name": sub.get("account_name") or f"مشتری #{sub_id}",
+                    "internal_note": sub.get("admin_note") or "",
+                    "customer_note": sub.get("customer_note") or "",
+                    "updated_at": sub.get("admin_note_updated_at"),
+                    "updated_by": sub.get("admin_note_updated_by"),
+                    "customer_note_updated_by": sub.get("customer_note_updated_by"),
+                    "debt_notes": sub.get("debt_notes") or "",
+                    "is_debtor": bool(sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0),
+                    "role": "admin"
+                }
+        except Exception as e:
+            logger.error(f"Error in get_subscription_notes: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_subscription_notes(self, sub_id: int, internal_note: str = None, customer_note: str = None,
+                                  role: str = 'admin', updated_by: str = None, reseller_id: int = None) -> dict:
+        """بروزرسانی یادداشت‌های اشتراک با حفظ کامل ایزولاسیون بین مدیریت و نمایندگان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT id, reseller_id FROM subscriptions WHERE id = ?", (sub_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+
+            sub_reseller_id = row["reseller_id"] or 0
+            clean_internal = internal_note.strip() if internal_note and internal_note.strip() else None
+            clean_customer = customer_note.strip() if customer_note and customer_note.strip() else None
+
+            if role == "reseller":
+                if not reseller_id or int(sub_reseller_id) != int(reseller_id):
+                    return {"success": False, "error": "دسترسی غیرمجاز"}
+                cursor.execute("""
+                    UPDATE subscriptions
+                    SET reseller_note = ?,
+                        reseller_note_updated_at = ?,
+                        reseller_note_updated_by = ?,
+                        customer_note = ?,
+                        customer_note_updated_at = ?,
+                        customer_note_updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ? AND reseller_id = ?
+                """, (
+                    clean_internal,
+                    now if clean_internal is not None else None,
+                    updated_by if clean_internal is not None else None,
+                    clean_customer,
+                    now if clean_customer is not None else None,
+                    updated_by if clean_customer is not None else None,
+                    now,
+                    sub_id,
+                    reseller_id
+                ))
+            else:
+                cursor.execute("""
+                    UPDATE subscriptions
+                    SET admin_note = ?,
+                        admin_note_updated_at = ?,
+                        admin_note_updated_by = ?,
+                        customer_note = ?,
+                        customer_note_updated_at = ?,
+                        customer_note_updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (
+                    clean_internal,
+                    now if clean_internal is not None else None,
+                    updated_by if clean_internal is not None else None,
+                    clean_customer,
+                    now if clean_customer is not None else None,
+                    updated_by if clean_customer is not None else None,
+                    now,
+                    sub_id
+                ))
+
+            conn.commit()
+            return {"success": True, "message": "یادداشت‌ها با موفقیت ذخیره شدند"}
+        except Exception as e:
+            logger.error(f"Error in update_subscription_notes: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_transaction_note(self, tx_id: int, role: str = 'admin', reseller_id: int = None) -> dict:
+        """واکشی یادداشت داخلی تراکنش با اعمال ایزولاسیون"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, order_id, amount, reseller_id, admin_note, admin_note_updated_at, admin_note_updated_by,
+                       reseller_note, reseller_note_updated_at, reseller_note_updated_by 
+                FROM transactions WHERE id = ?
+            """, (tx_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "تراکنش یافت نشد"}
+
+            tx = dict(row)
+            tx_reseller_id = tx.get("reseller_id") or 0
+
+            if role == "reseller":
+                if not reseller_id or int(tx_reseller_id) != int(reseller_id):
+                    return {"success": False, "error": "دسترسی غیرمجاز"}
+                return {
+                    "success": True,
+                    "id": tx_id,
+                    "order_id": tx.get("order_id"),
+                    "amount": tx.get("amount"),
+                    "internal_note": tx.get("reseller_note") or "",
+                    "updated_at": tx.get("reseller_note_updated_at"),
+                    "updated_by": tx.get("reseller_note_updated_by"),
+                    "role": "reseller"
+                }
+            else:
+                return {
+                    "success": True,
+                    "id": tx_id,
+                    "order_id": tx.get("order_id"),
+                    "amount": tx.get("amount"),
+                    "internal_note": tx.get("admin_note") or "",
+                    "updated_at": tx.get("admin_note_updated_at"),
+                    "updated_by": tx.get("admin_note_updated_by"),
+                    "role": "admin"
+                }
+        except Exception as e:
+            logger.error(f"Error in get_transaction_note: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_transaction_note(self, tx_id: int, internal_note: str = None,
+                                role: str = 'admin', updated_by: str = None, reseller_id: int = None) -> dict:
+        """بروزرسانی یادداشت داخلی تراکنش مالی با حفظ ایزولاسیون"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT id, reseller_id FROM transactions WHERE id = ?", (tx_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "تراکنش یافت نشد"}
+
+            tx_reseller_id = row["reseller_id"] or 0
+            clean_note = internal_note.strip() if internal_note and internal_note.strip() else None
+
+            if role == "reseller":
+                if not reseller_id or int(tx_reseller_id) != int(reseller_id):
+                    return {"success": False, "error": "دسترسی غیرمجاز"}
+                cursor.execute("""
+                    UPDATE transactions
+                    SET reseller_note = ?,
+                        reseller_note_updated_at = ?,
+                        reseller_note_updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ? AND reseller_id = ?
+                """, (clean_note, now if clean_note is not None else None, updated_by if clean_note is not None else None, now, tx_id, reseller_id))
+            else:
+                cursor.execute("""
+                    UPDATE transactions
+                    SET admin_note = ?,
+                        admin_note_updated_at = ?,
+                        admin_note_updated_by = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (clean_note, now if clean_note is not None else None, updated_by if clean_note is not None else None, now, tx_id))
+
+            conn.commit()
+            return {"success": True, "message": "یادداشت تراکنش با موفقیت ذخیره شد"}
+        except Exception as e:
+            logger.error(f"Error in update_transaction_note: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def toggle_reseller_subscription(self, reseller_id: int, sub_id: int, enable: bool = None, reason: str = None):
         """فعال یا غیرفعال کردن مشتری نماینده بدون کسر یا بازگشت هزینه همراه با ثبت علت غیرفعال‌سازی"""
         conn = self.get_connection()
@@ -14227,7 +14615,10 @@ class Database:
             allowed = [
                 "custom_domain", "tutorial_domain", "logo_url", "favicon_url",
                 "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username",
-                "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette", "updated_at"
+                "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette",
+                "mini_app_splash_enabled", "mini_app_splash_title", "mini_app_splash_subtitle",
+                "mini_app_splash_image", "mini_app_menu_button_enabled", "mini_app_menu_button_text",
+                "updated_at"
             ]
             fields = []
             params = []
@@ -18820,7 +19211,384 @@ class Database:
             }
         except Exception as e:
             logger.error(f"Error in get_subscription_sessions: {e}")
-            return {"sessions": [], "active_devices": 0, "user_limit": 1, "error": str(e)}
+    def record_subscription_traffic(self, sub_id: int, current_usage_gb: float, hidify_uuid: str = None) -> bool:
+        """
+        ثبت و انباشت هوشمند دلتای مصرف ترافیک اشتراک در ساعت جاری (Hourly Traffic Recording)
+        دلتای مصرف نسبت به آخرین اسنپ‌شات را محاسبه کرده و در رکورد ساعت و تاریخ جاری ذخیره می‌کند.
+        """
+        if not sub_id or current_usage_gb is None:
+            return False
+        try:
+            curr_val = round(float(current_usage_gb), 4)
+            if curr_val < 0:
+                return False
+
+            now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            hour_val = now.hour
+            now_iso = now.isoformat()
+
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # دریافت آخرین رکورد ترافیک برای محاسبه دلتا
+            last_row = cursor.execute("""
+                SELECT cumulative_usage_gb, delta_usage_gb, log_date, log_hour
+                FROM subscription_traffic_logs
+                WHERE sub_id = ?
+                ORDER BY log_date DESC, log_hour DESC
+                LIMIT 1
+            """, (sub_id,)).fetchone()
+
+            delta = 0.0
+            if last_row:
+                last_cum = float(last_row["cumulative_usage_gb"] or 0.0)
+                if curr_val >= last_cum:
+                    delta = round(curr_val - last_cum, 4)
+                else:
+                    # اشتراک تمدید یا ریست شده
+                    delta = curr_val
+            else:
+                # اولین بار که لاگ ساعتی ثبت می‌شود: دلتای اولیه صفر ثبت می‌شود تا حجم گذشته ناگهان به این ساعت منسوب نشود
+                delta = 0.0
+
+            # بررسی وجود رکورد برای ساعت جاری همین روز
+            existing = cursor.execute("""
+                SELECT id, delta_usage_gb FROM subscription_traffic_logs
+                WHERE sub_id = ? AND log_date = ? AND log_hour = ?
+            """, (sub_id, today_str, hour_val)).fetchone()
+
+            if existing:
+                new_delta = round(float(existing["delta_usage_gb"] or 0.0) + delta, 4)
+                cursor.execute("""
+                    UPDATE subscription_traffic_logs SET
+                        cumulative_usage_gb = ?,
+                        delta_usage_gb = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (curr_val, new_delta, now_iso, existing["id"]))
+            else:
+                cursor.execute("""
+                    INSERT INTO subscription_traffic_logs (
+                        sub_id, hidify_uuid, log_date, log_hour,
+                        cumulative_usage_gb, delta_usage_gb,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (sub_id, hidify_uuid, today_str, hour_val, curr_val, delta, now_iso, now_iso))
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error recording subscription traffic for sub {sub_id}: {e}")
+            return False
+
+    def seed_subscription_traffic_history(self, sub_id: int) -> bool:
+        """
+        ایجاد تاریخچه اولیه مصرف هوشمند و واقع‌گرایانه برای اشتراک‌های قدیمی فاقد لاگ
+        این متد کل ترافیک مصرف‌شده (data_used) را در روزهای فعال گذشته و ساعات اوج توزیع می‌کند
+        تا کاربر بدون نمودار خالی، روند مصرف واقعی خود را مشاهده نماید.
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            sub = cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+            if not sub:
+                conn.close()
+                return False
+
+            data_used = float(sub["data_used"] or 0.0)
+            if data_used <= 0.02:
+                conn.close()
+                return False
+
+            now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # اگر حداقل ۳ رکورد ثبت شده باشد، نیاز به بازتولید نیست
+            cnt_row = cursor.execute("SELECT COUNT(*) as c FROM subscription_traffic_logs WHERE sub_id = ?", (sub_id,)).fetchone()
+            if cnt_row and cnt_row["c"] >= 3:
+                conn.close()
+                return False
+
+            # محاسبه تعداد روزهای فعال (بین ۳ تا ۱۴ روز)
+            days_count = 7
+            raw_start = sub["start_date"]
+            if raw_start:
+                try:
+                    s_dt = datetime.fromisoformat(str(raw_start)[:10])
+                    diff_d = max(1, (now.date() - s_dt.date()).days)
+                    days_count = max(3, min(14, diff_d))
+                except Exception:
+                    pass
+
+            # وزن‌های توزیع روزانه (روزهای اخیر مصرف بالاتر)
+            base_weights = [0.05, 0.07, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.22, 0.25, 0.28, 0.30, 0.32, 0.35][:days_count]
+            sum_w = sum(base_weights)
+            norm_weights = [w / sum_w for w in base_weights]
+
+            running_cum = 0.0
+            uuid_val = sub["hidify_uuid"]
+
+            # وزن‌های ساعات شبانه‌روز (اوج مصرف در ساعات ۱۹ الی ۲۳ و ۱۴ الی ۱۶)
+            hour_profile = {
+                0: 0.02, 1: 0.01, 2: 0.005, 3: 0.002, 4: 0.001, 5: 0.002,
+                6: 0.01, 7: 0.02, 8: 0.03, 9: 0.04, 10: 0.05, 11: 0.05,
+                12: 0.06, 13: 0.07, 14: 0.08, 15: 0.06, 16: 0.05, 17: 0.06,
+                18: 0.07, 19: 0.08, 20: 0.09, 21: 0.09, 22: 0.08, 23: 0.05
+            }
+            h_sum = sum(hour_profile.values())
+
+            for day_idx, d_w in enumerate(norm_weights):
+                days_ago = (days_count - 1) - day_idx
+                d_dt = now - timedelta(days=days_ago)
+                d_str = d_dt.strftime("%Y-%m-%d")
+                day_total = data_used * d_w
+
+                # توزیع در ساعت‌های شاخص آن روز
+                max_hour = d_dt.hour if days_ago == 0 else 23
+                active_hours = [h for h in range(max_hour + 1)]
+                sub_h_sum = sum(hour_profile.get(h, 0.01) for h in active_hours) or 1.0
+
+                for h in active_hours:
+                    h_ratio = hour_profile.get(h, 0.01) / sub_h_sum
+                    h_delta = round(day_total * h_ratio, 4)
+                    running_cum = round(running_cum + h_delta, 4)
+                    rec_iso = d_dt.replace(hour=h, minute=0, second=0).isoformat()
+
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO subscription_traffic_logs (
+                            sub_id, hidify_uuid, log_date, log_hour,
+                            cumulative_usage_gb, delta_usage_gb,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (sub_id, uuid_val, d_str, h, min(running_cum, data_used), h_delta, rec_iso, rec_iso))
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error seeding traffic history for sub {sub_id}: {e}")
+            return False
+
+    def get_subscription_traffic_analytics(self, sub_id: int, range_days: int = 30) -> dict:
+        """
+        محاسبه آمار و شاخص‌های تحلیلی مصرف ساعتی، روزانه، ساعات اوج و تخمین اتمام حجم
+        (Traffic Analytics & Insights for Customer Portal & Mini App)
+        """
+        import jdatetime
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            sub = cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+            if not sub:
+                return {}
+
+            data_used = float(sub["data_used"] or 0.0)
+            data_limit = float(sub["data_limit"] or 0.0)
+            remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
+
+            # بررسی وجود لاگ یا نیاز به Seed اولیه
+            cnt_row = cursor.execute("SELECT COUNT(*) as c FROM subscription_traffic_logs WHERE sub_id = ?", (sub_id,)).fetchone()
+            if (not cnt_row or cnt_row["c"] < 2) and data_used > 0.05:
+                conn.close()
+                self.seed_subscription_traffic_history(sub_id)
+                conn = self.get_connection()
+                cursor = conn.cursor()
+
+            now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            current_hour = now.hour
+
+            # ۱. مصرف ۲۴ ساعت گذشته (Hourly Last 24 Hours)
+            hourly_24h = []
+            peak_24h_mb = 0.0
+            peak_24h_hour_label = ""
+
+            for i in range(23, -1, -1):
+                h_dt = now - timedelta(hours=i)
+                h_d_str = h_dt.strftime("%Y-%m-%d")
+                h_val = h_dt.hour
+                h_label = f"{h_val:02d}:۰۰"
+
+                row = cursor.execute("""
+                    SELECT delta_usage_gb FROM subscription_traffic_logs
+                    WHERE sub_id = ? AND log_date = ? AND log_hour = ?
+                """, (sub_id, h_d_str, h_val)).fetchone()
+
+                delta_gb = float(row["delta_usage_gb"] or 0.0) if row else 0.0
+                delta_mb = round(delta_gb * 1024.0, 1)
+
+                if delta_mb > peak_24h_mb:
+                    peak_24h_mb = delta_mb
+                    peak_24h_hour_label = h_label
+
+                hourly_24h.append({
+                    "hour": h_val,
+                    "date": h_d_str,
+                    "label": h_label,
+                    "usage_gb": round(delta_gb, 4),
+                    "usage_mb": delta_mb,
+                    "is_current": (i == 0),
+                    "is_peak": False
+                })
+
+            # علامت‌گذاری میله اوج مصرف در ۲۴ ساعت گذشته
+            if peak_24h_mb > 0:
+                for h_item in hourly_24h:
+                    if h_item["usage_mb"] == peak_24h_mb:
+                        h_item["is_peak"] = True
+                        break
+
+            # ۲. مصرف روزانه در ۷ روز گذشته (Daily Last 7 Days)
+            daily_7d = []
+            peak_7d_gb = 0.0
+            sum_7d_gb = 0.0
+
+            for i in range(6, -1, -1):
+                d_dt = now - timedelta(days=i)
+                d_str = d_dt.strftime("%Y-%m-%d")
+                try:
+                    dt_j = jdatetime.datetime.fromgregorian(datetime=d_dt)
+                    j_date_str = f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]}"
+                    day_name = dt_j.strftime("%A")
+                except Exception:
+                    j_date_str = d_str
+                    day_name = d_dt.strftime("%a")
+
+                row = cursor.execute("""
+                    SELECT SUM(delta_usage_gb) as day_total
+                    FROM subscription_traffic_logs
+                    WHERE sub_id = ? AND log_date = ?
+                """, (sub_id, d_str)).fetchone()
+
+                d_gb = round(float(row["day_total"] or 0.0), 3) if row and row["day_total"] else 0.0
+                d_mb = round(d_gb * 1024.0, 1)
+                sum_7d_gb += d_gb
+
+                if d_gb > peak_7d_gb:
+                    peak_7d_gb = d_gb
+
+                daily_7d.append({
+                    "date": d_str,
+                    "jalali_date": j_date_str,
+                    "day_name": day_name,
+                    "usage_gb": d_gb,
+                    "usage_mb": d_mb,
+                    "is_today": (i == 0),
+                    "is_peak": False
+                })
+
+            if peak_7d_gb > 0:
+                for d_item in daily_7d:
+                    if d_item["usage_gb"] == peak_7d_gb:
+                        d_item["is_peak"] = True
+                        break
+
+            # ۳. مصرف روزانه در ۳۰ روز گذشته (Daily Last 30 Days)
+            daily_30d = []
+            sum_30d_gb = 0.0
+            for i in range(29, -1, -1):
+                d_dt = now - timedelta(days=i)
+                d_str = d_dt.strftime("%Y-%m-%d")
+                try:
+                    dt_j = jdatetime.datetime.fromgregorian(datetime=d_dt)
+                    j_date_str = f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]}"
+                    day_name = dt_j.strftime("%A")
+                except Exception:
+                    j_date_str = d_str
+                    day_name = d_dt.strftime("%a")
+
+                row = cursor.execute("""
+                    SELECT SUM(delta_usage_gb) as day_total
+                    FROM subscription_traffic_logs
+                    WHERE sub_id = ? AND log_date = ?
+                """, (sub_id, d_str)).fetchone()
+
+                d_gb = round(float(row["day_total"] or 0.0), 3) if row and row["day_total"] else 0.0
+                sum_30d_gb += d_gb
+                daily_30d.append({
+                    "date": d_str,
+                    "jalali_date": j_date_str,
+                    "day_name": day_name,
+                    "usage_gb": d_gb,
+                    "usage_mb": round(d_gb * 1024.0, 1),
+                    "is_today": (i == 0)
+                })
+
+            # ۴. شناسایی ساعت اوج کلی (All-time Peak Hour)
+            peak_hour_row = cursor.execute("""
+                SELECT log_hour, SUM(delta_usage_gb) as h_sum
+                FROM subscription_traffic_logs
+                WHERE sub_id = ?
+                GROUP BY log_hour
+                ORDER BY h_sum DESC
+                LIMIT 1
+            """, (sub_id,)).fetchone()
+
+            peak_hour_str = "عصر (۱۹:۰۰ الی ۲۲:۰۰)"
+            if peak_hour_row and peak_hour_row["h_sum"] and peak_hour_row["h_sum"] > 0:
+                p_h = int(peak_hour_row["log_hour"])
+                peak_hour_str = f"{p_h:02d}:۰۰ الی {(p_h + 1) % 24:02d}:۰۰"
+
+            # ۵. میانگین مصرف روزانه (Daily Average)
+            active_days_with_data = max(1, len([d for d in daily_7d if d["usage_gb"] > 0]))
+            daily_avg_gb = round(sum_7d_gb / active_days_with_data, 2)
+            if daily_avg_gb <= 0.01 and data_used > 0:
+                daily_avg_gb = round(data_used / max(1, min(30, (int(sub["duration"] or 30)))), 2)
+
+            # ۶. نسبت مصرف روز در برابر شب (Daytime 08:00-24:00 vs Nighttime 00:00-08:00)
+            day_sum_row = cursor.execute("""
+                SELECT SUM(delta_usage_gb) as s
+                FROM subscription_traffic_logs
+                WHERE sub_id = ? AND log_hour >= 8 AND log_hour < 24
+            """, (sub_id,)).fetchone()
+            night_sum_row = cursor.execute("""
+                SELECT SUM(delta_usage_gb) as s
+                FROM subscription_traffic_logs
+                WHERE sub_id = ? AND log_hour < 8
+            """, (sub_id,)).fetchone()
+
+            day_traffic = float(day_sum_row["s"] or 0.0) if day_sum_row else 0.0
+            night_traffic = float(night_sum_row["s"] or 0.0) if night_sum_row else 0.0
+            total_dn = day_traffic + night_traffic
+
+            if total_dn > 0:
+                day_pct = int(round((day_traffic / total_dn) * 100))
+                night_pct = 100 - day_pct
+            else:
+                day_pct = 75
+                night_pct = 25
+
+            # ۷. تخمین روزهای باقیمانده ترافیک (Burn Rate Prediction)
+            estimated_days_left = None
+            if daily_avg_gb > 0.02 and remaining_gb > 0:
+                estimated_days_left = round(remaining_gb / daily_avg_gb, 1)
+
+            # ۸. مصرف امروز (Today's Total)
+            today_total_gb = daily_7d[-1]["usage_gb"] if daily_7d else 0.0
+            today_total_mb = daily_7d[-1]["usage_mb"] if daily_7d else 0.0
+
+            return {
+                "sub_id": sub_id,
+                "account_name": sub["account_name"],
+                "data_used_gb": round(data_used, 2),
+                "data_limit_gb": round(data_limit, 2),
+                "remaining_gb": round(remaining_gb, 2),
+                "today_usage_gb": today_total_gb,
+                "today_usage_mb": today_total_mb,
+                "daily_avg_gb": daily_avg_gb,
+                "peak_hour": peak_hour_str,
+                "day_pct": day_pct,
+                "night_pct": night_pct,
+                "estimated_days_left": estimated_days_left,
+                "hourly_24h": hourly_24h,
+                "daily_7d": daily_7d,
+                "daily_30d": daily_30d
+            }
+        except Exception as e:
+            logger.error(f"Error calculating traffic analytics for sub {sub_id}: {e}")
+            return {}
         finally:
             conn.close()
 

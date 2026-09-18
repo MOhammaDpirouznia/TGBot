@@ -1462,7 +1462,7 @@
                                 {% else %}<i class="fas fa-code-branch text-primary"></i>
                                 {% endif %}
                             {% endif %}
-                            <span>نسخه: {{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
+                            <span>{{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
                         </span>
                     </div>
                 </div>
@@ -2926,6 +2926,355 @@
                     .catch(e => console.warn('Failed to auto-refresh table:', e));
             }
         });
+    </script>
+
+    <!-- مودال سریع یادداشت‌های اشتراک (Quick Subscription Notes Modal) -->
+    <div class="modal fade" id="quickSubNoteModal" tabindex="-1" aria-labelledby="quickSubNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-header py-3 border-bottom">
+                    <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2" id="quickSubNoteModalLabel">
+                        <i class="fas fa-note-sticky text-warning"></i>
+                        <span>یادداشت اشتراک:</span>
+                        <span id="quickSubNoteTitle" class="text-primary font-monospace"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="quickSubNoteLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="small text-muted mt-2">در حال بارگذاری اطلاعات یادداشت...</div>
+                    </div>
+                    <div id="quickSubNoteAlert" class="alert alert-danger py-2 px-3 small rounded-3 mb-3 d-none"></div>
+                    <form id="quickSubNoteForm" style="display: none;" onsubmit="event.preventDefault(); saveQuickSubNote();">
+                        <input type="hidden" id="quickSubNoteSubId" value="">
+                        
+                        <!-- ۱. یادداشت محرمانه داخلی همکاران -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-lock text-warning"></i>
+                                    <span>یادداشت داخلی همکاران / پشتیبانی:</span>
+                                </label>
+                                <span id="quickSubNoteInternalMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickSubNoteInternalInput" class="form-control" rows="3" placeholder="یادداشت خصوصی، نکته پیگیری یا تذکر به همکاران..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                🔒 کاملاً محرمانه: فقط شما و همکاران پنل خودتان می‌بینید. به مشتری نمایش داده نمی‌شود.
+                            </small>
+                        </div>
+
+                        <!-- ۲. پیام به مشتری در پورتال -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-bullhorn text-info"></i>
+                                    <span>پیام به مشتری در پورتال (اطلاعیه):</span>
+                                </label>
+                                <span id="quickSubNoteCustomerMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickSubNoteCustomerInput" class="form-control" rows="2" placeholder="پیام دلخواه جهت نمایش در بالای پورتال مشتری (اختیاری)..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                📢 در بالای پورتال مشتری به عنوان بنر قابل بستن نمایش می‌یابد و کاربر می‌تواند آن را ببندد.
+                            </small>
+                        </div>
+
+                        <!-- ۳. بخش نمایش یادداشت بدهی در صورت وجود -->
+                        <div id="quickSubNoteDebtSection" class="p-2 rounded bg-danger bg-opacity-10 border border-danger border-opacity-25 mb-2" style="display: none;">
+                            <div class="small fw-bold text-danger d-flex align-items-center gap-1 mb-1">
+                                <i class="fas fa-file-invoice-dollar"></i>
+                                <span>شرایط و یادداشت بدهی ثبت‌شده برای مشتری:</span>
+                            </div>
+                            <div id="quickSubNoteDebtText" class="small text-dark pe-2"></div>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.7rem;">این متن در فاکتور بدهی پورتال به خود مشتری نشان داده می‌شود.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2 bg-light border-top d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary px-4 fw-bold d-inline-flex align-items-center gap-1" id="quickSubNoteSaveBtn" onclick="saveQuickSubNote()">
+                        <i class="fas fa-check"></i>
+                        <span>ذخیره تغییرات</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال سریع یادداشت تراکنش مالی (Quick Transaction Note Modal) -->
+    <div class="modal fade" id="quickTxNoteModal" tabindex="-1" aria-labelledby="quickTxNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-header py-3 border-bottom">
+                    <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2" id="quickTxNoteModalLabel">
+                        <i class="fas fa-file-invoice-dollar text-primary"></i>
+                        <span>یادداشت پرداخت:</span>
+                        <span id="quickTxNoteTitle" class="text-dark font-monospace"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="quickTxNoteLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="small text-muted mt-2">در حال بارگذاری اطلاعات پرداخت...</div>
+                    </div>
+                    <div id="quickTxNoteAlert" class="alert alert-danger py-2 px-3 small rounded-3 mb-3 d-none"></div>
+                    <form id="quickTxNoteForm" style="display: none;" onsubmit="event.preventDefault(); saveQuickTxNote();">
+                        <input type="hidden" id="quickTxNoteTxId" value="">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-lock text-warning"></i>
+                                    <span>یادداشت داخلی تراکنش / فیش:</span>
+                                </label>
+                                <span id="quickTxNoteMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickTxNoteInput" class="form-control" rows="3" placeholder="توضیحات و یادداشت داخلی درباره این تراکنش، واریزکننده، هماهنگی‌ها..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                🔒 این یادداشت کاملاً محرمانه بوده و فقط در پنل همکاران جهت بررسی‌های مالی نمایش می‌یابد.
+                            </small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2 bg-light border-top d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary px-4 fw-bold d-inline-flex align-items-center gap-1" id="quickTxNoteSaveBtn" onclick="saveQuickTxNote()">
+                        <i class="fas fa-check"></i>
+                        <span>ذخیره یادداشت</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- اسکریپت توابع سراسری یادداشت‌های سریع -->
+    <script>
+        let currentSubNoteTriggerBtn = null;
+        let currentTxNoteTriggerBtn = null;
+
+        function openQuickSubNote(subId, subName, btn) {
+            currentSubNoteTriggerBtn = btn || null;
+            const modalEl = document.getElementById('quickSubNoteModal');
+            if (!modalEl) return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            
+            document.getElementById('quickSubNoteSubId').value = subId;
+            document.getElementById('quickSubNoteTitle').textContent = subName ? (subName.length > 25 ? subName.slice(0, 25) + '...' : subName) : ('#' + subId);
+            document.getElementById('quickSubNoteLoading').style.display = 'block';
+            document.getElementById('quickSubNoteForm').style.display = 'none';
+            document.getElementById('quickSubNoteAlert').classList.add('d-none');
+            document.getElementById('quickSubNoteSaveBtn').disabled = false;
+            
+            modal.show();
+            
+            fetch('/api/subscription/' + subId + '/notes', {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                document.getElementById('quickSubNoteLoading').style.display = 'none';
+                if (!res.success) {
+                    document.getElementById('quickSubNoteAlert').textContent = res.error || 'خطا در واکشی یادداشت';
+                    document.getElementById('quickSubNoteAlert').classList.remove('d-none');
+                    return;
+                }
+                document.getElementById('quickSubNoteForm').style.display = 'block';
+                document.getElementById('quickSubNoteInternalInput').value = res.internal_note || '';
+                document.getElementById('quickSubNoteCustomerInput').value = res.customer_note || '';
+                
+                const iMeta = document.getElementById('quickSubNoteInternalMeta');
+                if (res.updated_by || res.updated_at) {
+                    iMeta.textContent = (res.updated_by ? 'توسط: ' + res.updated_by : '') + (res.updated_at ? ' (' + res.updated_at.slice(0, 10) + ')' : '');
+                    iMeta.style.display = 'inline-block';
+                } else {
+                    iMeta.style.display = 'none';
+                }
+                
+                const cMeta = document.getElementById('quickSubNoteCustomerMeta');
+                if (res.customer_note_updated_by || res.customer_note_updated_at) {
+                    cMeta.textContent = (res.customer_note_updated_by ? 'توسط: ' + res.customer_note_updated_by : '') + (res.customer_note_updated_at ? ' (' + res.customer_note_updated_at.slice(0, 10) + ')' : '');
+                    cMeta.style.display = 'inline-block';
+                } else {
+                    cMeta.style.display = 'none';
+                }
+
+                const dSec = document.getElementById('quickSubNoteDebtSection');
+                const dText = document.getElementById('quickSubNoteDebtText');
+                if (res.debt_notes && res.debt_notes.trim()) {
+                    dText.textContent = res.debt_notes;
+                    dSec.style.display = 'block';
+                } else {
+                    dSec.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                document.getElementById('quickSubNoteLoading').style.display = 'none';
+                document.getElementById('quickSubNoteAlert').textContent = 'خطا در ارتباط با سرور';
+                document.getElementById('quickSubNoteAlert').classList.remove('d-none');
+            });
+        }
+
+        function saveQuickSubNote() {
+            const subId = document.getElementById('quickSubNoteSubId').value;
+            const internalNote = document.getElementById('quickSubNoteInternalInput').value;
+            const customerNote = document.getElementById('quickSubNoteCustomerInput').value;
+            const saveBtn = document.getElementById('quickSubNoteSaveBtn');
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+            
+            fetch('/api/subscription/' + subId + '/notes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    internal_note: internalNote,
+                    customer_note: customerNote
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره تغییرات';
+                if (!res.success) {
+                    alert(res.error || 'خطا در ذخیره یادداشت');
+                    return;
+                }
+                
+                const modalEl = document.getElementById('quickSubNoteModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                
+                if (currentSubNoteTriggerBtn) {
+                    const hasNote = Boolean((internalNote && internalNote.trim()) || (customerNote && customerNote.trim()));
+                    const icon = currentSubNoteTriggerBtn.querySelector('i');
+                    if (hasNote) {
+                        currentSubNoteTriggerBtn.classList.remove('text-muted', 'opacity-50');
+                        currentSubNoteTriggerBtn.classList.add('text-warning');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky text-warning';
+                        }
+                        currentSubNoteTriggerBtn.setAttribute('title', 'یادداشت: ' + (internalNote || customerNote).slice(0, 50));
+                    } else {
+                        currentSubNoteTriggerBtn.classList.remove('text-warning');
+                        currentSubNoteTriggerBtn.classList.add('text-muted', 'opacity-50');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky';
+                        }
+                        currentSubNoteTriggerBtn.setAttribute('title', 'افزودن یادداشت / پیام به مشتری');
+                    }
+                }
+            })
+            .catch(err => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره تغییرات';
+                alert('خطا در برقراری ارتباط با سرور');
+            });
+        }
+
+        function openQuickTxNote(txId, orderIdOrTitle, btn) {
+            currentTxNoteTriggerBtn = btn || null;
+            const modalEl = document.getElementById('quickTxNoteModal');
+            if (!modalEl) return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            
+            document.getElementById('quickTxNoteTxId').value = txId;
+            document.getElementById('quickTxNoteTitle').textContent = orderIdOrTitle ? '#' + orderIdOrTitle : '#' + txId;
+            document.getElementById('quickTxNoteLoading').style.display = 'block';
+            document.getElementById('quickTxNoteForm').style.display = 'none';
+            document.getElementById('quickTxNoteAlert').classList.add('d-none');
+            document.getElementById('quickTxNoteSaveBtn').disabled = false;
+            
+            modal.show();
+            
+            fetch('/api/transaction/' + txId + '/note', {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                document.getElementById('quickTxNoteLoading').style.display = 'none';
+                if (!res.success) {
+                    document.getElementById('quickTxNoteAlert').textContent = res.error || 'خطا در واکشی یادداشت';
+                    document.getElementById('quickTxNoteAlert').classList.remove('d-none');
+                    return;
+                }
+                document.getElementById('quickTxNoteForm').style.display = 'block';
+                document.getElementById('quickTxNoteInput').value = res.internal_note || '';
+                
+                const meta = document.getElementById('quickTxNoteMeta');
+                if (res.updated_by || res.updated_at) {
+                    meta.textContent = (res.updated_by ? 'توسط: ' + res.updated_by : '') + (res.updated_at ? ' (' + res.updated_at.slice(0, 10) + ')' : '');
+                    meta.style.display = 'inline-block';
+                } else {
+                    meta.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                document.getElementById('quickTxNoteLoading').style.display = 'none';
+                document.getElementById('quickTxNoteAlert').textContent = 'خطا در ارتباط با سرور';
+                document.getElementById('quickTxNoteAlert').classList.remove('d-none');
+            });
+        }
+
+        function saveQuickTxNote() {
+            const txId = document.getElementById('quickTxNoteTxId').value;
+            const internalNote = document.getElementById('quickTxNoteInput').value;
+            const saveBtn = document.getElementById('quickTxNoteSaveBtn');
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+            
+            fetch('/api/transaction/' + txId + '/note', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    internal_note: internalNote
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره یادداشت';
+                if (!res.success) {
+                    alert(res.error || 'خطا در ذخیره یادداشت');
+                    return;
+                }
+                
+                const modalEl = document.getElementById('quickTxNoteModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                
+                if (currentTxNoteTriggerBtn) {
+                    const hasNote = Boolean(internalNote && internalNote.trim());
+                    const icon = currentTxNoteTriggerBtn.querySelector('i');
+                    if (hasNote) {
+                        currentTxNoteTriggerBtn.classList.remove('text-muted', 'opacity-50');
+                        currentTxNoteTriggerBtn.classList.add('text-warning');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky text-warning';
+                        }
+                        currentTxNoteTriggerBtn.setAttribute('title', 'یادداشت: ' + internalNote.slice(0, 50));
+                    } else {
+                        currentTxNoteTriggerBtn.classList.remove('text-warning');
+                        currentTxNoteTriggerBtn.classList.add('text-muted', 'opacity-50');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky';
+                        }
+                        currentTxNoteTriggerBtn.setAttribute('title', 'افزودن یادداشت پرداخت');
+                    }
+                }
+            })
+            .catch(err => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره یادداشت';
+                alert('خطا در برقراری ارتباط با سرور');
+            });
+        }
     </script>
 </body>
 </html>

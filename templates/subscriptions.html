@@ -315,6 +315,13 @@
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
                                         <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        {% set has_sub_note = bool(sub.get('admin_note') or sub.get('customer_note')) %}
+                                        <button type="button" 
+                                                class="btn btn-link p-0 text-decoration-none sub-note-btn ms-1 {% if has_sub_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
+                                                onclick="event.stopPropagation(); openQuickSubNote('{{ sub['id'] }}', '{{ sub['account_name']|default('', true)|e }}', this);" 
+                                                title="{% if sub.get('admin_note') %}یادداشت: {{ sub['admin_note']|striptags|truncate(50) }}{% elif sub.get('customer_note') %}پیام به مشتری: {{ sub['customer_note']|striptags|truncate(50) }}{% else %}افزودن یادداشت / پیام به مشتری{% endif %}">
+                                            <i class="fas {% if has_sub_note %}fa-note-sticky text-warning{% else %}fa-note-sticky{% endif %}" style="font-size: 0.85rem;"></i>
+                                        </button>
                                         {% if sub.get('is_vip') %}
                                              <span class="badge badge-vip py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
@@ -2568,32 +2575,44 @@
 
 <script>
 function handleRenewalSubmit(form) {
-    if (!form) return false;
+    if (!form) return true;
+    if (form.checkValidity && !form.checkValidity()) {
+        form.reportValidity();
+        return false;
+    }
     if (form.dataset.submitting === "true") {
         return false;
     }
     form.dataset.submitting = "true";
     const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تمدید...';
-    }
     const cancelBtns = form.querySelectorAll('button[data-bs-dismiss="modal"]');
-    cancelBtns.forEach(btn => { btn.disabled = true; });
+
+    setTimeout(function() {
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تمدید...';
+        }
+        if (cancelBtns) {
+            cancelBtns.forEach(function(btn) { btn.disabled = true; });
+        }
+    }, 20);
+
+    // Safety fallback: unlock UI after 25 seconds in case of slow connection or network error
+    setTimeout(function() {
+        if (form.dataset.submitting === "true") {
+            form.dataset.submitting = "false";
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-check me-1"></i> تایید و اعمال تمدید';
+            }
+            if (cancelBtns) {
+                cancelBtns.forEach(function(btn) { btn.disabled = false; });
+            }
+        }
+    }, 25000);
+
     return true;
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('form[action*="/renew"], form[action*="bulk-renew"]').forEach(function(f) {
-        f.addEventListener('submit', function(e) {
-            if (f.dataset.submitting === "true") {
-                e.preventDefault();
-                return false;
-            }
-            return handleRenewalSubmit(f);
-        });
-    });
-});
 
 function generateNewUuid(elementId) {
     let newUuid = '';

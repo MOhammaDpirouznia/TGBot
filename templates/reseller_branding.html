@@ -112,6 +112,111 @@
                         </div>
                     </div>
 
+                    <!-- تنظیمات اختصاصی مینی‌اپ تلگرام (Mini App White-Label Branding) -->
+                    <div class="p-3 mb-4 rounded-3 border" style="background: rgba(14, 165, 233, 0.04); border-color: rgba(14, 165, 233, 0.2) !important;">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <h6 class="fw-bold text-info mb-0">
+                                <i class="fab fa-telegram me-1"></i> تنظیمات اختصاصی مینی‌اپ تلگرام (Mini App White-Label)
+                            </h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="btnSyncResellerMenu">
+                                <i class="fas fa-sync-alt me-1"></i> ⚡ همگام‌سازی فوری دکمه در ربات
+                            </button>
+                        </div>
+                        <p class="small text-muted mb-3">
+                            شخصی‌سازی کامل مینی‌اپ تلگرام برای ربات اختصاصی شما؛ کاربران با باز کردن برنامه، نشان و نام برند شما را مشاهده می‌کنند و دکمه کنار چت نیز با نام دلخواه شما نمایش داده می‌شود تا تفکیک کامل برند شما حفظ گردد.
+                        </p>
+                        <div id="syncMenuAlert" class="mb-3" style="display: none;"></div>
+
+                        <!-- بخش ۱: دکمه ثابت منوی چت تلگرام -->
+                        <div class="bg-white p-3 rounded-2 border mb-3">
+                            <div class="row g-3 align-items-center">
+                                <div class="col-md-5">
+                                    <div class="form-check form-switch pt-1">
+                                        <input class="form-check-input" type="checkbox" name="mini_app_menu_button_enabled" id="mini_app_menu_button_enabled" 
+                                               {% if reseller.get('mini_app_menu_button_enabled') is none or reseller.get('mini_app_menu_button_enabled') == 1 or reseller.get('mini_app_menu_button_enabled') == '1' %}checked{% endif %}>
+                                        <label class="form-check-label fw-bold small" for="mini_app_menu_button_enabled">
+                                            فعال‌سازی دکمه ثابت مینی‌اپ در ربات تلگرام شما
+                                        </label>
+                                        <div class="form-text small text-muted">نمایش دکمه همیشگی ورود به اپلیکیشن کنار کادر چت در ربات تلگرام شما.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-7">
+                                    <label class="form-label fw-bold small">متن روی دکمه در تلگرام:</label>
+                                    <input type="text" class="form-control" name="mini_app_menu_button_text" 
+                                           value="{{ reseller.get('mini_app_menu_button_text') or '' }}" 
+                                           placeholder="مثال: ورود به برنامه | {{ reseller.get('brand_title') or reseller.get('portal_title') or reseller.get('name') or 'برند شما' }}" maxlength="64">
+                                    <div class="form-text small text-muted">در صورت خالی بودن، به طور خودکار «ورود به برنامه | نام برند شما» تنظیم می‌شود.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ۲: صفحه لودینگ و اسپلش مینی‌اپ -->
+                        <div class="bg-white p-3 rounded-2 border">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="mini_app_splash_enabled" id="mini_app_splash_enabled" 
+                                               {% if reseller.get('mini_app_splash_enabled') is none or reseller.get('mini_app_splash_enabled') == 1 or reseller.get('mini_app_splash_enabled') == '1' %}checked{% endif %}>
+                                        <label class="form-check-label fw-bold small" for="mini_app_splash_enabled">
+                                            نمایش صفحه لودینگ انیمیشنی لوکس (Splash Screen) هنگام باز شدن مینی‌اپ
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">عنوان صفحه لودینگ (Splash Title):</label>
+                                    <input type="text" class="form-control" name="mini_app_splash_title" 
+                                           value="{{ reseller.get('mini_app_splash_title') or '' }}" 
+                                           placeholder="پیش‌فرض: {{ reseller.get('brand_title') or reseller.get('portal_title') or reseller.get('name') or 'نام برند شما' }}">
+                                    <div class="form-text small text-muted">متن بزرگ زیر نشان تصویری در صفحه شروع برنامه.</div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">زیرعنوان صفحه لودینگ (Splash Subtitle):</label>
+                                    <input type="text" class="form-control" name="mini_app_splash_subtitle" 
+                                           value="{{ reseller.get('mini_app_splash_subtitle') or '' }}" 
+                                           placeholder="پیش‌فرض: پورتال کاربری و استعلام وضعیت اشتراک">
+                                    <div class="form-text small text-muted">توضیح کوتاه و شعار برند شما در صفحه لودینگ.</div>
+                                </div>
+
+                                <div class="col-md-7">
+                                    <label class="form-label fw-bold small">آپلود تصویر/لوگوی اختصاصی لودینگ مینی‌اپ:</label>
+                                    <input type="file" class="form-control" name="splash_image_file" accept="image/*">
+                                    <div class="form-text small text-muted">در صورت عدم آپلود، تصویر لوگوی اصلی فروشگاه شما در لودینگ نمایش داده می‌شود.</div>
+                                </div>
+
+                                <div class="col-md-5">
+                                    <label class="form-label fw-bold small">پیش‌نمایش تصویر فعال در لودینگ:</label>
+                                    <div class="d-flex align-items-center gap-2 p-2 rounded border" style="background-color: #0c1829;">
+                                        {% if reseller.get('mini_app_splash_image') %}
+                                            <img src="{{ reseller.get('mini_app_splash_image') }}" alt="Splash Logo" style="width: 44px; height: 44px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(0, 210, 255, 0.4);">
+                                            <div class="small text-white-50 text-truncate flex-grow-1">
+                                                <span class="text-info fw-bold d-block" style="font-size: 0.75rem;">تصویر اختصاصی اسپلش</span>
+                                                <div class="form-check mt-1 mb-0">
+                                                    <input class="form-check-input" type="checkbox" name="clear_splash_image" value="1" id="clearResellerSplash">
+                                                    <label class="form-check-label text-danger" for="clearResellerSplash" style="font-size: 0.72rem;">
+                                                        حذف و ارث‌بری از لوگوی عمومی
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        {% elif reseller.get('logo_url') %}
+                                            <img src="{{ reseller.get('logo_url') }}" alt="Logo" style="width: 44px; height: 44px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);">
+                                            <div class="small text-white-50">
+                                                <span class="text-white fw-bold d-block" style="font-size: 0.75rem;">ارث‌بری از لوگوی پورتال</span>
+                                                <span style="font-size: 0.7rem;">لوگوی پورتال مشتری نمایش داده می‌شود.</span>
+                                            </div>
+                                        {% else %}
+                                            <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;">
+                                                <i class="fas fa-image text-white-50"></i>
+                                            </div>
+                                            <span class="small text-white-50" style="font-size: 0.72rem;">لوگوی پیش‌فرض سیستم</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- عنوان فروشگاه و تب مرورگر -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
@@ -193,6 +298,15 @@
             </div>
         </div>
 
+        <div class="card shadow-sm border-0 border-start border-info border-4 mb-4">
+            <div class="card-body p-3">
+                <h6 class="fw-bold text-info mb-2"><i class="fab fa-telegram me-1"></i> استقلال برند در مینی‌اپ:</h6>
+                <p class="small text-muted mb-0" style="line-height: 1.8;">
+                    با تنظیم لوگو، عنوان لودینگ و متن دکمه تلگرام، مشتریان شما مینی‌اپ را کاملاً مستقل و اختصاصی تجربه می‌کنند و هیچ نام یا نشانی از مدیریت اصلی نخواهند دید.
+                </p>
+            </div>
+        </div>
+
         <div class="card shadow-sm border-0 border-start border-success border-4">
             <div class="card-body p-3">
                 <h6 class="fw-bold text-success mb-2"><i class="fas fa-shield-halved me-1"></i> استقلال مالی و ارتباطی:</h6>
@@ -203,4 +317,60 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const btnSync = document.getElementById("btnSyncResellerMenu");
+    const alertDiv = document.getElementById("syncMenuAlert");
+
+    if (btnSync) {
+        btnSync.addEventListener("click", async function() {
+            const origHtml = btnSync.innerHTML;
+            btnSync.disabled = true;
+            btnSync.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال همگام‌سازی...';
+            if (alertDiv) {
+                alertDiv.style.display = "none";
+                alertDiv.className = "mb-3";
+                alertDiv.innerHTML = "";
+            }
+
+            try {
+                const resp = await fetch("{{ url_for('reseller_sync_menu_button') }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (alertDiv) {
+                        alertDiv.className = "alert alert-success py-2 small mb-3";
+                        alertDiv.innerHTML = '<i class="fas fa-check-circle me-1"></i> <strong>موفقیت‌آمیز:</strong> ' + (data.message || 'دکمه منوی ربات تلگرام با موفقیت همگام‌سازی شد.');
+                        alertDiv.style.display = "block";
+                    } else {
+                        alert("✅ " + (data.message || "دکمه منوی ربات تلگرام با موفقیت همگام‌سازی شد."));
+                    }
+                } else {
+                    if (alertDiv) {
+                        alertDiv.className = "alert alert-danger py-2 small mb-3";
+                        alertDiv.innerHTML = '<i class="fas fa-circle-xmark me-1"></i> <strong>خطا:</strong> ' + (data.error || 'خطا در تنظیم دکمه ربات تلگرام.');
+                        alertDiv.style.display = "block";
+                    } else {
+                        alert("❌ " + (data.error || "خطا در تنظیم دکمه ربات تلگرام."));
+                    }
+                }
+            } catch (err) {
+                if (alertDiv) {
+                    alertDiv.className = "alert alert-danger py-2 small mb-3";
+                    alertDiv.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطا در ارتباط با سرور: ' + err;
+                    alertDiv.style.display = "block";
+                } else {
+                    alert("❌ خطا در برقراری ارتباط با سرور: " + err);
+                }
+            } finally {
+                btnSync.disabled = false;
+                btnSync.innerHTML = origHtml;
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

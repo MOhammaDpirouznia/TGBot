@@ -144,6 +144,9 @@
             <button type="button" class="mode-pill-btn {% if active_mode == 'wizard' %}btn btn-primary text-white shadow-sm{% else %}btn btn-light text-dark{% endif %}" onclick="switchConnMode('wizard')">
                 <i class="fas fa-compass me-1"></i> راهنمای قدم‌به‌قدم اتصال (ویزارد هوشمند)
             </button>
+            <a href="javascript:void(0)" onclick="if(typeof openPortalChatModal==='function'){openPortalChatModal('راهنمایی اتصال و رفع مشکل');}else{alert('جهت گفتگوی آنلاین هوشمند با هوش مصنوعی، لطفاً از طریق پورتال اشتراک یا ربات تلگرام اقدام فرمایید.');}" class="mode-pill-btn btn btn-light text-purple border shadow-xs" style="color: #7c3aed;">
+                <i class="fas fa-robot me-1" style="color: #8b5cf6;"></i> چت با هوش مصنوعی
+            </a>
         </div>
     </div>
 
@@ -157,12 +160,17 @@
                 <i class="fas fa-lightbulb fa-2x"></i>
                 <div>
                     <h5 class="fw-bold mb-1">قطع و وصل می‌شوید یا خطای ساعت دارید؟</h5>
-                    <p class="mb-0 small opacity-90">با ویزارد هوشمند عیب‌یابی، خطاهای ساعت (Time Desync)، تنظیم Fragment همراه اول/ایرانسل و DNS را در کمتر از ۱ دقیقه رفع کنید.</p>
+                    <p class="mb-0 small opacity-90">با ویزارد هوشمند عیب‌یابی یا گفتگوی مستقیم با هوش مصنوعی، خطاهای ساعت (Time Desync)، تنظیم Fragment و DNS را در کمتر از ۱ دقیقه رفع کنید.</p>
                 </div>
             </div>
-            <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-light text-dark fw-bold px-4 py-2 flex-shrink-0 shadow-sm">
-                شروع عیب‌یابی هوشمند <i class="fas fa-arrow-left ms-1"></i>
-            </a>
+            <div class="d-flex gap-2 flex-wrap flex-shrink-0">
+                <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-light text-dark fw-bold px-3 py-2 shadow-sm">
+                    عیب‌یابی هوشمند <i class="fas fa-arrow-left ms-1"></i>
+                </a>
+                <button type="button" onclick="if(typeof openPortalChatModal==='function'){openPortalChatModal('راهنمایی اتصال و رفع مشکل');}else{alert('جهت گفتگوی آنلاین هوشمند با هوش مصنوعی، لطفاً از طریق لینک پورتال اشتراک یا ربات تلگرام اقدام فرمایید.');}" class="btn btn-warning text-dark fw-bold px-3 py-2 shadow-sm">
+                    <i class="fas fa-robot me-1"></i> چت با هوش مصنوعی
+                </button>
+            </div>
         </div>
 
         <!-- نوار انتخاب سیستم‌عامل (Platform Selector) -->

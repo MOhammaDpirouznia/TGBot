@@ -237,9 +237,160 @@
             color: #0f172a !important;
             box-shadow: 0 20px 45px rgba(0, 0, 0, 0.15) !important;
         }
+        [data-bs-theme="light"] .bg-black.bg-opacity-10,
+        [data-bs-theme="light"] .bg-black.bg-opacity-20,
+        [data-bs-theme="light"] .bg-black.bg-opacity-25,
         [data-bs-theme="light"] .bg-black.bg-opacity-30,
-        [data-bs-theme="light"] .bg-black.bg-opacity-50 {
+        [data-bs-theme="light"] .bg-black.bg-opacity-40,
+        [data-bs-theme="light"] .bg-black.bg-opacity-50,
+        [data-bs-theme="light"] .bg-black.bg-opacity-60 {
             background-color: rgba(0, 0, 0, 0.04) !important;
+        }
+
+        /* ─── استایل نوبت و بسته‌های صف رزرو شده در تم روشن و تیره ─── */
+        .portal-queue-card {
+            border-radius: 20px;
+        }
+        [data-bs-theme="light"] .portal-queue-card {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(241, 245, 249, 0.95) 100%) !important;
+            border-color: rgba(6, 182, 212, 0.35) !important;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06) !important;
+        }
+        [data-bs-theme="light"] .portal-queue-item {
+            background-color: #ffffff !important;
+            border-color: rgba(203, 213, 225, 0.9) !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+        }
+        [data-bs-theme="light"] .portal-queue-item.active-next {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%) !important;
+            border-color: rgba(34, 197, 94, 0.45) !important;
+        }
+        [data-bs-theme="light"] .portal-queue-item .text-white,
+        [data-bs-theme="light"] .portal-queue-item h6 {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .portal-queue-item .text-secondary {
+            color: #475569 !important;
+        }
+
+        /* ─── ورودی‌های فرم چت آنلاین در هر دو حالت تاریک و روشن ─── */
+        .chat-theme-input {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+        .chat-theme-input:focus {
+            background-color: #0f172a !important;
+            color: #ffffff !important;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25) !important;
+        }
+        .chat-theme-input::placeholder {
+            color: #94a3b8 !important;
+            opacity: 0.8;
+        }
+        .chat-theme-input option {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+        }
+        [data-bs-theme="light"] .chat-theme-input {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+        [data-bs-theme="light"] .chat-theme-input:focus {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.2) !important;
+        }
+        [data-bs-theme="light"] .chat-theme-input::placeholder {
+            color: #64748b !important;
+            opacity: 0.85;
+        }
+        [data-bs-theme="light"] .chat-theme-input option {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+        }
+
+        /* ─── استایل‌های اختصاصی مودال چت در تم روشن ─── */
+        [data-bs-theme="light"] #supportChatModal .modal-content {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid rgba(0, 0, 0, 0.12) !important;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15) !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .text-white {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .text-secondary {
+            color: #475569 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .btn-close-white {
+            filter: invert(1) grayscale(100%) brightness(0%) !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-messages-stream {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-msg-bubble.support {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-msg-bubble.ai-msg {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%) !important;
+            border: 1px solid rgba(139, 92, 246, 0.35) !important;
+            color: #1e1b4b !important;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08) !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-msg-bubble.system {
+            background: rgba(59, 130, 246, 0.08) !important;
+            border: 1px dashed rgba(59, 130, 246, 0.3) !important;
+            color: #1d4ed8 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-quick-chip {
+            background: #f1f5f9 !important;
+            color: #334155 !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-quick-chip:hover {
+            background: rgba(59, 130, 246, 0.12) !important;
+            border-color: #3b82f6 !important;
+            color: #1d4ed8 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-history-card {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .chat-history-card:hover {
+            background: rgba(59, 130, 246, 0.08) !important;
+            border-color: #3b82f6 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .btn-outline-light {
+            color: #334155 !important;
+            border-color: #cbd5e1 !important;
+        }
+        [data-bs-theme="light"] #supportChatModal .btn-outline-light:hover {
+            background-color: #f1f5f9 !important;
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .portal-chat-toast {
+            background: rgba(255, 255, 255, 0.98) !important;
+            color: #0f172a !important;
+            border: 1px solid rgba(59, 130, 246, 0.4) !important;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 0 25px rgba(59, 130, 246, 0.15) !important;
+        }
+        [data-bs-theme="light"] .portal-chat-toast .text-white {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .portal-chat-toast .text-secondary {
+            color: #475569 !important;
         }
 
         /* ─── استایل اختصاصی نوار و کارت‌های تعویض اشتراک‌های فعال کاربر ─── */
@@ -1293,6 +1444,102 @@
             0% { transform: scale(0.92); opacity: 0.6; }
             100% { transform: scale(1.15); opacity: 0.95; }
         }
+
+        /* ─── استایل‌های نمودار و تحلیل هوشمند ترافیک (Traffic Analytics Chart) ─── */
+        .traffic-chart-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(56, 189, 248, 0.3) transparent;
+        }
+        .traffic-chart-container::-webkit-scrollbar {
+            height: 4px;
+        }
+        .traffic-chart-container::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.3);
+            border-radius: 4px;
+        }
+        .traffic-bars-wrapper {
+            min-width: 100%;
+        }
+        .traffic-bar-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 100%;
+            position: relative;
+            cursor: pointer;
+            min-width: 12px;
+            padding: 0 1px;
+            z-index: 2;
+        }
+        .traffic-bar-pill {
+            width: 100%;
+            max-width: 26px;
+            border-radius: 6px 6px 2px 2px;
+            background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+            transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s ease, filter 0.15s ease;
+            box-shadow: 0 0 8px rgba(14, 165, 233, 0.35);
+        }
+        .traffic-bar-col:hover .traffic-bar-pill {
+            transform: scaleY(1.04);
+            filter: brightness(1.25);
+            box-shadow: 0 0 14px rgba(14, 165, 233, 0.7);
+        }
+        .traffic-bar-pill.peak-bar {
+            background: linear-gradient(180deg, #fbbf24 0%, #f97316 100%) !important;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.6) !important;
+        }
+        .traffic-bar-label {
+            position: absolute;
+            bottom: 2px;
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.65);
+            white-space: nowrap;
+            user-select: none;
+            direction: ltr;
+        }
+        .traffic-grid-line {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            border-top: 1px dashed rgba(255, 255, 255, 0.12);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .traffic-grid-line-max {
+            top: 24px;
+        }
+        .traffic-grid-line-mid {
+            top: 95px;
+        }
+        .traffic-grid-label {
+            position: absolute;
+            right: 0;
+            top: -15px;
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.45);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 0 4px;
+            border-radius: 3px;
+        }
+        .traffic-tooltip {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.95);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            pointer-events: none;
+            z-index: 30;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            transform: translate(-50%, -100%);
+            transition: opacity 0.15s ease;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body class="py-4 portal-layout-{{ portal_layout or 'classic' }}">
@@ -1303,10 +1550,13 @@
         <div class="portal-splash-content">
             <div class="portal-splash-logo-wrap">
                 <div class="portal-splash-glow-ring"></div>
-                <img src="{{ url_for('miniapp_logo') }}" alt="HiddiPlus Logo" class="portal-splash-logo" onerror="this.onerror=null; this.src='{{ url_for('miniapp_logo') }}?fallback=1';">
+                <img src="{{ mini_app_splash_image or (url_for('miniapp_logo', r=reseller_id) if reseller_id else url_for('miniapp_logo')) }}" 
+                     alt="{{ mini_app_splash_title or (brand_title if reseller_id else 'Logo') }}" 
+                     class="portal-splash-logo" 
+                     onerror="this.onerror=null; this.src='{{ url_for('miniapp_logo', r=reseller_id) if reseller_id else url_for('miniapp_logo') }}?fallback=1';">
             </div>
-            <h1 class="portal-splash-title">{{ mini_app_splash_title or 'HiddiPlus' }}</h1>
-            <p class="portal-splash-subtitle">{{ mini_app_splash_subtitle or 'سرویس اتصال هوشمند و پرسرعت' }}</p>
+            <h1 class="portal-splash-title">{{ mini_app_splash_title or (brand_title if reseller_id else 'HiddiPlus') }}</h1>
+            <p class="portal-splash-subtitle">{{ mini_app_splash_subtitle or (portal_subtitle if reseller_id else 'سرویس اتصال هوشمند و پرسرعت') }}</p>
             <div class="portal-splash-loader-bar">
                 <div class="portal-splash-loader-progress"></div>
             </div>
@@ -1361,6 +1611,27 @@
             <h3 class="fw-bold mb-1">{{ brand_title }}</h3>
             <p class="text-secondary small">{{ portal_subtitle }}</p>
         </div>
+
+        {% if sub.get('customer_note') %}
+        <!-- بنر پیام مدیریت به مشتری با قابلیت بستن (Dismissible Customer Notice) -->
+        <div class="alert alert-dismissible fade show p-3 mb-4 rounded-4 shadow-sm border-0 position-relative customer-notice-alert" 
+             id="customerNoticeBanner" 
+             role="alert" 
+             style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(99, 102, 241, 0.18)); border: 1px solid rgba(59, 130, 246, 0.35) !important; backdrop-filter: blur(12px);">
+            <div class="d-flex align-items-start gap-3">
+                <div class="badge-notice-icon rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 text-primary shadow-sm" style="width: 36px; height: 36px; background: rgba(59, 130, 246, 0.2); font-size: 1.1rem;">
+                    <i class="fas fa-bullhorn"></i>
+                </div>
+                <div class="flex-grow-1 text-white pe-4">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="fw-bold text-info small"><i class="fas fa-bell me-1"></i>پیام مدیریت:</span>
+                    </div>
+                    <div class="small lh-base opacity-90 text-light" style="white-space: pre-line; word-break: break-word;">{{ sub.get('customer_note') }}</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white position-absolute top-0 start-0 m-3" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ sub.get('customer_note')|length }}')" title="بستن پیام"></button>
+            </div>
+        </div>
+        {% endif %}
 
         {% if user_subscriptions and user_subscriptions|length > 1 %}
         <!-- سلکتور جابجایی بین اشتراک‌های کاربر در مینی‌اپ و پرتال -->
@@ -1474,7 +1745,7 @@
     {% macro macro_queue_card() %}
     {% set q_items = pending_queues if pending_queues else ([pending_queue] if pending_queue else []) %}
     {% if q_items and q_items|length > 0 %}
-    <div class="glass-card p-3 p-md-4 mb-4 border border-info border-opacity-50 shadow-lg position-relative overflow-hidden" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(15, 23, 42, 0.6) 100%);">
+    <div class="glass-card p-3 p-md-4 mb-4 border border-info border-opacity-50 shadow-lg position-relative overflow-hidden portal-queue-card" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(15, 23, 42, 0.6) 100%);">
         <!-- سربرگ بخش صف تمدید -->
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-info border-opacity-25">
             <div class="d-flex align-items-center gap-2">
@@ -1499,7 +1770,7 @@
         <!-- لیست کارتهای بسته‌های در صف -->
         <div class="d-flex flex-column gap-2">
             {% for q in q_items %}
-            <div class="p-3 rounded-3 border {% if loop.first %}border-success border-opacity-50 bg-black bg-opacity-40{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}">
+            <div class="p-3 rounded-3 border portal-queue-item {% if loop.first %}border-success border-opacity-50 bg-black bg-opacity-40 active-next{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-3">
                         <div>
@@ -1626,6 +1897,10 @@
 
             <!-- دکمه‌های فشرده کنار نام مشتری -->
             <div class="d-flex flex-wrap gap-1 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal" title="مشاهده نمودار و تحلیل مصرف ساعتی و روزانه">
+                    <i class="fas fa-chart-line me-1"></i>نمودار و آمار مصرف
+                </button>
+
                 <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
                     <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
                 </button>
@@ -1686,6 +1961,22 @@
                 <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" 
                      style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
             </div>
+
+            <!-- بنر هوشمند دسترسی به نمودار و تحلیل مصرف -->
+            <div class="d-flex justify-content-between align-items-center p-2 rounded mt-2" style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.3); cursor: pointer; transition: all 0.2s ease;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal" onmouseover="this.style.background='rgba(14, 165, 233, 0.15)'" onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-20 text-info" style="width: 30px; height: 30px;">
+                        <i class="fas fa-chart-simple"></i>
+                    </div>
+                    <div class="text-start">
+                        <span class="d-block small fw-bold text-info" style="font-size: 0.8rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
+                        <span class="d-block text-secondary" style="font-size: 0.7rem;">ساعات اوج مصرف، آهنگ مصرف و تفکیک روزانه ترافیک</span>
+                    </div>
+                </div>
+                <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-2 py-1 small">
+                    مشاهده <i class="fas fa-chevron-left ms-1" style="font-size: 0.65rem;"></i>
+                </span>
+            </div>
         </div>
 
         <!-- خلاصه روز و حجم باقیمانده -->
@@ -1744,7 +2035,7 @@
         {% if sub.get('debt_notes') %}
         <div class="alert alert-secondary bg-black bg-opacity-25 border-0 py-2 px-3 small rounded-3 mb-3 text-secondary">
             <i class="fas fa-note-sticky text-warning me-1"></i>
-            <strong>یادداشت مدیر / شرایط:</strong> {{ sub.get('debt_notes') }}
+            <strong>شرایط و مهلت تسویه بدهی:</strong> {{ sub.get('debt_notes') }}
         </div>
         {% endif %}
 
@@ -2428,6 +2719,7 @@
                         {% if single_url %}
                         <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')"><i class="fas fa-bolt text-warning me-1"></i>تکی</button>
                         {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal"><i class="fas fa-chart-line me-1"></i>آمار مصرف</button>
                         <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
                     </div>
                 </div>
@@ -2635,6 +2927,161 @@
     </div>
 </div>
 {% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- مودال هوشمند تحلیل و نمودار مصرف ترافیک (Traffic Analytics & Insights) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="trafficAnalyticsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
+            <div class="modal-header border-secondary border-opacity-25 pb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 44px; height: 44px;">
+                        <i class="fas fa-chart-line fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">تحلیل و نمودار هوشمند مصرف ترافیک</h5>
+                        <small class="text-secondary">گزارش مصرف ساعتی، روزانه و تحلیل الگوی مصرف «{{ sub.get('account_name') }}»</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body py-3">
+                <!-- ۴ کارت شاخص هوشمند (Smart Insight Cards) -->
+                <div class="row g-2 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                            <span class="text-warning small d-block mb-1 fw-bold">
+                                <i class="fas fa-bolt me-1"></i>ساعت اوج مصرف
+                            </span>
+                            <strong class="text-white fs-6 d-block text-truncate" id="trafficPeakHour">
+                                {{ traffic_analytics.get('peak_hour') or '۱۹:۰۰ الی ۲۲:۰۰' }}
+                            </strong>
+                            <small class="text-secondary" style="font-size: 0.7rem;">پرمصرف‌ترین بازه در شبانه‌روز</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                            <span class="text-info small d-block mb-1 fw-bold">
+                                <i class="fas fa-gauge-high me-1"></i>میانگین روزانه
+                            </span>
+                            <strong class="text-white fs-6 d-block" id="trafficDailyAvg">
+                                {{ traffic_analytics.get('daily_avg_gb', 0) }} <small class="text-secondary">GB/روز</small>
+                            </strong>
+                            <small class="text-secondary" style="font-size: 0.7rem;">مصرف معمول در ۲۴ ساعت</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                            <span class="text-primary small d-block mb-1 fw-bold">
+                                <i class="fas fa-circle-half-stroke me-1"></i>نسبت روز / شب
+                            </span>
+                            <strong class="text-white fs-6 d-block" id="trafficDayNight">
+                                {{ traffic_analytics.get('day_pct', 75) }}٪ / {{ traffic_analytics.get('night_pct', 25) }}٪
+                            </strong>
+                            <small class="text-secondary" style="font-size: 0.7rem;">ساعات روز (۸-۲۴) به شب (۰-۸)</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                            <span class="text-success small d-block mb-1 fw-bold">
+                                <i class="fas fa-hourglass-half me-1"></i>تخمین مانده حجم
+                            </span>
+                            <strong class="text-white fs-6 d-block" id="trafficEstimatedDays">
+                                {% if traffic_analytics.get('estimated_days_left') %}
+                                    حدود {{ traffic_analytics.get('estimated_days_left') }} روز
+                                {% else %}
+                                    پایدار و مطمئن
+                                {% endif %}
+                            </strong>
+                            <small class="text-secondary" style="font-size: 0.7rem;">با آهنگ مصرف فعلی شما</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- دکمه‌های سوئیچ بازه زمانی -->
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+                    <span class="small fw-bold text-white d-flex align-items-center gap-1">
+                        <i class="fas fa-chart-column text-info"></i>
+                        نمودار ترافیک مصرفی:
+                    </span>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="بازه زمانی">
+                        <button type="button" class="btn btn-outline-info active" id="btnTrafficRange24h" onclick="switchTrafficRange('24h')">
+                            ⏱️ ۲۴ ساعت گذشته
+                        </button>
+                        <button type="button" class="btn btn-outline-info" id="btnTrafficRange7d" onclick="switchTrafficRange('7d')">
+                            📅 ۷ روز گذشته
+                        </button>
+                        <button type="button" class="btn btn-outline-info" id="btnTrafficRange30d" onclick="switchTrafficRange('30d')">
+                            🗓️ ۳۰ روز گذشته
+                        </button>
+                    </div>
+                </div>
+
+                <!-- کانتینر نمودار میله‌ای اختصاصی (CSS/Canvas Hybrid Bar Chart) -->
+                <div class="traffic-chart-container p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-25 mb-4 position-relative" style="min-height: 240px;">
+                    <!-- تولتیپ شناور -->
+                    <div id="trafficChartTooltip" class="traffic-tooltip" style="display: none;"></div>
+
+                    <!-- خطوط راهنما -->
+                    <div class="traffic-grid-line traffic-grid-line-max">
+                        <span class="traffic-grid-label" id="trafficGridMaxLabel">0 MB</span>
+                    </div>
+                    <div class="traffic-grid-line traffic-grid-line-mid">
+                        <span class="traffic-grid-label" id="trafficGridMidLabel">0 MB</span>
+                    </div>
+
+                    <!-- بخش میله‌های نمودار -->
+                    <div class="traffic-bars-wrapper d-flex align-items-end justify-content-between gap-1 gap-md-2" id="trafficBarsContainer" style="height: 185px; padding-bottom: 24px; position: relative;">
+                        <!-- میله‌ها به صورت داینامیک توسط JS رندر می‌شوند -->
+                    </div>
+                </div>
+
+                <!-- جدول ریز جزئیات بازه انتخابی -->
+                <div class="traffic-table-card rounded bg-black bg-opacity-25 border border-secondary border-opacity-25 p-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="small fw-bold text-white d-flex align-items-center gap-1">
+                            <i class="fas fa-table-list text-info"></i>
+                            ریز مصرف در <span id="trafficTableRangeTitle">۲۴ ساعت گذشته</span>:
+                        </span>
+                        <span class="badge bg-secondary bg-opacity-25 text-white-50 small" id="trafficTableTotalBadge">جمع: 0 MB</span>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 220px; scrollbar-width: thin;">
+                        <table class="table table-dark table-sm table-hover align-middle mb-0" style="font-size: 0.8rem;">
+                            <thead class="text-secondary text-center sticky-top" style="background-color: #0c1524;">
+                                <tr>
+                                    <th class="text-start">بازه / زمان</th>
+                                    <th>حجم مصرفی</th>
+                                    <th>سهم از مصرف</th>
+                                    <th class="text-end">وضعیت</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trafficTableBody" class="text-center">
+                                <!-- ردیف‌ها توسط JS رندر می‌شوند -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- کارت راهنما و پیشنهاد هوشمند -->
+                <div class="p-3 rounded border border-info border-opacity-25 d-flex align-items-center gap-3" style="background: rgba(14, 165, 233, 0.05);">
+                    <div class="text-info fs-4 flex-shrink-0">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <div class="small text-muted" style="line-height: 1.8;">
+                        <strong>نکته هوشمند:</strong> ساعات اوج مصرف شما بیشترین ترافیک را به خود اختصاص داده است. با خاموش کردن دانلود خودکار رسانه‌ها در پیام‌رسان‌ها، می‌توانید تا ۳۰٪ در مصرف ترافیک خود صرفه‌جویی فرمایید.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-secondary border-opacity-25 pt-2">
+                <button type="button" class="btn btn-sm btn-secondary px-3" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- مودال یکپارچه سوابق دوره‌ها، تمدیدها و پرداخت‌ها -->
 <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
@@ -2930,7 +3377,7 @@
                             <div class="row g-2 mb-2">
                                 <div class="col-md-12">
                                     <label class="form-label text-secondary small mb-1">موضوع گفتگوی شما:</label>
-                                    <select class="form-select form-select-sm bg-dark text-white border-secondary" id="portalChatSubject" required>
+                                    <select class="form-select form-select-sm chat-theme-input" id="portalChatSubject" required>
                                         <option value="پیگیری و تکمیل تمدید اشتراک" selected>⚡ پیگیری و تکمیل تمدید اشتراک</option>
                                         <option value="مشکل در اتصال یا قطعی سرور">📡 مشکل در اتصال یا قطعی سرور</option>
                                         <option value="سوال در مورد حجم و روزهای باقیمانده">📊 سوال در مورد حجم و روزهای باقیمانده</option>
@@ -2941,17 +3388,17 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label text-secondary small mb-1">نام شما:</label>
-                                    <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatName" placeholder="نام یا نام‌خانوادگی شما" value="{{ sub.get('account_name') or '' }}" required>
+                                    <input type="text" class="form-control form-control-sm chat-theme-input" id="portalChatName" placeholder="نام یا نام‌خانوادگی شما" value="{{ sub.get('account_name') or '' }}" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label text-secondary small mb-1">شماره تماس یا آیدی تلگرام:</label>
-                                    <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatContact" placeholder="09xxxxxxxxx یا آیدی تلگرام" value="{{ sub.get('phone_number') or '' }}" required>
+                                    <input type="text" class="form-control form-control-sm chat-theme-input" id="portalChatContact" placeholder="09xxxxxxxxx یا آیدی تلگرام" value="{{ sub.get('phone_number') or '' }}" required>
                                 </div>
                             </div>
 
                             <div class="mb-2">
                                 <label class="form-label text-secondary small mb-1">متن پیام یا سوال شما:</label>
-                                <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatMessage" rows="3" placeholder="توضیحات خود را بنویسید..." required></textarea>
+                                <textarea class="form-control form-control-sm chat-theme-input" id="portalChatMessage" rows="3" placeholder="توضیحات خود را بنویسید..." required></textarea>
                             </div>
 
                             <!-- پاسخ‌های آماده برای شروع گفتگو -->
@@ -3022,7 +3469,7 @@
                     <div class="pt-2">
                         <form id="portalSendMsgForm" onsubmit="sendPortalChatMessage(event)">
                             <div class="input-group">
-                                <textarea class="form-control form-control-sm bg-dark text-white border-secondary rounded-end-4" 
+                                <textarea class="form-control form-control-sm chat-theme-input rounded-end-4" 
                                           id="portalChatMessageInput" 
                                           rows="1" 
                                           placeholder="پیام خود را بنویسید... (Enter برای ارسال)" 
@@ -4523,6 +4970,203 @@ window.tgHaptic = function(type = 'light') {
 
     // بستن آنی با کلیک کاربر در صورت تمایل
     splash.addEventListener('click', dismissSplash);
+})();
+
+// ─── مدیریت و رندر تعاملی نمودار و آمار مصرف ترافیک (Traffic Analytics Engine) ───
+(function initTrafficAnalytics() {
+    const trafficData = {{ (traffic_analytics or {}) | tojson | safe }};
+    const barsContainer = document.getElementById('trafficBarsContainer');
+    const tooltip = document.getElementById('trafficChartTooltip');
+    const tableBody = document.getElementById('trafficTableBody');
+    const tableTitle = document.getElementById('trafficTableRangeTitle');
+    const tableTotalBadge = document.getElementById('trafficTableTotalBadge');
+    const gridMaxLabel = document.getElementById('trafficGridMaxLabel');
+    const gridMidLabel = document.getElementById('trafficGridMidLabel');
+
+    if (!barsContainer) return;
+
+    let currentRange = '24h';
+
+    window.switchTrafficRange = function(range) {
+        currentRange = range;
+        ['btnTrafficRange24h', 'btnTrafficRange7d', 'btnTrafficRange30d'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.remove('active');
+        });
+        const activeBtn = document.getElementById('btnTrafficRange' + (range.toLowerCase()));
+        if (activeBtn) activeBtn.classList.add('active');
+
+        renderChart(range);
+    };
+
+    function renderChart(range) {
+        barsContainer.innerHTML = '';
+        if (tableBody) tableBody.innerHTML = '';
+        if (tooltip) tooltip.style.display = 'none';
+
+        let items = [];
+        let rangeTitle = '۲۴ ساعت گذشته';
+
+        if (range === '24h') {
+            items = trafficData.hourly_24h || [];
+            rangeTitle = '۲۴ ساعت گذشته (ساعتی)';
+        } else if (range === '7d') {
+            items = trafficData.daily_7d || [];
+            rangeTitle = '۷ روز گذشته (روزانه)';
+        } else if (range === '30d') {
+            items = trafficData.daily_30d || [];
+            rangeTitle = '۳۰ روز گذشته (ماهانه)';
+        }
+
+        if (tableTitle) tableTitle.textContent = rangeTitle;
+
+        if (!items || items.length === 0) {
+            barsContainer.innerHTML = '<div class="text-center text-muted small w-100 py-4">داده‌ای برای نمایش در این بازه ثبت نشده است.</div>';
+            if (tableTotalBadge) tableTotalBadge.textContent = 'جمع: 0 MB';
+            return;
+        }
+
+        // محاسبه ماکزیمم مصرف جهت مقیاس‌دهی ارتفاع میله‌ها
+        let maxUsage = 0;
+        let totalUsageMb = 0;
+        items.forEach(it => {
+            const mb = (it.usage_mb !== undefined) ? it.usage_mb : ((it.usage_gb || 0) * 1024);
+            if (mb > maxUsage) maxUsage = mb;
+            totalUsageMb += mb;
+        });
+
+        // تنظیم برچسب‌های خطوط راهنما
+        if (gridMaxLabel) {
+            gridMaxLabel.textContent = maxUsage >= 1024 ? (maxUsage / 1024).toFixed(1) + ' GB' : Math.round(maxUsage) + ' MB';
+        }
+        if (gridMidLabel) {
+            const mid = maxUsage / 2;
+            gridMidLabel.textContent = mid >= 1024 ? (mid / 1024).toFixed(1) + ' GB' : Math.round(mid) + ' MB';
+        }
+        if (tableTotalBadge) {
+            tableTotalBadge.textContent = totalUsageMb >= 1024 ? 'جمع کل: ' + (totalUsageMb / 1024).toFixed(2) + ' GB' : 'جمع کل: ' + Math.round(totalUsageMb) + ' MB';
+        }
+
+        // رندر میله‌های نمودار
+        items.forEach((item, index) => {
+            const col = document.createElement('div');
+            col.className = 'traffic-bar-col';
+
+            const pill = document.createElement('div');
+            pill.className = 'traffic-bar-pill';
+
+            const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);
+            const heightPct = (maxUsage > 0 && mbVal > 0) ? Math.max(8, (mbVal / maxUsage) * 100) : 4;
+            pill.style.height = heightPct + '%';
+
+            if (mbVal === 0) {
+                pill.style.background = 'rgba(255, 255, 255, 0.08)';
+                pill.style.boxShadow = 'none';
+            }
+
+            if (item.is_peak && mbVal > 0) {
+                pill.classList.add('peak-bar');
+            }
+
+            // برچسب پایین میله
+            const label = document.createElement('span');
+            label.className = 'traffic-bar-label';
+
+            let shortLabel = item.label || '';
+            if (range === '7d') {
+                shortLabel = item.day_name ? item.day_name.replace('‌', '') : '';
+            } else if (range === '30d') {
+                shortLabel = (index % 5 === 0 || index === items.length - 1) ? (item.jalali_date ? item.jalali_date.split(' ')[0] : (index + 1)) : '';
+            } else if (range === '24h') {
+                shortLabel = (index % 3 === 0 || index === items.length - 1) ? item.label.split(':')[0] : '';
+            }
+            label.textContent = shortLabel;
+
+            col.appendChild(pill);
+            col.appendChild(label);
+
+            // ایجاد رویدادهای هاور / لمس جهت نمایش تولتیپ
+            const fullTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : (item.day_name + ' ' + (item.jalali_date || item.date));
+            const formattedUsage = mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت';
+
+            function showTooltip(e) {
+                if (!tooltip) return;
+                tooltip.innerHTML = `<strong>${fullTitle}</strong><br><span class="text-info">${formattedUsage}</span>` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
+                tooltip.style.display = 'block';
+
+                const rect = col.getBoundingClientRect();
+                const parentRect = barsContainer.getBoundingClientRect();
+                const leftPos = (rect.left - parentRect.left) + (rect.width / 2);
+                tooltip.style.left = leftPos + 'px';
+                tooltip.style.top = '35px';
+            }
+
+            function hideTooltip() {
+                if (tooltip) tooltip.style.display = 'none';
+            }
+
+            col.addEventListener('mouseenter', showTooltip);
+            col.addEventListener('mouseleave', hideTooltip);
+            col.addEventListener('touchstart', function(e) {
+                showTooltip(e);
+                window.tgHaptic && window.tgHaptic('light');
+            }, { passive: true });
+
+            barsContainer.appendChild(col);
+
+            // رندر ردیف جدول جزئیات
+            if (tableBody) {
+                const tr = document.createElement('tr');
+                const pctOfTotal = totalUsageMb > 0 ? Math.round((mbVal / totalUsageMb) * 100) : 0;
+                tr.innerHTML = `
+                    <td class="text-start">
+                        <span class="text-white fw-bold">${fullTitle}</span>
+                        ${item.is_current ? '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>' : ''}
+                    </td>
+                    <td><strong class="text-info">${formattedUsage}</strong></td>
+                    <td style="width: 25%;">
+                        <div class="d-flex align-items-center gap-1 justify-content-center">
+                            <div class="progress flex-grow-1" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                                <div class="progress-bar ${item.is_peak ? 'bg-warning' : 'bg-primary'}" style="width: ${pctOfTotal}%; border-radius: 4px;"></div>
+                            </div>
+                            <small class="text-secondary" style="font-size: 0.7rem; min-width: 28px;">${pctOfTotal}٪</small>
+                        </div>
+                    </td>
+                    <td class="text-end">
+                        ${item.is_peak ? '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>' : (mbVal > 0 ? '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>' : '<span class="badge bg-secondary bg-opacity-25 text-white-50" style="font-size: 0.68rem;">بدون مصرف</span>')}
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+            }
+        });
+    }
+
+    // رندر اولیه روی ۲۴ ساعت
+    renderChart('24h');
+
+    // رندر مجدد در صورت باز شدن مودال
+    const modalEl = document.getElementById('trafficAnalyticsModal');
+    if (modalEl) {
+        modalEl.addEventListener('shown.bs.modal', function() {
+            renderChart(currentRange);
+        });
+    // مدیریت پنهان‌سازی هوشمند پیام مدیریت در پورتال
+    window.dismissCustomerNotice = function(subId, noteLen) {
+        try {
+            sessionStorage.setItem('dismissed_cust_notice_' + subId + '_' + noteLen, '1');
+        } catch(e) {}
+    };
+
+    const noticeEl = document.getElementById('customerNoticeBanner');
+    if (noticeEl) {
+        const subId = "{{ sub.get('id') }}";
+        const noteLen = "{{ sub.get('customer_note')|length }}";
+        try {
+            if (sessionStorage.getItem('dismissed_cust_notice_' + subId + '_' + noteLen) === '1') {
+                noticeEl.style.display = 'none';
+            }
+        } catch(e) {}
+    }
 })();
 </script>
 </body>

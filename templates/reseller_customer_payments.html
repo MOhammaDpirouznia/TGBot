@@ -87,7 +87,16 @@
                             <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
                         </td>
                         <td class="ps-2" data-value="{{ tx['id'] }}">
-                            <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
+                            <div class="d-flex align-items-center gap-1">
+                                <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
+                                {% set has_tx_note = bool(tx.get('reseller_note')) %}
+                                <button type="button" 
+                                        class="btn btn-link p-0 text-decoration-none tx-note-btn {% if has_tx_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
+                                        onclick="event.stopPropagation(); openQuickTxNote('{{ tx['id'] }}', '{{ tx.get('order_id') or tx['id'] }}', this);" 
+                                        title="{% if has_tx_note %}یادداشت: {{ tx['reseller_note']|striptags|truncate(50) }}{% else %}افزودن یادداشت پرداخت{% endif %}">
+                                    <i class="fas {% if has_tx_note %}fa-note-sticky text-warning{% else %}fa-note-sticky{% endif %}" style="font-size: 0.82rem;"></i>
+                                </button>
+                            </div>
                             {% if tx.get('order_id') %}
                                 <div class="text-muted small font-monospace" style="font-size: 0.72rem;">{{ tx['order_id'] }}</div>
                             {% endif %}

@@ -117,13 +117,31 @@ def get_miniapp_url(reseller_id: int = 0, user_id: Optional[int] = None, host_ur
     return f"{base_url}{sep}{'&'.join(query_parts)}"
 
 
-def get_miniapp_button_text() -> str:
-    """دریافت متن روی دکمه ثابت مینی‌اپ در تلگرام"""
+def get_miniapp_button_text(reseller_id: int = 0) -> str:
+    """دریافت متن روی دکمه ثابت مینی‌اپ در تلگرام با پشتیبانی از برند اختصاصی نماینده"""
+    if reseller_id and int(reseller_id) > 0:
+        try:
+            r_info = db.get_reseller(int(reseller_id)) or {}
+            custom_btn = r_info.get("mini_app_menu_button_text")
+            if custom_btn and str(custom_btn).strip():
+                return str(custom_btn).strip()
+            brand = r_info.get("brand_name") or r_info.get("portal_title") or r_info.get("name")
+            if brand:
+                return f"ورود به برنامه | {brand}"
+        except Exception:
+            pass
     return db.get_setting("mini_app_menu_button_text", "ورود به برنامه | HiddiPlus") or "ورود به برنامه | HiddiPlus"
 
 
-def is_miniapp_menu_button_enabled() -> bool:
-    """بررسی فعال بودن دکمه ثابت مینی‌اپ در تلگرام"""
+def is_miniapp_menu_button_enabled(reseller_id: int = 0) -> bool:
+    """بررسی فعال بودن دکمه ثابت مینی‌اپ در تلگرام با پشتیبانی از وضعیت اختصاصی نماینده"""
+    if reseller_id and int(reseller_id) > 0:
+        try:
+            r_info = db.get_reseller(int(reseller_id)) or {}
+            if "mini_app_menu_button_enabled" in r_info and r_info["mini_app_menu_button_enabled"] is not None:
+                return str(r_info["mini_app_menu_button_enabled"]).lower() not in ("0", "false")
+        except Exception:
+            pass
     return db.get_setting("mini_app_menu_button_enabled", "1") != "0"
 
 
@@ -249,12 +267,14 @@ def sync_all_bots_menu_button(host_url: Optional[str] = None) -> Dict[str, Any]:
                 continue
 
             results["resellers_count"] += 1
+            r_enabled = is_miniapp_menu_button_enabled(reseller_id=r_id)
+            r_btn_text = get_miniapp_button_text(reseller_id=r_id)
             r_url = get_miniapp_url(reseller_id=r_id, host_url=host_url)
             r_ok, r_msg = sync_telegram_menu_button_via_api(
                 token=r_token,
-                target_url=r_url if enabled else None,
-                btn_text=btn_text,
-                enabled=enabled,
+                target_url=r_url if r_enabled else None,
+                btn_text=r_btn_text,
+                enabled=r_enabled,
                 host_url=host_url
             )
             if r_ok:
@@ -268,6 +288,29 @@ def sync_all_bots_menu_button(host_url: Optional[str] = None) -> Dict[str, Any]:
     return results
 
 
+def sync_reseller_menu_button(reseller_id: int, host_url: Optional[str] = None) -> Tuple[bool, str]:
+    """همگام‌سازی بلادرنگ دکمه منوی مینی‌اپ برای ربات اختصاصی یک نماینده"""
+    if not reseller_id or int(reseller_id) <= 0:
+        return False, "شناسه نماینده نامعتبر است."
+    r = db.get_reseller(int(reseller_id))
+    if not r:
+        return False, "اطلاعات نماینده یافت نشد."
+    token = r.get("bot_token")
+    if not token or not str(token).strip():
+        return False, "هنوز توکن ربات تلگرام برای این نماینده ثبت نشده است."
+
+    enabled = is_miniapp_menu_button_enabled(reseller_id=int(reseller_id))
+    btn_text = get_miniapp_button_text(reseller_id=int(reseller_id))
+    r_url = get_miniapp_url(reseller_id=int(reseller_id), host_url=host_url)
+    return sync_telegram_menu_button_via_api(
+        token=token,
+        target_url=r_url if enabled else None,
+        btn_text=btn_text,
+        enabled=enabled,
+        host_url=host_url
+    )
+
+
 async def setup_telegram_chat_menu_button(
     bot,
     chat_id: Optional[int] = None,
@@ -276,11 +319,12 @@ async def setup_telegram_chat_menu_button(
 ) -> bool:
     """
     تابع آسنکرون برای تنظیم دکمه MenuButtonWebApp در هندلرهای python-telegram-bot
+    با رعایت برندینگ و متن اختصاصی هر نماینده
     """
     try:
         from telegram import MenuButtonWebApp, MenuButtonDefault, WebAppInfo
 
-        enabled = is_miniapp_menu_button_enabled()
+        enabled = is_miniapp_menu_button_enabled(reseller_id=reseller_id)
         if not enabled:
             if chat_id:
                 await bot.set_chat_menu_button(chat_id=chat_id, menu_button=MenuButtonDefault())
@@ -293,7 +337,7 @@ async def setup_telegram_chat_menu_button(
             logger.warning(f"Could not determine valid Mini App URL for menu button (user_id={user_id}, reseller={reseller_id})")
             return False
 
-        btn_text = get_miniapp_button_text()
+        btn_text = get_miniapp_button_text(reseller_id=reseller_id)
 
         menu_btn = MenuButtonWebApp(
             text=str(btn_text)[:64],
@@ -319,20 +363,27 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
 
     cfg_tb = t_cfg.get("wiz_tb_start") or t_cfg.get("troubleshoot") or {}
     cfg_conn = t_cfg.get("wiz_conn_start") or t_cfg.get("android") or {}
+    cfg_ai = t_cfg.get("wiz_ai_chat") or {}
     cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
     cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
 
     tb_style = cfg_tb.get("style") or "primary"
     conn_style = cfg_conn.get("style") or "success"
+    ai_style = cfg_ai.get("style") or "primary"
     web_style = cfg_web.get("style") or "primary"
     ts_web_style = cfg_ts_web.get("style") or "danger"
 
     tb_title = db.format_styled_button_text(cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", tb_style)
     conn_title = db.format_styled_button_text(cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", conn_style)
+    ai_title = db.format_styled_button_text(cfg_ai.get("title") or "🤖 چت و عیب‌یابی با هوش مصنوعی", ai_style)
     web_title = db.format_styled_button_text(cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)", web_style)
     ts_web_title = db.format_styled_button_text(cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", ts_web_style)
 
     keyboard = []
+    if cfg_ai.get("enabled", True):
+        kw = {"style": ai_style} if ai_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(ai_title, callback_data="wiz_ai_chat", **kw)])
+
     if cfg_tb.get("enabled", True):
         kw = {"style": tb_style} if tb_style in ("primary", "success", "danger") else {}
         keyboard.append([InlineKeyboardButton(tb_title, callback_data="wiz_tb_start", **kw)])

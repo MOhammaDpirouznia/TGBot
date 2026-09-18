@@ -234,9 +234,27 @@
                                     <small class="text-muted">می‌توانید کل قیمت یا بخشی از آن را به عنوان بدهی وارد کنید.</small>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label fw-bold">یادداشت موعد یا شرایط بدهی:</label>
-                                    <input type="text" name="debt_notes" class="form-control" placeholder="مثلاً: قرار شد تا دوشنبه واریز کند">
+                                    <label class="form-label fw-bold text-danger"><i class="fas fa-file-invoice-dollar me-1"></i>شرایط یا مهلت تسویه بدهی (نمایش به مشتری در پورتال و ربات):</label>
+                                    <input type="text" name="debt_notes" class="form-control border-danger" placeholder="مثلاً: قرار شد تا دوشنبه واریز کند">
+                                    <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">توجه: این متن در صورت بدهکار بودن، در فاکتور بدهی پورتال به خود کاربر نمایش داده می‌شود.</small>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بخش یادداشت داخلی و پیام پورتال مشتری -->
+                    <div class="card p-3 bg-light rounded-3 border mb-4 shadow-sm">
+                        <h6 class="fw-bold text-dark mb-3"><i class="fas fa-clipboard-check text-primary me-2"></i>یادداشت‌های اختصاصی و پیام مشتری:</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-dark"><i class="fas fa-lock text-warning me-1"></i>یادداشت داخلی مدیریت / همکاران:</label>
+                                <textarea name="internal_note" class="form-control form-control-sm" rows="2" placeholder="اختیاری - فقط شما و همکاران پنل مدیریت می‌بینید (کاملاً ایزوله و محرمانه)"></textarea>
+                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">این یادداشت محرمانه است و به مشتری یا نمایندگان نمایش داده نمی‌شود.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-dark"><i class="fas fa-bullhorn text-info me-1"></i>پیام به مشتری در پورتال (Customer Notice):</label>
+                                <textarea name="customer_note" class="form-control form-control-sm" rows="2" placeholder="اختیاری - نمایش به عنوان اطلاعیه قابل بستن در بالای پورتال مشتری"></textarea>
+                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">مشتری این پیام را در پورتال می‌بیند و می‌تواند آن را ببندد.</small>
                             </div>
                         </div>
                     </div>

@@ -1028,6 +1028,7 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
 
     cfg_tb = t_cfg.get("wiz_tb_start") or t_cfg.get("troubleshoot") or {}
     cfg_conn = t_cfg.get("wiz_conn_start") or t_cfg.get("android") or {}
+    cfg_ai = t_cfg.get("wiz_ai_chat") or {}
     cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
     cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
 
@@ -1037,6 +1038,9 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
     conn_style = cfg_conn.get("style") or "success"
     conn_title = db.format_styled_button_text(cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", conn_style)
 
+    ai_style = cfg_ai.get("style") or "primary"
+    ai_title = db.format_styled_button_text(cfg_ai.get("title") or "🤖 چت و عیب‌یابی با هوش مصنوعی", ai_style)
+
     web_style = cfg_web.get("style") or "primary"
     web_title = db.format_styled_button_text(cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)", web_style)
 
@@ -1044,6 +1048,10 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
     ts_web_title = db.format_styled_button_text(cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", ts_web_style)
 
     keyboard = []
+    if cfg_ai.get("enabled", True):
+        kw = {"style": ai_style} if ai_style in ("primary", "success", "danger") else {}
+        keyboard.append([InlineKeyboardButton(ai_title, callback_data="wiz_ai_chat", **kw)])
+
     if cfg_tb.get("enabled", True):
         kw = {"style": tb_style} if tb_style in ("primary", "success", "danger") else {}
         keyboard.append([InlineKeyboardButton(tb_title, callback_data="wiz_tb_start", **kw)])
@@ -1310,6 +1318,38 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         if support_username:
             buttons.append([InlineKeyboardButton("ارسال پیام به پشتیبانی تلگرام", url=f"https://t.me/{support_username.lstrip('@')}", style="primary")])
         buttons.append([InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="back_to_menu")])
+        return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+    if data == "wiz_ai_chat":
+        user_id = query.from_user.id
+        dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+        custom_tutorial = db.get_setting("tutorial_domain")
+        help_domain = f"https://{custom_tutorial}" if custom_tutorial and not str(custom_tutorial).startswith("http") else (custom_tutorial or (f"{dashboard_url}/help" if dashboard_url else "http://127.0.0.1:5000/help"))
+
+        sub = None
+        try:
+            subs = db.get_user_subscriptions(user_id)
+            if subs:
+                sub = subs[0]
+        except Exception:
+            pass
+
+        portal_url = None
+        if sub and sub.get("hidify_uuid") and dashboard_url:
+            portal_url = f"{dashboard_url}/portal/{sub['hidify_uuid']}"
+
+        text = (
+            "🤖 <b>چت و عیب‌یابی با هوش مصنوعی اختصاصی</b>\n\n"
+            "هوش مصنوعی سامانه آماده پاسخگویی به کلیه سوالات شما درباره:\n"
+            "• حل قطعی، کندی و خطاهای اتصال در اپراتورهای مختلف\n"
+            "• معرفی و دانلود بهترین نرم‌افزارهای اندروید، iOS و ویندوز\n"
+            "• استعلام وضعیت حجم، روزهای باقیمانده و تمدید اشتراک\n\n"
+            "💡 برای گفتگوی زنده با هوش مصنوعی و دریافت راهنمای تعاملی، دکمه زیر را لمس نمایید:"
+        )
+        buttons = []
+        target_chat_url = portal_url or help_domain
+        buttons.append([InlineKeyboardButton("💬 ورود به گفتگوی آنلاین با هوش مصنوعی", url=target_chat_url, style="primary")])
+        buttons.append([InlineKeyboardButton("◀️ بازگشت به راهنما", callback_data="wiz_menu")])
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
     # ─── ویزارد راهنمای اتصال (Connection) ───

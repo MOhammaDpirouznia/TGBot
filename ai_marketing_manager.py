@@ -49,7 +49,7 @@ class AIMarketingManager:
         pass
 
     def _extract_settings(self, custom_settings: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
-        """استخراج پارامترهای موتور هوش مصنوعی با اولویت‌بندی تنظیمات اختصاصی"""
+        """استخراج پارامترهای موتور هوش مصنوعی با اولویت‌بندی تنظیمات مرکزی و اختصاصی"""
         s = custom_settings or {}
         provider = kwargs.get("provider") or s.get("provider") or os.getenv("AI_PROVIDER", "gemini").lower()
         api_key = kwargs.get("api_key") or s.get("api_key") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
@@ -60,9 +60,39 @@ class AIMarketingManager:
         instagram_handle = kwargs.get("instagram_handle") or kwargs.get("instagram_page") or s.get("instagram_page", "")
         signature = kwargs.get("signature") or s.get("signature", "")
 
+        # بررسی و همگام‌سازی با تنظیمات سراسری چتبات در صورت خالی بودن یا انتخاب مود ابری خارجی
+        try:
+            from database import db
+            chat_cfg = db.get_chat_settings()
+            chat_ai_mode = chat_cfg.get("chat_ai_mode", "smart_local")
+            if chat_ai_mode == "external_api":
+                # اگر کاربر در تنظیمات سیستم موتور خارجی را فعال کرده باشد، اولویت ۱۰۰٪ با تنظیمات مرکزی سیستم است
+                api_key = kwargs.get("api_key") or chat_cfg.get("chat_ai_api_key") or api_key
+                api_url = kwargs.get("api_url") or chat_cfg.get("chat_ai_api_url") or api_url
+                model = kwargs.get("model") or kwargs.get("model_name") or chat_cfg.get("chat_ai_model") or model
+                url_check = (api_url or "").lower()
+                model_check = (model or "").lower()
+                if "googleapis" in url_check or "gemini" in model_check:
+                    provider = "gemini"
+                elif "openai" in url_check or "gpt" in model_check:
+                    provider = "openai"
+                elif "deepseek" in url_check or "deepseek" in model_check:
+                    provider = "deepseek"
+                else:
+                    provider = "custom"
+            else:
+                if not api_key and chat_cfg.get("chat_ai_api_key"):
+                    api_key = chat_cfg.get("chat_ai_api_key")
+                if not api_url and chat_cfg.get("chat_ai_api_url"):
+                    api_url = chat_cfg.get("chat_ai_api_url")
+                if not model and chat_cfg.get("chat_ai_model"):
+                    model = chat_cfg.get("chat_ai_model")
+        except Exception as e_db:
+            logger.debug(f"Sync centralized AI settings: {e_db}")
+
         if not model:
             if provider == "gemini":
-                model = "gemini-1.5-flash"
+                model = "gemini-1.5-pro"
             elif provider == "openai":
                 model = "gpt-4o-mini"
             elif provider == "deepseek":
@@ -77,6 +107,7 @@ class AIMarketingManager:
             "api_key": api_key,
             "api_url": api_url,
             "model": model,
+            "chat_ai_mode": chat_ai_mode if "chat_ai_mode" in locals() else "smart_local",
             "brand_name": brand_name,
             "channel_username": channel_username,
             "instagram_handle": instagram_handle,
@@ -86,6 +117,38 @@ class AIMarketingManager:
     # ═══════════════════════════════════════════════════════════════
     # هسته ارتباط با API هوش مصنوعی
     # ═══════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def resolve_endpoint_url(api_url: str = "", model: str = "", provider: str = "") -> str:
+        """تشخیص و نرمال‌سازی خودکار آدرس Endpoint برای سازگاری کامل با Gemini، OpenAI، DeepSeek و سایر ارائه‌دهندگان"""
+        cleaned = (api_url or "").strip()
+        m_lower = (model or "").lower()
+        p_lower = (provider or "").lower()
+
+        if not cleaned:
+            if "deepseek" in m_lower or "deepseek" in p_lower:
+                return "https://api.deepseek.com/v1/chat/completions"
+            elif "openai" in p_lower or "gpt" in m_lower:
+                return "https://api.openai.com/v1/chat/completions"
+            else:
+                return "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+
+        if cleaned.endswith("/chat/completions") or "/chat/completions" in cleaned:
+            return cleaned
+        if cleaned.endswith("/v1"):
+            return cleaned + "/chat/completions"
+        if cleaned.endswith("/v1beta"):
+            return cleaned + "/openai/chat/completions"
+
+        c_lower = cleaned.lower()
+        if "googleapis" in c_lower or "gemini" in m_lower or p_lower == "gemini":
+            return cleaned.rstrip("/") + "/v1beta/openai/chat/completions"
+        elif "deepseek" in c_lower or "deepseek" in m_lower or p_lower == "deepseek":
+            return cleaned.rstrip("/") + "/v1/chat/completions"
+        elif "openai" in c_lower or "gpt" in m_lower or p_lower == "openai":
+            return cleaned.rstrip("/") + "/v1/chat/completions"
+        else:
+            return cleaned.rstrip("/") + "/v1/chat/completions"
 
     def chat_completion(
         self,
@@ -101,38 +164,18 @@ class AIMarketingManager:
         if provider == "offline" or not api_key:
             return None
 
-        # تعیین آدرس Endpoint بر اساس ارائه‌دهنده
-        if provider == "openai":
-            url = api_url.rstrip("/") + "/v1/chat/completions" if api_url else "https://api.openai.com/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-        elif provider == "gemini":
-            url = api_url.rstrip("/") + "/v1beta/openai/chat/completions" if api_url else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-        elif provider == "deepseek":
-            url = api_url.rstrip("/") + "/v1/chat/completions" if api_url else "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-        elif provider == "custom":
-            base = api_url.rstrip("/") if api_url else "http://localhost:11434/v1"
-            url = base + "/chat/completions" if not base.endswith("/chat/completions") else base
-            headers = {
-                "Content-Type": "application/json"
-            }
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-        else:
-            return None
+        url = self.resolve_endpoint_url(api_url=api_url, model=model, provider=provider)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+
+        target_model = model.strip() if model else ("gemini-1.5-pro" if "gemini" in url else "gpt-4o-mini")
 
         payload = {
-            "model": model,
+            "model": target_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
@@ -141,17 +184,114 @@ class AIMarketingManager:
         try:
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 if resp.status == 200:
                     resp_json = json.loads(resp.read().decode("utf-8"))
                     choices = resp_json.get("choices", [])
                     if choices:
                         return choices[0].get("message", {}).get("content", "").strip()
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="ignore")
+            logger.warning(f"AI chat_completion HTTP error {e.code} via {url}: {err_body}")
+            return None
         except Exception as e:
-            logger.warning(f"AI chat_completion failed via {provider}: {e}")
+            logger.warning(f"AI chat_completion failed via {url}: {e}")
             return None
 
         return None
+
+    def test_ai_connection(
+        self,
+        api_url: str = "",
+        api_key: str = "",
+        model: str = "",
+        provider: str = "gemini"
+    ) -> Dict[str, Any]:
+        """تست اختصاصی و زنده اتصال به هوش مصنوعی با سنجش زمان تاخیر (Latency) و گزارش خطای تفصیلی"""
+        import time
+        start_time = time.time()
+
+        if not api_key:
+            return {"success": False, "error": "کلید دسترسی (API Key) وارد نشده است."}
+
+        url = self.resolve_endpoint_url(api_url=api_url, model=model, provider=provider)
+
+        target_model = model.strip() if model else ("gemini-1.5-pro" if "gemini" in url else "gpt-4o-mini")
+
+        test_payload = {
+            "model": target_model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant. Reply in one short sentence in Persian."},
+                {"role": "user", "content": "سلام! لطفاً در یک جمله کوتاه خودت و نام مدلت رو معرفی کن."}
+            ],
+            "max_tokens": 150,
+            "temperature": 0.5
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+
+        try:
+            req_data = json.dumps(test_payload).encode("utf-8")
+            req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                latency_ms = int((time.time() - start_time) * 1000)
+                if resp.status == 200:
+                    resp_json = json.loads(resp.read().decode("utf-8"))
+                    choices = resp_json.get("choices", [])
+                    if choices:
+                        reply = choices[0].get("message", {}).get("content", "").strip()
+                        return {
+                            "success": True,
+                            "latency_ms": latency_ms,
+                            "model": target_model,
+                            "reply": reply,
+                            "url": url
+                        }
+                    return {
+                        "success": False,
+                        "error": "پاسخ معتبری از هوش مصنوعی دریافت نشد (choices خالی است).",
+                        "raw": resp_json
+                    }
+        except urllib.error.HTTPError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            err_body = e.read().decode("utf-8", errors="ignore")
+            err_msg = f"خطای HTTP {e.code} ({e.reason})"
+            try:
+                err_data = json.loads(err_body)
+                if isinstance(err_data, list) and len(err_data) > 0:
+                    err_data = err_data[0]
+                if isinstance(err_data, dict) and "error" in err_data:
+                    err_detail = err_data["error"]
+                    if isinstance(err_detail, dict):
+                        err_msg = err_detail.get("message", err_msg)
+                    elif isinstance(err_detail, str):
+                        err_msg = err_detail
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "status_code": e.code,
+                "error": err_msg,
+                "raw": err_body,
+                "latency_ms": latency_ms,
+                "url": url
+            }
+        except urllib.error.URLError as e:
+            return {
+                "success": False,
+                "error": f"خطا در برقراری ارتباط شبکه/DNS: {e.reason}. لطفاً فیلترینگ، اتصال سرور یا آدرس Endpoint را بررسی نمایید.",
+                "url": url
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"خطای غیرمنتظره: {str(e)}",
+                "url": url
+            }
 
     # ═══════════════════════════════════════════════════════════════
     # ۱. تولید پست کانال تلگرام
@@ -196,7 +336,13 @@ class AIMarketingManager:
         )
 
         if not ai_text:
-            ai_text = self._fallback_channel_post(topic, brand, channel_username, sig)
+            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+                ai_text = (
+                    "⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی برای تولید پست.\n\n"
+                    "لطفاً در بخش «تنظیمات سیستم > چت و هوش مصنوعی» با کلیک روی «تست اتصال به هوش مصنوعی»، از فعال بودن کلید API و در دسترس بودن سرور اطمینان حاصل فرمایید."
+                )
+            else:
+                ai_text = self._fallback_channel_post(topic, brand, channel_username, sig)
         elif sig and sig not in ai_text:
             ai_text += f"\n\n{sig}"
 
@@ -258,7 +404,15 @@ class AIMarketingManager:
                 poll_data = None
 
         if not poll_data or "question" not in poll_data or "options" not in poll_data:
-            poll_data = self._fallback_channel_poll(topic)
+            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+                poll_data = {
+                    "question": "⚠️ خطا در دریافت پاسخ از مدل ابری هوش مصنوعی",
+                    "options": ["بررسی کلید API در تنظیمات", "تست مجدد اتصال"],
+                    "is_anonymous": True,
+                    "allows_multiple_answers": False
+                }
+            else:
+                poll_data = self._fallback_channel_poll(topic)
 
         options_str = "\n".join([f"- {o}" for o in poll_data.get("options", [])])
         return {
@@ -319,10 +473,19 @@ class AIMarketingManager:
         hashtags = []
 
         if not ai_text:
-            ai_text = self._fallback_instagram_package(topic, brand, handle)
-            caption = ai_text
-            story_idea = f"یک استوری با متن «آیا اینترنت شما هم قطع است؟» به همراه استیکر نظرسنجی بله/خیر و لینک به بایو پیج {handle}."
-            hashtags = ["#فیلترشکن", "#v2rayng", "#singbox", "#اینترنت_آزاد", "#وی_پی_ان"]
+            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+                ai_text = (
+                    "⚠️ خطا در دریافت خروجی از مدل هوش مصنوعی ابری.\n\n"
+                    "لطفاً در منوی «تنظیمات سیستم > چت و هوش مصنوعی»، صحت کلید دسترسی و آدرس Endpoint را تست نمایید."
+                )
+                caption = ai_text
+                story_idea = "⚠️ لطفا اتصال API هوش مصنوعی را در تنظیمات بررسی کنید."
+                hashtags = ["#خطای_اتصال_هوش_مصنوعی"]
+            else:
+                ai_text = self._fallback_instagram_package(topic, brand, handle)
+                caption = ai_text
+                story_idea = f"یک استوری با متن «آیا اینترنت شما هم قطع است؟» به همراه استیکر نظرسنجی بله/خیر و لینک به بایو پیج {handle}."
+                hashtags = ["#فیلترشکن", "#v2rayng", "#singbox", "#اینترنت_آزاد", "#وی_پی_ان"]
         else:
             caption = ai_text
             hashtags = re.findall(r"#[\w\_]+", ai_text) or ["#فیلترشکن", "#اینترنت_آزاد", "#v2ray"]
@@ -381,15 +544,22 @@ class AIMarketingManager:
         )
 
         if not ai_text:
-            ai_text = (
-                f"🎁 **هدیه ویژه قدردانی از همراهی شما!**\n\n"
-                f"همراهان گرامی، به پاس اعتماد و بازخوردهای ارزشمند شما، یک کد تخفیف اختصاصی **{discount_percent} درصدی** فعال گردید:\n\n"
-                f"🎟️ کد تخفیف: `{code}`\n"
-                f"⏰ مهلت اعتبار: فقط تا **{duration_days} روز آینده**\n"
-                f"👥 سقف استفاده: **{max_uses} نفر اول**\n\n"
-                f"💡 **نحوه استفاده:** در منوی ربات، هنگام ثبت سفارش خرید یا تمدید اشتراک، دکمه «ثبت کد تخفیف» را لمس کرده و کد بالا را وارد نمایید.\n\n"
-                f"✨ سپاس از این که در کنار ما هستید!"
-            )
+            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+                ai_text = (
+                    f"⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی.\n"
+                    f"کد تخفیف اختصاصی: `{code}` ({discount_percent}٪ تخفیف تا {duration_days} روز برای {max_uses} نفر).\n"
+                    f"لطفاً در منوی تنظیمات سیستم، اتصال کلید API و Endpoint مدل هوش مصنوعی را تست فرمایید."
+                )
+            else:
+                ai_text = (
+                    f"🎁 **هدیه ویژه قدردانی از همراهی شما!**\n\n"
+                    f"همراهان گرامی، به پاس اعتماد و بازخوردهای ارزشمند شما، یک کد تخفیف اختصاصی **{discount_percent} درصدی** فعال گردید:\n\n"
+                    f"🎟️ کد تخفیف: `{code}`\n"
+                    f"⏰ مهلت اعتبار: فقط تا **{duration_days} روز آینده**\n"
+                    f"👥 سقف استفاده: **{max_uses} نفر اول**\n\n"
+                    f"💡 **نحوه استفاده:** در منوی ربات، هنگام ثبت سفارش خرید یا تمدید اشتراک، دکمه «ثبت کد تخفیف» را لمس کرده و کد بالا را وارد نمایید.\n\n"
+                    f"✨ سپاس از این که در کنار ما هستید!"
+                )
 
         banner_text = f"🔥 کد تخفیف ویژه {discount_percent}٪ با کد: {code} (مهلت محدود)"
 
@@ -448,7 +618,19 @@ class AIMarketingManager:
         if ai_res:
             return ai_res
 
-        # پاسخ هوشمند بومی در صورت قطعی اینترنت خارجی یا نبود کلید
+        # اگر کلید یا مود API خارجی فعال است، خطای ارتباط را صریحاً گزارش کند و از موتور محلی استفاده نکند
+        if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+            if not cfg.get("api_key"):
+                return (
+                    "⚠️ موتور هوش مصنوعی روی API خارجی تنظیم شده است اما کلید API (API Key) وارد نشده است.\n\n"
+                    "لطفاً در منوی تنظیمات سیستم > چت و هوش مصنوعی، کلید API مربوطه را وارد نموده و اتصال را تست فرمایید."
+                )
+            return (
+                "⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی.\n\n"
+                "لطفاً در بخش «تنظیمات سیستم > چت و هوش مصنوعی»، با زدن دکمه «تست اتصال به هوش مصنوعی»، صحت API Key، Endpoint و مدل خود را بررسی فرمایید."
+            )
+
+        # پاسخ هوشمند بومی صرفاً در صورت انتخاب موتور محلی آفلاین
         return self._fallback_chat_reply(user_msg)
 
     # ═══════════════════════════════════════════════════════════════

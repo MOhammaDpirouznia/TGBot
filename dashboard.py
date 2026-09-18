@@ -18,6 +18,7 @@ import logging
 import httpx
 import uuid
 import threading
+import concurrent.futures
 import random
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta
@@ -554,10 +555,19 @@ def miniapp_logo():
     if request.args.get("fallback") or request.args.get("default") == "svg":
         return Response(DEFAULT_HIDDIPLUS_SVG, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
-    # ۱. تصویر سفارشی ذخیره شده در تنظیمات دیتابیس
-    custom_setting = db.get_setting("mini_app_splash_image")
+    # ۱. بررسی تصویر سفارشی اختصاصی نماینده یا تنظیمات سراسری مدیریت
+    custom_setting = None
+    r_arg = request.args.get("r") or request.args.get("reseller_id")
+    if r_arg and str(r_arg).isdigit() and int(r_arg) > 0:
+        r_info = db.get_reseller(int(r_arg)) or {}
+        custom_setting = r_info.get("mini_app_splash_image") or r_info.get("logo_url")
+    if not custom_setting:
+        custom_setting = db.get_setting("mini_app_splash_image")
+
     if custom_setting:
         raw = str(custom_setting).strip()
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return redirect(raw)
         clean_path = raw.split("?")[0].lstrip("/")
         for check_path in [
             Path(clean_path),
@@ -1597,14 +1607,42 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     return False
 
 
-def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None):
-    """درخواست همگام به API پنل هیدیفای با استفاده از httpx با پشتیبانی از کلید ادمین اختصاصی نماینده"""
+_hiddify_sync_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="hiddify_sync")
+_unreachable_hosts_cache: Dict[str, float] = {}  # hostname -> timestamp of last network failure
+_unreachable_hosts_lock = threading.Lock()
+
+def _check_host_recently_failed(host: str) -> bool:
+    if not host:
+        return False
+    with _unreachable_hosts_lock:
+        failed_at = _unreachable_hosts_cache.get(host)
+        if failed_at and (time.time() - failed_at < 60.0):
+            return True
+        elif failed_at:
+            _unreachable_hosts_cache.pop(host, None)
+    return False
+
+def _mark_host_failed(host: str):
+    if not host:
+        return
+    with _unreachable_hosts_lock:
+        _unreachable_hosts_cache[host] = time.time()
+
+def _mark_host_healthy(host: str):
+    if not host:
+        return
+    with _unreachable_hosts_lock:
+        _unreachable_hosts_cache.pop(host, None)
+
+
+def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, api_key: str = None) -> dict:
+    """اجرای مستقیم درخواست HTTP به سرور هیدیفای درون ترد جداگانه"""
     panel_url = get_hiddify_url()
     active_key = (api_key.strip() if api_key else None) or get_hiddify_key()
     proxy_path = get_hiddify_proxy()
 
     if not panel_url or not active_key:
-        return {"error": "اطلاعات پنل هیدیفای (HIDIFY_PANEL_URL / HIDIFY_API_KEY) تنظیم نشده است"}
+        return {"error": "اطلاعات پنل هیدیفای (HIDIFY_PANEL_URL / HIDIFY_API_KEY) تنظیم نشده است", "network_error": True}
 
     base_api = f"{panel_url}/{proxy_path}/api/v2"
     url = f"{base_api}{endpoint}"
@@ -1615,7 +1653,8 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
     }
 
     try:
-        with httpx.Client(verify=False, follow_redirects=True, timeout=15.0) as client:
+        sync_timeout = httpx.Timeout(4.0, connect=2.0)
+        with httpx.Client(verify=False, follow_redirects=True, timeout=sync_timeout) as client:
             m = method.upper()
             if m == "GET":
                 resp = client.get(url, headers=headers, params=data)
@@ -1628,7 +1667,7 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
             elif m == "DELETE":
                 resp = client.delete(url, headers=headers)
             else:
-                return {"error": "Invalid HTTP method"}
+                return {"error": "Invalid HTTP method", "network_error": False}
 
             logger.info(f"Hidify sync API: {method} {url} (Key: {active_key[:8]}...) -> {resp.status_code}")
             if resp.status_code in (200, 201):
@@ -1638,16 +1677,49 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
             else:
                 err_text = resp.text[:200]
                 logger.error(f"Hidify sync API error {resp.status_code}: {err_text}")
-                return {"error": f"HTTP {resp.status_code}: {err_text}"}
+                is_server_down = resp.status_code in (502, 503, 504)
+                return {"error": f"HTTP {resp.status_code}: {err_text}", "network_error": is_server_down}
     except httpx.TimeoutException:
         logger.error(f"Hidify sync timeout: {url}")
-        return {"error": "Timeout: زمان پاسخگویی سرور هیدیفای بیش از حد طول کشید"}
+        return {"error": "Timeout: زمان پاسخگویی سرور هیدیفای بیش از حد طول کشید", "network_error": True}
     except httpx.ConnectError as e:
         logger.error(f"Hidify sync connect error: {e}")
-        return {"error": f"خطا در برقراری اتصال به سرور: {e}"}
+        return {"error": f"خطا در برقراری اتصال به سرور: {e}", "network_error": True}
     except Exception as e:
         logger.error(f"Hidify sync request error: {e}")
-        return {"error": str(e)}
+        return {"error": str(e), "network_error": True}
+
+
+def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout_seconds: float = 2.5) -> dict:
+    """درخواست همگام به API پنل هیدیفای با محافظت کامل در برابر گیر کردن، بن‌بست DNS و قطع سرور"""
+    panel_url = get_hiddify_url()
+    host = ""
+    if panel_url:
+        try:
+            host = urllib.parse.urlparse(panel_url).hostname or ""
+        except Exception:
+            host = ""
+
+    # بررسی کش عدم دسترسی به هاست (جلوگیری از انتظار مجدد روی سرور قطع/فیلتر)
+    if host and _check_host_recently_failed(host):
+        logger.warning(f"Hiddify panel host '{host}' recently unreachable. Short-circuiting request to {endpoint}")
+        return {"error": f"سرور هیدیفای ({host}) موقتاً در دسترس نیست", "network_error": True}
+
+    try:
+        fut = _hiddify_sync_executor.submit(_hidify_sync_request_worker, method, endpoint, data, api_key)
+        res = fut.result(timeout=timeout_seconds)
+        if isinstance(res, dict) and res.get("network_error"):
+            _mark_host_failed(host)
+        elif isinstance(res, dict) and "error" not in res:
+            _mark_host_healthy(host)
+        return res
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"Hiddify sync request hard deadline exceeded ({timeout_seconds}s) for {endpoint}")
+        _mark_host_failed(host)
+        return {"error": "Timeout: مهلت زمانی ارتباط با پنل هیدیفای به پایان رسید", "network_error": True}
+    except Exception as e:
+        logger.error(f"Error submitting Hiddify sync task: {e}")
+        return {"error": str(e), "network_error": True}
 
 
 def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None,
@@ -1881,10 +1953,16 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
                 logger.info(f"Successfully updated user {clean_uuid} via PATCH on {ep}")
                 return res
             last_res = res
+            if isinstance(res, dict) and res.get("network_error"):
+                logger.warning(f"Aborting Hiddify sync retries due to network error on {ep}: {res.get('error')}")
+                return last_res
 
         # ۲. روش دوم: GET اطلاعات فعلی کاربر و ارسال PUT پاکسازی‌شده
         for ep_get in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
             user_obj = hidify_sync_request("GET", ep_get, api_key=k_val)
+            if isinstance(user_obj, dict) and user_obj.get("network_error"):
+                logger.warning(f"Aborting Hiddify PUT sync due to network error on {ep_get}: {user_obj.get('error')}")
+                return user_obj
             if isinstance(user_obj, dict) and "error" not in user_obj:
                 # فیلدهای مجاز مدل Pydantic هیدیفای برای UserPutSchema / UserSchema
                 allowed_hiddify_fields = {
@@ -1909,6 +1987,8 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
                         logger.info(f"Successfully updated user {clean_uuid} via PUT on {ep_put}")
                         return res_put
                     last_res = res_put
+                    if isinstance(res_put, dict) and res_put.get("network_error"):
+                        return last_res
 
     return last_res
 
@@ -1944,6 +2024,8 @@ def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data
                         if isinstance(check, dict) and check.get("name"):
                             logger.info(f"Successfully changed user UUID from {clean_old} to {clean_new} via PATCH")
                             return check
+                    if isinstance(res, dict) and res.get("network_error"):
+                        return res
 
             # ۲. در صورت عدم تغییر با PATCH، استخراج مشخصات و ثبت مجدد با UUID جدید
             old_user = {}
@@ -1953,6 +2035,8 @@ def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data
                     if isinstance(resp, dict) and "error" not in resp and resp.get("name"):
                         old_user = resp
                         break
+                    if isinstance(resp, dict) and resp.get("network_error"):
+                        return resp
 
             # ساخت پیلود کاربر
             allowed_fields = {
@@ -1977,6 +2061,8 @@ def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data
                 if clean_old:
                     hidify_sync_request("DELETE", f"/admin/user/{clean_old}/", api_key=k_val)
                 return create_res
+            if isinstance(create_res, dict) and create_res.get("network_error"):
+                return create_res
 
         return {"error": "خطا در برقراری ارتباط با سرور هیدیفای جهت تغییر UUID"}
     except Exception as e:
@@ -1991,6 +2077,21 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
     حالت دوم (افزایشی): اضافه کردن حجم و روز به مقادیر قبلی
     """
     try:
+        if force_instant:
+            # در حالت تمدید آنی (پیش‌فرض تمام فرم‌های تمدید پنل‌ها):
+            # بدون ارسال GET اولیه غیرضروری، مستقیماً مقادیر جدید اعمال و حجم مصرفی صفر می‌شود
+            logger.info(f"Sync Renew {uuid}: Fast Instant Reset -> Usage=0, limit={new_limit_gb} GB, days={new_duration_days}")
+            payload = {
+                "usage_limit_GB": new_limit_gb,
+                "package_days": new_duration_days,
+                "current_usage_GB": 0,
+                "start_date": None,
+                "enable": True,
+                "is_active": True
+            }
+            res = hidify_sync_update_user(uuid, **payload)
+            return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+
         user_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
         if not user_info or "error" in user_info or not isinstance(user_info, dict):
             res = hidify_sync_update_user(
@@ -2024,8 +2125,7 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
         is_traffic_finished = (curr_limit > 0 and current_usage >= curr_limit)
         is_expired = (not is_active or not enable or is_traffic_finished or is_time_expired)
 
-        if force_instant or is_expired:
-            # جایگزینی مقادیر و ریست حجم مصرفی و زمان شروع
+        if is_expired:
             logger.info(f"Sync Renew {uuid}: Reset & Replace -> Usage=0, limit={new_limit_gb} GB, days={new_duration_days}")
             payload = {
                 "usage_limit_GB": new_limit_gb,
@@ -2052,8 +2152,7 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
             return {"renewal_type": "appended", "new_limit": combined_limit, "new_days": combined_days, "res": res}
     except Exception as e:
         logger.error(f"Error in hidify_sync_renew_user for {uuid}: {e}")
-        res = hidify_sync_update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, current_usage_GB=0, enable=True, is_active=True)
-        return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+        return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": {"error": str(e)}}
 
 
 _queue_process_lock = threading.Lock()
@@ -13184,9 +13283,12 @@ def settings():
             chat_ai_enabled = "1" if request.form.get("chat_ai_enabled") else "0"
             chat_ai_mode = request.form.get("chat_ai_mode", "smart_local").strip()
             chat_ai_api_key = request.form.get("chat_ai_api_key", "").strip()
-            chat_ai_api_url = request.form.get("chat_ai_api_url", "https://api.openai.com/v1/chat/completions").strip()
-            chat_ai_model = request.form.get("chat_ai_model", "gpt-4o-mini").strip()
+            chat_ai_api_url = request.form.get("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions").strip()
+            chat_ai_model = request.form.get("chat_ai_model", "gemini-1.5-pro").strip()
             chat_sound_enabled = "1" if request.form.get("chat_sound_enabled") else "0"
+            chat_ai_rate_limit_hourly = int(request.form.get("chat_ai_rate_limit_hourly", 15) or 15)
+            chat_ai_cooldown_seconds = int(request.form.get("chat_ai_cooldown_seconds", 5) or 5)
+            chat_ai_max_tokens = int(request.form.get("chat_ai_max_tokens", 400) or 400)
 
             db.save_chat_settings({
                 "chat_button_style": chat_button_style,
@@ -13199,10 +13301,13 @@ def settings():
                 "chat_ai_api_key": chat_ai_api_key,
                 "chat_ai_api_url": chat_ai_api_url,
                 "chat_ai_model": chat_ai_model,
-                "chat_sound_enabled": chat_sound_enabled
+                "chat_sound_enabled": chat_sound_enabled,
+                "chat_ai_rate_limit_hourly": chat_ai_rate_limit_hourly,
+                "chat_ai_cooldown_seconds": chat_ai_cooldown_seconds,
+                "chat_ai_max_tokens": chat_ai_max_tokens
             })
 
-            flash("تنظیمات ظاهر دکمه گفتگوی آنلاین، وضعیت ساختگی و چتبات هوش مصنوعی با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات ظاهر دکمه گفتگوی آنلاین، وضعیت ساختگی، محدودیت مصرف و چتبات هوش مصنوعی با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_mini_app_settings":
             btn_enabled = "1" if request.form.get("mini_app_menu_button_enabled") else "0"
@@ -13489,6 +13594,32 @@ def admin_sms_test():
         return jsonify({"success": False, "error": msg})
 
 
+@app.route("/api/admin/test-ai-connection", methods=["POST"])
+@admin_required
+def api_admin_test_ai_connection():
+    """تست اختصاصی و زنده ارتباط با مدل هوش مصنوعی (Gemini / OpenAI / مدل دلخواه)"""
+    data = request.get_json(force=True, silent=True) or {}
+    api_url = (data.get("api_url") or request.form.get("chat_ai_api_url") or "").strip()
+    api_key = (data.get("api_key") or request.form.get("chat_ai_api_key") or "").strip()
+    model = (data.get("model") or request.form.get("chat_ai_model") or "").strip()
+
+    # در صورت عدم ارسال پارامترها در بدنه، استفاده از مقادیر ذخیره شده در دیتابیس
+    if not api_key:
+        chat_cfg = db.get_chat_settings()
+        api_key = chat_cfg.get("chat_ai_api_key", "").strip()
+        if not api_url:
+            api_url = chat_cfg.get("chat_ai_api_url", "").strip()
+        if not model:
+            model = chat_cfg.get("chat_ai_model", "").strip()
+
+    if not api_key:
+        return jsonify({"success": False, "error": "کلید دسترسی (API Key) وارد نشده است. لطفاً ابتدا کلید معتبر خود را در کادر مربوطه وارد نمایید."}), 400
+
+    from ai_marketing_manager import ai_marketing
+    res = ai_marketing.test_ai_connection(api_url=api_url, api_key=api_key, model=model)
+    return jsonify(res)
+
+
 @app.route("/admin/sync-hidify", methods=["GET", "POST"])
 @admin_required
 def admin_sync_hidify():
@@ -13607,6 +13738,8 @@ def reseller_create_user():
         debt_amount_raw = request.form.get("debt_amount", "").strip()
         debt_notes = request.form.get("debt_notes", "").strip()
         payment_source = request.form.get("payment_source", "auto").strip()
+        internal_note = request.form.get("internal_note", "").strip()
+        customer_note = request.form.get("customer_note", "").strip()
 
         if plan_key not in plans:
             flash("پلن انتخابی نامعتبر است.", "danger")
@@ -13746,7 +13879,7 @@ def reseller_create_user():
         credit_used_amount = deduct_res.get("credit_used", 0)
         actual_payment_source = deduct_res.get("payment_source", "wallet")
 
-        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه، تخفیف و حجم هدیه
+        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه، تخفیف، یادداشت و حجم هدیه
         reseller_creator = session.get("username") or f"reseller_{reseller_id}"
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -13754,13 +13887,19 @@ def reseller_create_user():
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, gift_traffic_gb, discount_amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by,
+             reseller_note, reseller_note_updated_at, reseller_note_updated_by,
+             customer_note, customer_note_updated_at, customer_note_updated_by,
+             gift_traffic_gb, discount_amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             effective_limit_gb, duration_days, start_date, expire_date, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
-            actual_payment_source, reseller_creator, gift_traffic, discount_amount, now, now
+            actual_payment_source, reseller_creator,
+            internal_note or None, (now if internal_note else None), (reseller_creator if internal_note else None),
+            customer_note or None, (now if customer_note else None), (reseller_creator if customer_note else None),
+            gift_traffic, discount_amount, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -17960,6 +18099,29 @@ def reseller_branding():
         if not request.form.get("clear_logo") and not logo_url and reseller and reseller.get("logo_url"):
             logo_url = reseller["logo_url"]
 
+        # تنظیمات اختصاصی مینی‌اپ تلگرام نماینده
+        mini_app_splash_title = request.form.get("mini_app_splash_title", "").strip()
+        mini_app_splash_subtitle = request.form.get("mini_app_splash_subtitle", "").strip()
+        mini_app_menu_button_text = request.form.get("mini_app_menu_button_text", "").strip()
+        mini_app_splash_enabled = 1 if request.form.get("mini_app_splash_enabled") else 0
+        mini_app_menu_button_enabled = 1 if request.form.get("mini_app_menu_button_enabled") else 0
+
+        # بررسی پاک‌سازی یا آپلود تصویر/لوگوی اسپلش مینی‌اپ
+        mini_app_splash_image = ""
+        if request.form.get("clear_splash_image"):
+            mini_app_splash_image = ""
+        elif "splash_image_file" in request.files:
+            s_file = request.files["splash_image_file"]
+            if s_file and s_file.filename:
+                ext = s_file.filename.rsplit(".", 1)[-1].lower() if "." in s_file.filename else "png"
+                fn = f"reseller_{reseller_id}_splash_{int(time.time())}.{ext}"
+                fp = AVATAR_CACHE_DIR / fn
+                s_file.save(fp)
+                mini_app_splash_image = url_for("telegram_avatar", identifier=fn)
+
+        if not request.form.get("clear_splash_image") and not mini_app_splash_image and reseller and reseller.get("mini_app_splash_image"):
+            mini_app_splash_image = reseller["mini_app_splash_image"]
+
         branding_kwargs = {
             "brand_title": brand_title,
             "portal_title": portal_title,
@@ -17972,7 +18134,13 @@ def reseller_branding():
             "footer_text": footer_text,
             "portal_layout": portal_layout,
             "portal_plan_style": portal_plan_style,
-            "portal_palette": portal_palette
+            "portal_palette": portal_palette,
+            "mini_app_splash_enabled": mini_app_splash_enabled,
+            "mini_app_splash_title": mini_app_splash_title,
+            "mini_app_splash_subtitle": mini_app_splash_subtitle,
+            "mini_app_splash_image": mini_app_splash_image,
+            "mini_app_menu_button_enabled": mini_app_menu_button_enabled,
+            "mini_app_menu_button_text": mini_app_menu_button_text
         }
 
         # فقط در صورتی که فیلد دامنه در فرم ارسال شده باشد آن را پردازش کن
@@ -17986,12 +18154,40 @@ def reseller_branding():
 
         res = db.update_reseller_branding(reseller_id, **branding_kwargs)
         if res.get("success"):
-            flash("تنظیمات هویت بصری و شخصی‌سازی شما با موفقیت ذخیره شد.", "success")
+            sync_msg = ""
+            try:
+                from telegram_menu_helper import sync_reseller_menu_button
+                s_ok, s_m = sync_reseller_menu_button(reseller_id, host_url=request.host_url)
+                if s_ok:
+                    sync_msg = " و دکمه منوی ربات تلگرام با موفقیت همگام‌سازی شد."
+                elif reseller and reseller.get("bot_token"):
+                    sync_msg = f" (اما در همگام‌سازی دکمه ربات: {s_m})"
+            except Exception as e:
+                logger.warning(f"Error auto-syncing menu button for reseller {reseller_id}: {e}")
+
+            flash(f"تنظیمات هویت بصری و مینی‌اپ اختصاصی شما با موفقیت ذخیره شد{sync_msg}", "success")
         else:
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))
 
     return render_template("reseller_branding.html", reseller=reseller, available_palettes=get_all_palettes())
+
+
+@app.route("/reseller/sync-menu-button", methods=["POST"])
+@app.route("/reseller/bot/sync-menu-button", methods=["POST"])
+@reseller_required
+def reseller_sync_menu_button():
+    """همگام‌سازی مستقیم دکمه منوی ربات تلگرام اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    try:
+        from telegram_menu_helper import sync_reseller_menu_button
+        ok, msg = sync_reseller_menu_button(reseller_id, host_url=request.host_url)
+        if ok:
+            return jsonify({"success": True, "message": msg or "دکمه منوی ربات تلگرام شما با موفقیت به‌روزرسانی شد."})
+        return jsonify({"success": False, "error": msg or "خطا در برقراری ارتباط با تلگرام."}), 400
+    except Exception as e:
+        logger.exception(f"Error syncing reseller menu button: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -18076,6 +18272,8 @@ def admin_create_customer():
 
         debt_amount_raw = request.form.get("debt_amount", "").strip()
         debt_notes = request.form.get("debt_notes", "").strip()
+        internal_note = request.form.get("internal_note", "").strip()
+        customer_note = request.form.get("customer_note", "").strip()
         if payment_method == "debtor":
             payment_status = "unpaid"
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else price
@@ -18107,13 +18305,20 @@ def admin_create_customer():
             return redirect(url_for("admin_create_customer"))
         sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
-        # بروزرسانی شماره تماس، وضعیت پرداخت، تخفیف، حجم هدیه و بدهی در جدول subscriptions
+        # بروزرسانی شماره تماس، وضعیت پرداخت، تخفیف، حجم هدیه، بدهی و یادداشت‌ها در جدول subscriptions
         conn = db.get_connection()
         conn.execute("""
             UPDATE subscriptions 
-            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, gift_traffic_gb = ?, discount_amount = ?, created_by = COALESCE(created_by, ?)
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, gift_traffic_gb = ?, discount_amount = ?, created_by = COALESCE(created_by, ?),
+                admin_note = ?, admin_note_updated_at = ?, admin_note_updated_by = ?,
+                customer_note = ?, customer_note_updated_at = ?, customer_note_updated_by = ?
             WHERE id = ?
-        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, gift_traffic, discount_amount, admin_creator, sub_id))
+        """, (
+            phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, gift_traffic, discount_amount, admin_creator,
+            internal_note or None, (now if internal_note else None), (admin_creator if internal_note else None),
+            customer_note or None, (now if customer_note else None), (admin_creator if customer_note else None),
+            sub_id
+        ))
         conn.commit()
         conn.close()
 
@@ -20524,19 +20729,46 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     # فعال بودن خرید اشتراک جدید منحصراً برای مینی‌اپ
     enable_new_purchase = is_webapp or bool(request.args.get("tg_id")) or bool(request.path.startswith("/webapp"))
 
-    # تنظیمات صفحه لودینگ / اسپلش مینی‌اپ تلگرام
-    mini_app_splash_enabled = str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true")
-    mini_app_splash_title = db.get_setting("mini_app_splash_title", "HiddiPlus")
-    mini_app_splash_subtitle = db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت")
-    mini_app_splash_image = db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg")
-    try:
-        mini_app_splash_duration = int(db.get_setting("mini_app_splash_duration", "1800"))
-    except Exception:
+    # تنظیمات صفحه لودینگ / اسپلش مینی‌اپ تلگرام با پشتیبانی از برندینگ مستقل نماینده
+    if reseller_id and int(reseller_id) > 0:
+        r_info = db.get_reseller(int(reseller_id)) or {}
+        if "mini_app_splash_enabled" in r_info and r_info["mini_app_splash_enabled"] is not None:
+            mini_app_splash_enabled = str(r_info["mini_app_splash_enabled"]).lower() not in ("0", "false")
+        else:
+            mini_app_splash_enabled = str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true")
+
+        mini_app_splash_title = r_info.get("mini_app_splash_title") or r_info.get("brand_name") or r_info.get("portal_title") or r_info.get("brand_title") or r_info.get("name") or brand_title
+        mini_app_splash_subtitle = r_info.get("mini_app_splash_subtitle") or r_info.get("portal_subtitle") or "پورتال کاربری و استعلام وضعیت اشتراک"
+        mini_app_splash_image = r_info.get("mini_app_splash_image") or r_info.get("logo_url") or ""
         mini_app_splash_duration = 1800
+    else:
+        mini_app_splash_enabled = str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true")
+        mini_app_splash_title = db.get_setting("mini_app_splash_title", "HiddiPlus")
+        mini_app_splash_subtitle = db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت")
+        mini_app_splash_image = db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg")
+        try:
+            mini_app_splash_duration = int(db.get_setting("mini_app_splash_duration", "1800"))
+        except Exception:
+            mini_app_splash_duration = 1800
+
+    # محاسبه و استخراج آمار و نمودار هوشمند مصرف ساعتی و روزانه (Traffic Analytics & Insights)
+    traffic_analytics = {}
+    if sub and sub.get("id") and not is_new_customer:
+        try:
+            db.record_subscription_traffic(sub["id"], sub.get("data_used", 0), sub.get("hidify_uuid"))
+            traffic_analytics = db.get_subscription_traffic_analytics(sub["id"])
+        except Exception as e:
+            logger.warning(f"Error fetching traffic analytics for sub {sub.get('id')}: {e}")
+
+    # ایزوله‌سازی و امنیت: اطمینان ۱۰۰٪ از عدم ارسال یادداشت‌های محرمانه داخلی به پورتال مشتری
+    safe_sub = dict(sub) if sub else {}
+    safe_sub.pop("admin_note", None)
+    safe_sub.pop("reseller_note", None)
+    safe_sub.pop("internal_note", None)
 
     return render_template(
         "customer_portal.html",
-        sub=sub,
+        sub=safe_sub,
         token=token,
         brand_title=brand_title,
         portal_subtitle=portal_subtitle,
@@ -20573,10 +20805,12 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         enable_new_purchase=enable_new_purchase,
         telegram_id=telegram_id,
         reseller_id=reseller_id,
+        traffic_analytics=traffic_analytics,
         mini_app_splash_enabled=mini_app_splash_enabled,
         mini_app_splash_title=mini_app_splash_title,
         mini_app_splash_subtitle=mini_app_splash_subtitle,
         mini_app_splash_image=mini_app_splash_image,
+        mini_app_splash_duration=mini_app_splash_duration,
         portal_banners=db.get_portal_customer_banners(
             for_reseller_id=(sub.get("reseller_id") if sub else reseller_id),
             customer_status=(
@@ -20611,6 +20845,112 @@ def customer_portal_dynamic(portal_prefix: str, token: str):
     if portal_prefix not in valid_prefixes:
         abort(404)
     return _handle_customer_portal_view(token)
+
+
+@app.route("/api/subscription/<token>/traffic-analytics", methods=["GET"])
+@app.route("/api/sub/<token>/traffic-analytics", methods=["GET"])
+def api_subscription_traffic_analytics(token):
+    """وب‌سرویس دریافت داده‌های زنده نمودار مصرف ساعتی و روزانه ترافیک مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    try:
+        db.record_subscription_traffic(sub_id, sub.get("data_used", 0), sub.get("hidify_uuid"))
+        analytics = db.get_subscription_traffic_analytics(sub_id)
+        return jsonify({"success": True, "analytics": analytics})
+    except Exception as e:
+        logger.exception(f"Error in api_subscription_traffic_analytics for {token}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/subscription/<int:sub_id>/notes", methods=["GET", "POST"])
+def api_subscription_notes(sub_id):
+    """وب‌سرویس دریافت و ویرایش سریع یادداشت‌های اشتراک با رعایت کامل ایزولاسیون"""
+    is_admin = session.get("is_admin") or session.get("admin_logged_in") or (session.get("role") in ("admin", "superadmin")) or bool(session.get("user_id") and not session.get("reseller_id"))
+    reseller_id = session.get("reseller_id")
+
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "error": "لطفاً ابتدا وارد پنل شوید"}), 401
+
+    role = "reseller" if (reseller_id and not is_admin) else "admin"
+    username = session.get("username") or ("مدیریت" if role == "admin" else f"نماینده #{reseller_id}")
+
+    if request.method == "GET":
+        res = db.get_subscription_notes(sub_id, role=role, reseller_id=reseller_id)
+        if not res.get("success"):
+            return jsonify(res), 403 if "دسترسی" in res.get("error", "") else 404
+        return jsonify(res)
+
+    # POST
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    internal_note = data.get("internal_note")
+    customer_note = data.get("customer_note")
+
+    res = db.update_subscription_notes(
+        sub_id=sub_id,
+        internal_note=internal_note,
+        customer_note=customer_note,
+        role=role,
+        updated_by=username,
+        reseller_id=reseller_id
+    )
+    if not res.get("success"):
+        return jsonify(res), 403 if "دسترسی" in res.get("error", "") else 400
+
+    return jsonify({
+        "success": True,
+        "message": "یادداشت‌ها با موفقیت ذخیره شدند",
+        "internal_note": internal_note or "",
+        "customer_note": customer_note or "",
+        "updated_at": get_now_iso(),
+        "updated_by": username
+    })
+
+
+@app.route("/api/transaction/<int:tx_id>/note", methods=["GET", "POST"])
+def api_transaction_note(tx_id):
+    """وب‌سرویس دریافت و ویرایش یادداشت داخلی تراکنش‌های مالی با ایزولاسیون کامل"""
+    is_admin = session.get("is_admin") or session.get("admin_logged_in") or (session.get("role") in ("admin", "superadmin")) or bool(session.get("user_id") and not session.get("reseller_id"))
+    reseller_id = session.get("reseller_id")
+
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "error": "لطفاً ابتدا وارد پنل شوید"}), 401
+
+    role = "reseller" if (reseller_id and not is_admin) else "admin"
+    username = session.get("username") or ("مدیریت" if role == "admin" else f"نماینده #{reseller_id}")
+
+    if request.method == "GET":
+        res = db.get_transaction_note(tx_id, role=role, reseller_id=reseller_id)
+        if not res.get("success"):
+            return jsonify(res), 403 if "دسترسی" in res.get("error", "") else 404
+        return jsonify(res)
+
+    # POST
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    internal_note = data.get("internal_note")
+
+    res = db.update_transaction_note(
+        tx_id=tx_id,
+        internal_note=internal_note,
+        role=role,
+        updated_by=username,
+        reseller_id=reseller_id
+    )
+    if not res.get("success"):
+        return jsonify(res), 403 if "دسترسی" in res.get("error", "") else 400
+
+    return jsonify({
+        "success": True,
+        "message": "یادداشت تراکنش با موفقیت ذخیره شد",
+        "internal_note": internal_note or "",
+        "updated_at": get_now_iso(),
+        "updated_by": username
+    })
 
 
 @app.route("/portal/cancel-invoice/<order_id>", methods=["GET", "POST"])

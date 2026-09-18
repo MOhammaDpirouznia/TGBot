@@ -183,7 +183,16 @@
                             <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
                         </td>
                         <td class="ps-2" data-value="{{ tx['id'] }}">
-                            <span class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</span>
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</span>
+                                {% set has_tx_note = bool(tx.get('admin_note')) %}
+                                <button type="button" 
+                                        class="btn btn-link p-0 text-decoration-none tx-note-btn {% if has_tx_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
+                                        onclick="event.stopPropagation(); openQuickTxNote('{{ tx['id'] }}', '{{ tx.get('order_id') or tx['id'] }}', this);" 
+                                        title="{% if has_tx_note %}یادداشت: {{ tx['admin_note']|striptags|truncate(50) }}{% else %}افزودن یادداشت پرداخت{% endif %}">
+                                    <i class="fas {% if has_tx_note %}fa-note-sticky text-warning{% else %}fa-note-sticky{% endif %}" style="font-size: 0.82rem;"></i>
+                                </button>
+                            </div>
                         </td>
                         <td data-value="{{ tx.get('customer_name') or tx['username'] or tx['user_id'] or '' }}">
                             <div class="d-flex align-items-center gap-2">
