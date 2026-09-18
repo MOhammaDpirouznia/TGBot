@@ -89,7 +89,7 @@
                         <td class="ps-2" data-value="{{ tx['id'] }}">
                             <div class="d-flex align-items-center gap-1">
                                 <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
-                                {% set has_tx_note = bool(tx.get('reseller_note')) %}
+                                {% set has_tx_note = true if tx.get('reseller_note') else false %}
                                 <button type="button" 
                                         class="btn btn-link p-0 text-decoration-none tx-note-btn {% if has_tx_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
                                         onclick="event.stopPropagation(); openQuickTxNote('{{ tx['id'] }}', '{{ tx.get('order_id') or tx['id'] }}', this);" 

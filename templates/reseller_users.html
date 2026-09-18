@@ -283,7 +283,7 @@
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
                                         <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
-                                        {% set has_res_note = bool(sub.get('reseller_note') or sub.get('customer_note')) %}
+                                        {% set has_res_note = true if (sub.get('reseller_note') or sub.get('customer_note')) else false %}
                                         <button type="button" 
                                                 class="btn btn-link p-0 text-decoration-none sub-note-btn ms-1 {% if has_res_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
                                                 onclick="event.stopPropagation(); openQuickSubNote('{{ sub['id'] }}', '{{ sub['account_name']|default('', true)|e }}', this);" 
