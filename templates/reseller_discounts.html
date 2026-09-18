@@ -122,6 +122,19 @@
                             <input type="date" class="form-control" name="valid_until">
                         </div>
                     </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label fw-bold">پلن‌های مجاز (اختیاری - در صورت عدم انتخاب برای همه اعمال می‌شود)</label>
+                        <div class="border p-2 rounded" style="max-height: 150px; overflow-y: auto;">
+                            {% for p in plans %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="allowed_plans" value="{{ p.id }}" id="plan_{{ p.id }}">
+                                <label class="form-check-label" for="plan_{{ p.id }}">
+                                    {{ p.name }} ({{ p.days }} روزه - {{ p.size_gb }} گیگ)
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>

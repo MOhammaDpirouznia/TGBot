@@ -12360,13 +12360,16 @@ def admin_discounts_page():
         amount = int(request.form.get("discount_amount") or 0)
         max_uses = int(request.form.get("max_uses") or 0)
         valid_days = request.form.get("valid_days")
+        
+        allowed_plans_list = request.form.getlist("allowed_plans")
+        allowed_plans = ",".join(allowed_plans_list) if allowed_plans_list else ""
 
         valid_until = None
         if valid_days and int(valid_days) > 0:
             valid_until = (get_now_naive() + timedelta(days=int(valid_days))).isoformat()
 
         if code and (percent > 0 or amount > 0):
-            res = db.create_discount_code(code, discount_percent=percent, discount_amount=amount, max_uses=max_uses, valid_until=valid_until)
+            res = db.create_discount_code(code, discount_percent=percent, discount_amount=amount, max_uses=max_uses, valid_until=valid_until, allowed_plans=allowed_plans)
             if res.get("success"):
                 flash(f"کد تخفیف {code} با موفقیت ایجاد شد.", "success")
             else:
@@ -12376,7 +12379,8 @@ def admin_discounts_page():
         return redirect(url_for("admin_discounts_page"))
 
     discounts = db.get_all_discount_codes()
-    return render_template("discounts.html", discounts=discounts)
+    plans = db.get_active_plans()
+    return render_template("discounts.html", discounts=discounts, plans=plans)
 
 
 @app.route("/discounts/delete/<code>")
@@ -17853,13 +17857,16 @@ def reseller_discounts():
             max_uses = 0
 
         valid_until = request.form.get("valid_until", "").strip() or None
+        
+        allowed_plans_list = request.form.getlist("allowed_plans")
+        allowed_plans = ",".join(allowed_plans_list) if allowed_plans_list else ""
 
         if not code:
             flash("کد تخفیف الزامی است.", "warning")
         elif discount_percent <= 0 and discount_amount <= 0:
             flash("درصد تخفیف یا مبلغ تخفیف باید تعیین شود.", "warning")
         else:
-            res = db.create_reseller_discount_code(reseller_id, code, discount_percent, discount_amount, max_uses, valid_until)
+            res = db.create_reseller_discount_code(reseller_id, code, discount_percent, discount_amount, max_uses, valid_until, allowed_plans=allowed_plans)
             if res.get("success"):
                 flash(f"کد تخفیف «{code.upper()}» با موفقیت ایجاد شد.", "success")
             else:
@@ -17867,7 +17874,8 @@ def reseller_discounts():
         return redirect(url_for("reseller_discounts"))
 
     discounts = db.get_reseller_discount_codes(reseller_id)
-    return render_template("reseller_discounts.html", discounts=discounts)
+    plans = db.get_active_plans()
+    return render_template("reseller_discounts.html", discounts=discounts, plans=plans)
 
 
 @app.route("/reseller/discount/<int:discount_id>/toggle", methods=["POST"])
@@ -20256,7 +20264,7 @@ def customer_check_discount(token: str = None):
             else:
                 price = 100000
 
-    res = db.validate_customer_discount(sub, code, price)
+    res = db.validate_customer_discount(sub, code, price, plan_id)
     if res.get("valid"):
         return jsonify({
             "valid": True,
@@ -21079,7 +21087,7 @@ def customer_create_invoice(token: str):
     valid_discount_code = None
 
     if raw_discount_code:
-        chk_res = db.validate_customer_discount(sub, raw_discount_code, price)
+        chk_res = db.validate_customer_discount(sub, raw_discount_code, price, plan_id)
         if chk_res.get("valid"):
             discount_val = int(chk_res.get("discount_amount") or 0)
             valid_discount_code = raw_discount_code
@@ -21466,7 +21474,7 @@ def customer_buy_new_plan():
     valid_discount_code = None
     if raw_discount_code:
         fake_sub = {"id": 0, "reseller_id": reseller_id, "telegram_id": telegram_id}
-        chk_res = db.validate_customer_discount(fake_sub, raw_discount_code, price)
+        chk_res = db.validate_customer_discount(fake_sub, raw_discount_code, price, plan_id)
         if chk_res.get("valid"):
             discount_val = int(chk_res.get("discount_amount") or 0)
             valid_discount_code = raw_discount_code

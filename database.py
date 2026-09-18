@@ -233,6 +233,7 @@ class Database:
                 used_count INTEGER DEFAULT 0,
                 valid_until TEXT,
                 is_active BOOLEAN DEFAULT 1,
+                allowed_plans TEXT DEFAULT "",
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -987,6 +988,7 @@ class Database:
                     used_count INTEGER DEFAULT 0,
                     valid_until TEXT,
                     is_active BOOLEAN DEFAULT 1,
+                    allowed_plans TEXT DEFAULT "",
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
                 )
@@ -6122,16 +6124,16 @@ class Database:
     # مدیریت کدهای تخفیف
     # ═══════════════════════════════════════════════════════════════
 
-    def create_discount_code(self, code, discount_percent=0, discount_amount=0, max_uses=0, valid_until=None):
+    def create_discount_code(self, code, discount_percent=0, discount_amount=0, max_uses=0, valid_until=None, allowed_plans=""):
         """ایجاد کد تخفیف جدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("""
-                INSERT INTO discount_codes (code, discount_percent, discount_amount, max_uses, valid_until, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-            """, (code.upper(), discount_percent, discount_amount, max_uses, valid_until, now, now))
+                INSERT INTO discount_codes (code, discount_percent, discount_amount, max_uses, valid_until, is_active, allowed_plans, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+            """, (code.upper(), discount_percent, discount_amount, max_uses, valid_until, allowed_plans, now, now))
             conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
@@ -6178,7 +6180,7 @@ class Database:
         finally:
             conn.close()
 
-    def validate_admin_discount_code(self, code: str, order_amount: int = 0) -> dict:
+    def validate_admin_discount_code(self, code: str, order_amount: int = 0, plan_id: str = None) -> dict:
         """اعتبارسنجی و محاسبه تخفیف کدهای ادمین (بدون افزایش تعداد مصرف)"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6189,6 +6191,13 @@ class Database:
                 return {"valid": False, "error": "کد تخفیف نامعتبر است."}
             
             d = dict(row)
+            
+            if plan_id and d.get("allowed_plans"):
+                allowed_plans = d.get("allowed_plans").split(",")
+                allowed_plans = [p.strip() for p in allowed_plans if p.strip()]
+                if allowed_plans and str(plan_id) not in allowed_plans:
+                    return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
 
@@ -6220,7 +6229,7 @@ class Database:
         finally:
             conn.close()
 
-    def validate_customer_discount(self, sub_row_or_id, code: str, order_amount: int = 0) -> dict:
+    def validate_customer_discount(self, sub_row_or_id, code: str, order_amount: int = 0, plan_id: str = None) -> dict:
         """
         اعتبارسنجی ایزوله کد تخفیف مشتری:
         - اگر مشتری متعلق به نماینده باشد: صرفاً کدهای همان نماینده معتبر است (کدهای ادمین و سایر نمایندگان نامعتبرند).
@@ -6241,10 +6250,10 @@ class Database:
 
         if reseller_id and reseller_id > 0:
             # فقط و فقط کدهای این نماینده خاص
-            return self.validate_reseller_discount_code(reseller_id, code, order_amount)
+            return self.validate_reseller_discount_code(reseller_id, code, order_amount, plan_id)
         else:
             # فقط و فقط کدهای مدیریت
-            return self.validate_admin_discount_code(code, order_amount)
+            return self.validate_admin_discount_code(code, order_amount, plan_id)
 
     def apply_customer_discount(self, sub_row_or_id, code: str) -> bool:
         """افزایش شمارنده استفاده از کد تخفیف در جدول مربوطه بر اساس ایزولاسیون نماینده یا ادمین"""
@@ -9407,6 +9416,18 @@ class Database:
             if "logout_notification_enabled" not in r_cols:
                 cursor.execute("ALTER TABLE resellers ADD COLUMN logout_notification_enabled BOOLEAN DEFAULT 0")
                 logger.info("Added logout_notification_enabled to resellers")
+
+            cursor.execute("PRAGMA table_info(discount_codes)")
+            dc_cols = [row[1] for row in cursor.fetchall()]
+            if "allowed_plans" not in dc_cols:
+                cursor.execute("ALTER TABLE discount_codes ADD COLUMN allowed_plans TEXT DEFAULT ''")
+                logger.info("Added allowed_plans to discount_codes")
+
+            cursor.execute("PRAGMA table_info(reseller_discount_codes)")
+            rdc_cols = [row[1] for row in cursor.fetchall()]
+            if "allowed_plans" not in rdc_cols:
+                cursor.execute("ALTER TABLE reseller_discount_codes ADD COLUMN allowed_plans TEXT DEFAULT ''")
+                logger.info("Added allowed_plans to reseller_discount_codes")
 
             conn.commit()
             return {"success": True}
@@ -14881,7 +14902,7 @@ class Database:
             conn.close()
 
     def create_reseller_discount_code(self, reseller_id: int, code: str, discount_percent: int = 0,
-                                      discount_amount: int = 0, max_uses: int = 0, valid_until: str = None) -> dict:
+                                      discount_amount: int = 0, max_uses: int = 0, valid_until: str = None, allowed_plans: str = "") -> dict:
         """ایجاد کد تخفیف جدید برای مشتریان نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -14894,9 +14915,9 @@ class Database:
 
             cursor.execute("""
                 INSERT INTO reseller_discount_codes 
-                (reseller_id, code, discount_percent, discount_amount, max_uses, used_count, valid_until, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?, 0, ?, 1, ?)
-            """, (reseller_id, clean_code, int(discount_percent or 0), int(discount_amount or 0), int(max_uses or 0), valid_until, now))
+                (reseller_id, code, discount_percent, discount_amount, max_uses, used_count, valid_until, is_active, created_at, allowed_plans)
+                VALUES (?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
+            """, (reseller_id, clean_code, int(discount_percent or 0), int(discount_amount or 0), int(max_uses or 0), valid_until, now, allowed_plans))
             code_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "code_id": code_id}
@@ -14905,7 +14926,7 @@ class Database:
         finally:
             conn.close()
 
-    def validate_reseller_discount_code(self, reseller_id: int, code: str, order_amount: int = 0) -> dict:
+    def validate_reseller_discount_code(self, reseller_id: int, code: str, order_amount: int = 0, plan_id: str = None) -> dict:
         """اعتبارسنجی و محاسبه تخفیف برای مشتری نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -14919,6 +14940,13 @@ class Database:
                 return {"valid": False, "error": "کد تخفیف نامعتبر است."}
 
             d = dict(row)
+            
+            if plan_id and d.get("allowed_plans"):
+                allowed_plans = d.get("allowed_plans").split(",")
+                allowed_plans = [p.strip() for p in allowed_plans if p.strip()]
+                if allowed_plans and str(plan_id) not in allowed_plans:
+                    return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
 
