@@ -5650,6 +5650,27 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
         except Exception as e_card:
             logger.error(f"Error sending subscription card: {e_card}")
 
+    # افزایش کانتر فروش کمپین
+    try:
+        from admin_manager import load_plans, save_plans
+        all_plans = load_plans()
+        matched_plan_id = None
+        if tx.get("plan_id") and str(tx["plan_id"]) in all_plans:
+            matched_plan_id = str(tx["plan_id"])
+        else:
+            for pid, pdata in all_plans.items():
+                if pdata.get("name") == pname:
+                    matched_plan_id = pid
+                    break
+        
+        if matched_plan_id and all_plans[matched_plan_id].get("has_campaign"):
+            sold = all_plans[matched_plan_id].get("campaign_sold_count", 0)
+            all_plans[matched_plan_id]["campaign_sold_count"] = sold + 1
+            save_plans(all_plans)
+            logger.info(f"Campaign sold count incremented for {matched_plan_id}")
+    except Exception as e_camp:
+        logger.error(f"Error updating campaign sold count: {e_camp}")
+
     return {"success": True, "type": "subscription", "uuid": user_uuid}
 
 
@@ -11923,6 +11944,11 @@ def admin_plans_page():
             data_limit = int(request.form.get("data_limit", 0))
             duration = int(request.form.get("duration", 30))
             plan_icon = request.form.get("plan_icon", "").strip()
+            
+            has_campaign = request.form.get("has_campaign") == "1"
+            campaign_real_capacity = int(request.form.get("campaign_real_capacity") or 0)
+            campaign_display_capacity = int(request.form.get("campaign_display_capacity") or 0)
+            campaign_end_time = request.form.get("campaign_end_time", "").strip()
 
             # بررسی و پردازش کانال‌های ۴گانه نمایش پلن
             has_channel_inputs = any(k in request.form for k in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel"))
@@ -11981,7 +12007,11 @@ def admin_plans_page():
                 show_in_admin_panel=show_in_admin_panel,
                 show_in_reseller_bot=show_in_reseller_bot,
                 show_in_reseller_panel=show_in_reseller_panel,
-                reseller_scope=reseller_scope
+                reseller_scope=reseller_scope,
+                has_campaign=has_campaign,
+                campaign_real_capacity=campaign_real_capacity,
+                campaign_display_capacity=campaign_display_capacity,
+                campaign_end_time=campaign_end_time
             )
             if res.get("success"):
                 new_pid = res.get("plan_id")
@@ -12229,6 +12259,12 @@ def admin_plan_edit(plan_id):
     duration = int(request.form.get("duration", 30))
     is_active = request.form.get("is_active") == "1"
     plan_icon = request.form.get("plan_icon", "").strip()
+    
+    has_campaign = request.form.get("has_campaign") == "1"
+    campaign_real_capacity = int(request.form.get("campaign_real_capacity") or 0)
+    campaign_display_capacity = int(request.form.get("campaign_display_capacity") or 0)
+    campaign_sold_count = int(request.form.get("campaign_sold_count") or 0)
+    campaign_end_time = request.form.get("campaign_end_time", "").strip()
 
     update_kwargs = {
         "name": name,
@@ -12237,6 +12273,11 @@ def admin_plan_edit(plan_id):
         "duration": duration,
         "is_active": is_active,
         "plan_icon": plan_icon,
+        "has_campaign": has_campaign,
+        "campaign_real_capacity": campaign_real_capacity,
+        "campaign_display_capacity": campaign_display_capacity,
+        "campaign_sold_count": campaign_sold_count,
+        "campaign_end_time": campaign_end_time
     }
 
     has_channel_inputs = any(k in request.form for k in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel"))

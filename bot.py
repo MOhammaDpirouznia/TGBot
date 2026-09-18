@@ -1518,6 +1518,15 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = get_plan_telegram_emoji(plan, plan_id)
             btn_title = f"{emoji} {plan['name']} - {plan.get('description', '')} - {price_formatted} تومان"
 
+        if plan.get("has_campaign"):
+            disp_cap = plan.get("campaign_display_capacity", 0)
+            sold = plan.get("campaign_sold_count", 0)
+            rem = max(0, disp_cap - sold)
+            if rem > 0:
+                btn_title += f" ⏳ (فقط {rem} عدد)"
+            else:
+                btn_title += f" ❌ (ظرفیت تکمیل)"
+
         btn_title = db.format_styled_button_text(btn_title, st)
 
         r = cfg_it.get("row", idx // 2)
@@ -1597,6 +1606,24 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return CHOOSING
 
     plan = plans[plan_id]
+    
+    if plan.get("has_campaign"):
+        real_cap = plan.get("campaign_real_capacity", 0)
+        sold = plan.get("campaign_sold_count", 0)
+        if real_cap > 0 and sold >= real_cap:
+            await query.edit_message_text("❌ ظرفیت فروش این پلن (کمپین) به اتمام رسیده است!")
+            return CHOOSING
+        end_time = plan.get("campaign_end_time", "").strip()
+        if end_time:
+            from datetime import datetime
+            try:
+                dt_end = datetime.strptime(end_time, "%Y-%m-%d %H:%M")
+                if datetime.now() > dt_end:
+                    await query.edit_message_text("❌ مهلت خرید این پلن (کمپین) به پایان رسیده است!")
+                    return CHOOSING
+            except Exception:
+                pass
+
     context.user_data["selected_plan"] = plan_id
 
     price_formatted = f"{plan['price']:,}".replace(",", "،")
@@ -4049,6 +4076,19 @@ async def verify_payment_callback(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logger.error(f"Error updating transaction: {e}")
         # ادامه بده حتی اگه تراکنش آپدیت نشد
+
+    # افزایش کانتر فروش کمپین
+    try:
+        if plan.get("has_campaign"):
+            from admin_manager import load_plans, save_plans
+            all_plans = load_plans()
+            if plan_id in all_plans:
+                sold = all_plans[plan_id].get("campaign_sold_count", 0)
+                all_plans[plan_id]["campaign_sold_count"] = sold + 1
+                save_plans(all_plans)
+                logger.info(f"Campaign sold count incremented for {plan_id} via bot")
+    except Exception as e_camp:
+        logger.error(f"Error updating campaign sold count in bot: {e_camp}")
 
     # نمایش پیام موفقیت + لینک اتصال خودکار
     price_formatted = f"{plan['price']:,}".replace(",", "،")

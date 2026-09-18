@@ -793,6 +793,40 @@
                             <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
                         </select>
                     </div>
+                    <div class="card border-primary mb-3 shadow-sm" style="border-style: dashed;">
+                        <div class="card-header bg-transparent border-primary d-flex align-items-center">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="has_campaign" id="edit_has_campaign_{{ pid }}" value="1" {% if p.has_campaign %}checked{% endif %} onchange="toggleCampaignFields(this, 'edit_campaign_fields_{{ pid }}')">
+                                <label class="form-check-label fw-bold text-primary" for="edit_has_campaign_{{ pid }}">
+                                    <i class="fas fa-fire me-1"></i> فعالسازی کمپین فروش (محدودیت زمان/تعداد)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body bg-light rounded-bottom {% if not p.has_campaign %}d-none{% endif %}" id="edit_campaign_fields_{{ pid }}">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">ظرفیت واقعی</label>
+                                    <input type="number" name="campaign_real_capacity" class="form-control form-control-sm font-monospace" placeholder="100" value="{{ p.campaign_real_capacity or 0 }}" min="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">ظرفیت نمایشی</label>
+                                    <input type="number" name="campaign_display_capacity" class="form-control form-control-sm font-monospace" placeholder="5" value="{{ p.campaign_display_capacity or 0 }}" min="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">فروش رفته (تستی)</label>
+                                    <input type="number" name="campaign_sold_count" class="form-control form-control-sm font-monospace text-danger" placeholder="0" value="{{ p.campaign_sold_count or 0 }}" min="0">
+                                    <small class="text-danger" style="font-size: 0.65rem;">با کاهش، موجودی نمایشی اضافه می‌شود</small>
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">زمان پایان (فرمت: YYYY-MM-DD HH:MM - اختیاری)</label>
+                                    <input type="text" name="campaign_end_time" class="form-control form-control-sm font-monospace" placeholder="مثال: 2026-11-25 23:59" value="{{ p.campaign_end_time or '' }}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-3 p-3 border rounded-3 bg-light">
                         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                             <label class="form-label fw-bold text-dark mb-0">
@@ -972,6 +1006,35 @@
                                 <button class="btn btn-outline-secondary" type="button" onclick="clearIconInput('add_plan_icon', 'add_plan_icon_preview')" title="پاک کردن">
                                     <i class="fas fa-wand-magic-sparkles"></i>
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-primary mb-3 shadow-sm" style="border-style: dashed;">
+                        <div class="card-header bg-transparent border-primary d-flex align-items-center">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="has_campaign" id="add_has_campaign" value="1" onchange="toggleCampaignFields(this, 'add_campaign_fields')">
+                                <label class="form-check-label fw-bold text-primary" for="add_has_campaign">
+                                    <i class="fas fa-fire me-1"></i> فعالسازی کمپین فروش (محدودیت زمان/تعداد)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body bg-light rounded-bottom d-none" id="add_campaign_fields">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">ظرفیت واقعی فروش</label>
+                                    <input type="number" name="campaign_real_capacity" class="form-control form-control-sm font-monospace" placeholder="مثال: 100" min="0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">موجودی نمایشی (فیک)</label>
+                                    <input type="number" name="campaign_display_capacity" class="form-control form-control-sm font-monospace" placeholder="مثال: 5" min="0">
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-semibold text-muted" style="font-size: 0.85rem;">زمان پایان (فرمت: YYYY-MM-DD HH:MM - اختیاری)</label>
+                                    <input type="text" name="campaign_end_time" class="form-control form-control-sm font-monospace" placeholder="مثال: 2026-11-25 23:59">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1753,6 +1816,15 @@ function renderIconGrid() {
     });
 
     grid.innerHTML = html;
+}
+
+function toggleCampaignFields(checkbox, targetId) {
+    const target = document.getElementById(targetId);
+    if (checkbox.checked) {
+        target.classList.remove('d-none');
+    } else {
+        target.classList.add('d-none');
+    }
 }
 </script>
 {% endblock %}

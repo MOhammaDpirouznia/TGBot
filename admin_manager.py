@@ -753,7 +753,11 @@ def add_plan(
     show_in_admin_panel: Optional[bool] = None,
     show_in_reseller_bot: Optional[bool] = None,
     show_in_reseller_panel: Optional[bool] = None,
-    reseller_scope: Optional[str] = None
+    reseller_scope: Optional[str] = None,
+    has_campaign: bool = False,
+    campaign_real_capacity: int = 0,
+    campaign_display_capacity: int = 0,
+    campaign_end_time: str = ""
 ) -> dict:
     """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی در ۴ کانال نمایش و نمایندگان منتخب"""
     plans = load_plans()
@@ -819,6 +823,11 @@ def add_plan(
         "reseller_scope": r_scope,
         "allowed_resellers": clean_resellers,
         "plan_icon": plan_icon.strip() if plan_icon else "",
+        "has_campaign": has_campaign,
+        "campaign_real_capacity": campaign_real_capacity,
+        "campaign_display_capacity": campaign_display_capacity,
+        "campaign_sold_count": 0,
+        "campaign_end_time": campaign_end_time,
         "created_at": get_now_iso(),
     }
     normalize_plan_permissions(plan_obj)
@@ -850,13 +859,16 @@ def update_plan(plan_id: str, **kwargs) -> dict:
             "name", "price", "data_limit", "duration", "is_active", 
             "plan_icon", "allowed_resellers", "reseller_scope",
             "show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel",
-            "is_exclusive_admin", "is_exclusive_admin_bot", "is_exclusive_reseller"
+            "is_exclusive_admin", "is_exclusive_admin_bot", "is_exclusive_reseller",
+            "has_campaign", "campaign_real_capacity", "campaign_display_capacity", "campaign_sold_count", "campaign_end_time"
         ]:
             if key == "allowed_resellers":
                 clean_resellers = [int(x) for x in value if str(x).isdigit() or isinstance(x, int)] if value else []
                 plans[current_id]["allowed_resellers"] = clean_resellers
-            elif key in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel", "is_active"):
+            elif key in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel", "is_active", "has_campaign"):
                 plans[current_id][key] = bool(value)
+            elif key in ("campaign_real_capacity", "campaign_display_capacity", "campaign_sold_count"):
+                plans[current_id][key] = int(value) if value else 0
             elif key == "reseller_scope":
                 plans[current_id][key] = str(value)
             elif key == "is_exclusive_admin_bot":
