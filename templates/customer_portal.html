@@ -1628,7 +1628,7 @@
                     </div>
                     <div class="small lh-base opacity-90 text-light" style="white-space: pre-line; word-break: break-word;">{{ sub.get('customer_note') }}</div>
                 </div>
-                <button type="button" class="btn-close btn-close-white position-absolute top-0 start-0 m-3" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ sub.get('customer_note')|length }}')" title="بستن پیام"></button>
+                <button type="button" class="btn-close btn-close-white position-absolute top-0 start-0 m-3" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ (sub.get('customer_note') or '')|length }}')" title="بستن پیام"></button>
             </div>
         </div>
         {% endif %}
@@ -5160,7 +5160,7 @@ window.tgHaptic = function(type = 'light') {
     const noticeEl = document.getElementById('customerNoticeBanner');
     if (noticeEl) {
         const subId = "{{ sub.get('id') }}";
-        const noteLen = "{{ sub.get('customer_note')|length }}";
+        const noteLen = "{{ (sub.get('customer_note') or '')|length }}";
         try {
             if (sessionStorage.getItem('dismissed_cust_notice_' + subId + '_' + noteLen) === '1') {
                 noticeEl.style.display = 'none';
