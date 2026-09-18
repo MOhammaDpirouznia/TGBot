@@ -1793,8 +1793,9 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
     # ارسال درخواست ساخت به هیدیفای با کلید اختصاصی ادمین نماینده یا کلید اصلی
     res = hidify_sync_request("POST", "/admin/user/", payload, api_key=active_api_key)
 
-    # در صورت بروز خطای 400 یا خطای فیلدها، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
-    if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower() or "unprocessable" in str(res.get("error")).lower()):
+    # در صورت بروز خطای 400، 422 یا خطای فیلدها، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
+    err_str = str(res.get("error", "")).lower()
+    if "error" in res and any(x in err_str for x in ["400", "422", "500", "invalid", "unprocessable", "already exists", "duplicate"]):
         logger.warning(f"Standard create_user failed ({res.get('error')}), trying fallback minimal payload...")
         minimal_payload = {
             "name": raw_name,
