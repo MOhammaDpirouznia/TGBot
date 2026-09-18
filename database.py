@@ -2215,7 +2215,7 @@ class Database:
                     # ثبت هوشمند اسنپ‌شات مصرف ساعتی
                     if existing_sub and dict(existing_sub).get("id") and current_usage > 0:
                         try:
-                            self.record_subscription_traffic(dict(existing_sub).get("id"), current_usage, uuid)
+                            self.record_subscription_traffic(dict(existing_sub).get("id"), current_usage, uuid, ext_conn=conn)
                         except Exception:
                             pass
                 else:
@@ -19282,7 +19282,7 @@ class Database:
             }
         except Exception as e:
             logger.error(f"Error in get_subscription_sessions: {e}")
-    def record_subscription_traffic(self, sub_id: int, current_usage_gb: float, hidify_uuid: str = None) -> bool:
+    def record_subscription_traffic(self, sub_id: int, current_usage_gb: float, hidify_uuid: str = None, ext_conn=None) -> bool:
         """
         ثبت و انباشت هوشمند دلتای مصرف ترافیک اشتراک در ساعت جاری (Hourly Traffic Recording)
         دلتای مصرف نسبت به آخرین اسنپ‌شات را محاسبه کرده و در رکورد ساعت و تاریخ جاری ذخیره می‌کند.
@@ -19299,7 +19299,7 @@ class Database:
             hour_val = now.hour
             now_iso = now.isoformat()
 
-            conn = self.get_connection()
+            conn = ext_conn if ext_conn else self.get_connection()
             cursor = conn.cursor()
 
             # دریافت آخرین رکورد ترافیک برای محاسبه دلتا
@@ -19347,8 +19347,9 @@ class Database:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (sub_id, hidify_uuid, today_str, hour_val, curr_val, delta, now_iso, now_iso))
 
-            conn.commit()
-            conn.close()
+            if not ext_conn:
+                conn.commit()
+                conn.close()
             return True
         except Exception as e:
             logger.error(f"Error recording subscription traffic for sub {sub_id}: {e}")
