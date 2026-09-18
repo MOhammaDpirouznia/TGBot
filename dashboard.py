@@ -1607,7 +1607,17 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     return False
 
 
-_hiddify_sync_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="hiddify_sync")
+_hiddify_sync_executor = None
+_hiddify_executor_lock = threading.Lock()
+
+def _get_hiddify_executor():
+    global _hiddify_sync_executor
+    if _hiddify_sync_executor is None:
+        with _hiddify_executor_lock:
+            if _hiddify_sync_executor is None:
+                _hiddify_sync_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="hiddify_sync")
+    return _hiddify_sync_executor
+
 _unreachable_hosts_cache: Dict[str, float] = {}  # hostname -> timestamp of last network failure
 _unreachable_hosts_lock = threading.Lock()
 
@@ -1706,7 +1716,7 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
         return {"error": f"سرور هیدیفای ({host}) موقتاً در دسترس نیست", "network_error": True}
 
     try:
-        fut = _hiddify_sync_executor.submit(_hidify_sync_request_worker, method, endpoint, data, api_key)
+        fut = _get_hiddify_executor().submit(_hidify_sync_request_worker, method, endpoint, data, api_key)
         res = fut.result(timeout=timeout_seconds)
         if isinstance(res, dict) and res.get("network_error"):
             _mark_host_failed(host)
@@ -22884,3 +22894,23 @@ def reseller_payment_manual_add():
 
     flash('پرداخت دستی با موفقیت ثبت شد (بدون تغییر در اشتراک سرور).', 'success')
     return redirect(url_for('reseller_customer_payments'))
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    import traceback
+    from datetime import datetime
+    with open('error_log.txt', 'a', encoding='utf-8') as f:
+        f.write(f'--- {datetime.now()} ---\n')
+        f.write(traceback.format_exc())
+        f.write('\n\n')
+    return 'Internal Server Error. Please check error_log.txt', 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    from datetime import datetime
+    with open('error_log.txt', 'a', encoding='utf-8') as f:
+        f.write(f'--- {datetime.now()} ---\n')
+        f.write(traceback.format_exc())
+        f.write('\n\n')
+    return 'Unhandled Exception. Please check error_log.txt', 500
