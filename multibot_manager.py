@@ -1241,11 +1241,6 @@ class ResellerBotInstance:
                 await query.answer("⚠️ اعتبار فروشگاه موقتاً نیازمند شارژ است. لطفاً به پشتیبانی اطلاع دهید.", show_alert=True)
                 return
 
-            deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('display_name')}")
-            if not deduct_res.get("success"):
-                await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
-                return
-
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
             vol = plan.get("data_limit", 30)
             days = plan.get("duration", 30)
@@ -1274,7 +1269,8 @@ class ResellerBotInstance:
                             uuid=target_sub["hidify_uuid"],
                             usage_limit_gb=float(vol) if vol > 0 else None,
                             package_days=int(days),
-                            enable=True
+                            enable=True,
+                            reset_usage=True
                         )
                     except Exception as e_ren:
                         logger.error(f"Error renewing user in Hiddify via wallet: {e_ren}")
@@ -1439,6 +1435,11 @@ class ResellerBotInstance:
                     invoice_id = res.get("invoice_id")
 
             if pay_url:
+                is_renewal = bool(context.user_data.get("is_renewal"))
+                renew_sub_id = context.user_data.get("renew_sub_id")
+                instant_act = context.user_data.get("instant_activation", True)
+                act_comment = f"instant_act:{1 if instant_act else 0} renewal_sub_id:{renew_sub_id or 0}"
+
                 db.save_transaction(
                     order_id=order_id,
                     user_id=user.id,
@@ -1449,7 +1450,11 @@ class ResellerBotInstance:
                     tracking_code=str(invoice_id or order_id),
                     status="pending",
                     account_name=account_name,
-                    reseller_id=r_id
+                    account_comment=act_comment,
+                    is_renewal=1 if is_renewal else 0,
+                    renew_sub_id=renew_sub_id,
+                    reseller_id=r_id,
+                    source="reseller_bot"
                 )
                 gw_title = "کارت به کارت هوشمند بلوپال" if gw_type == "blupal" else "درگاه پرداخت آنلاین شاپرک"
                 btn_title = "🌐 ورود به درگاه پرداخت هوشمند بلوپال" if gw_type == "blupal" else "🌐 ورود به درگاه پرداخت شاپرک"
@@ -1575,21 +1580,25 @@ class ResellerBotInstance:
                 pname = plan.get("name", "پلن انتخابی")
 
             now_iso = get_now_iso()
-            is_renewal_val = 1 if context.user_data.get("is_renewal") else 0
-            renew_sub_id_val = context.user_data.get("renew_sub_id")
-            instant_act_val = context.user_data.get("instant_activation", True)
+            is_renewal_val = 1 if (p_inv.get("is_renewal") or context.user_data.get("is_renewal")) else 0
+            renew_sub_id_val = p_inv.get("renew_sub_id") or context.user_data.get("renew_sub_id")
+            instant_act_val = p_inv.get("instant_activation") if p_inv.get("instant_activation") is not None else context.user_data.get("instant_activation", True)
             act_comment = f"instant_act:{1 if instant_act_val else 0} renewal_sub_id:{renew_sub_id_val or 0}"
+
+            context.user_data.pop("is_renewal", None)
+            context.user_data.pop("renew_sub_id", None)
+            context.user_data.pop("instant_activation", None)
 
             conn = db.get_connection()
             conn.execute("""
                 INSERT OR REPLACE INTO transactions (
                     order_id, user_id, username, plan_name, amount, status, gateway,
-                    tracking_code, reseller_id, is_renewal, account_name, account_comment, source,
+                    tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, account_comment, source,
                     receipt_image, receipt_file_type, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, 'reseller_bot', ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, ?, 'reseller_bot', ?, ?, ?, ?)
             """, (
                 order_id, user.id, user.username or user.first_name, pname,
-                price, f"فیش عکس {order_id}", r_id, is_renewal_val, account_name, act_comment,
+                price, f"فیش عکس {order_id}", r_id, is_renewal_val, renew_sub_id_val, account_name, act_comment,
                 saved_receipt_filename or photo_file_id, "photo", now_iso, now_iso
             ))
             conn.commit()
@@ -1789,7 +1798,8 @@ class ResellerBotInstance:
                                     uuid=target_sub["hidify_uuid"],
                                     usage_limit_gb=float(vol) if vol > 0 else None,
                                     package_days=int(days),
-                                    enable=True
+                                    enable=True,
+                                    reset_usage=True
                                 )
                             except Exception as e_ren:
                                 logger.error(f"Error renewing user in Hiddify: {e_ren}")
@@ -2871,6 +2881,10 @@ class ResellerBotInstance:
                 user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                 target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
                 if not target_sub:
+                    sub_candidate = db.get_subscription(sub_id)
+                    if sub_candidate and int(sub_candidate.get("telegram_id") or 0) == int(update.effective_user.id):
+                        target_sub = sub_candidate
+                if not target_sub:
                     await query.answer("❌ اشتراک مورد نظر یافت نشد.", show_alert=True)
                     return
 
@@ -2880,6 +2894,8 @@ class ResellerBotInstance:
 
                 plans = db.get_reseller_active_plans(r_id)
                 if not plans:
+                    plans = [p for p in db.get_reseller_plans(r_id) if p.get("is_active", True)]
+                if not plans:
                     await query.edit_message_text("❌ در حال حاضر پلن فعالی برای تمدید وجود ندارد.")
                     return
 
@@ -2887,6 +2903,7 @@ class ResellerBotInstance:
                 text = f"🔄 <b>تمدید اشتراک «{acc_title}»:</b>\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:\n"
 
                 sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
+                sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
                 row_map = {}
                 for idx, p in enumerate(plans):
                     pid = p["plan_id"]
@@ -2923,12 +2940,25 @@ class ResellerBotInstance:
                     if row_btns:
                         buttons.append(row_btns)
 
+                if not buttons:
+                    for p in plans:
+                        pid = p["plan_id"]
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        price = p.get("display_price", 0)
+                        vol = p.get("data_limit", 0)
+                        days = p.get("duration", 30)
+                        vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                        emoji = get_plan_telegram_emoji(p, pid)
+                        btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}")])
+
                 cancel_btn = db.format_styled_button_text("◀️ انصراف", "danger")
                 buttons.append([InlineKeyboardButton(cancel_btn, callback_data="r_cancel_buy", style="danger")])
 
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception as e:
-                logger.error(f"Error in sub_renew_callback reseller {r_id}: {e}")
+                logger.error(f"Error in sub_renew_callback reseller {r_id}: {e}", exc_info=True)
+                await query.answer("❌ خطا در بارگذاری پلن‌های تمدید", show_alert=True)
 
         async def reseller_renew_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """انتخاب نحوه تمدید اشتراک: فعال‌سازی آنی یا قرارگیری در صف تمدید (رزرو خودکار)"""
@@ -2944,7 +2974,14 @@ class ResellerBotInstance:
 
                     user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                     target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
+                    if not target_sub:
+                        sub_candidate = db.get_subscription(sub_id)
+                        if sub_candidate and int(sub_candidate.get("telegram_id") or 0) == int(update.effective_user.id):
+                            target_sub = sub_candidate
                     plan = db.get_reseller_plan(r_id, plan_id)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(plan_id)), None)
                     if not target_sub or not plan:
                         await query.answer("❌ اشتراک یا پلن انتخابی یافت نشد.", show_alert=True)
                         return
@@ -3023,6 +3060,10 @@ class ResellerBotInstance:
 
                     user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                     target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
+                    if not target_sub:
+                        sub_candidate = db.get_subscription(sub_id)
+                        if sub_candidate and int(sub_candidate.get("telegram_id") or 0) == int(update.effective_user.id):
+                            target_sub = sub_candidate
                     if target_sub:
                         context.user_data["buying_account_name"] = target_sub.get("account_name")
 
@@ -4338,7 +4379,7 @@ class ResellerBotInstance:
             elif data.startswith("res_adm_rsub_"):
                 sub_id = int(data.replace("res_adm_rsub_", ""))
                 sub = db.get_subscription(sub_id)
-                if not sub or sub.get("reseller_id") != r_id:
+                if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                     await query.edit_message_text("❌ اشتراک یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
                     return
 
@@ -4376,7 +4417,7 @@ class ResellerBotInstance:
                     await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
 
                 sub = db.get_subscription(sub_id)
-                if not sub or sub.get("reseller_id") != r_id:
+                if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                     await query.edit_message_text("❌ اشتراک یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
                     return
 
@@ -4401,12 +4442,16 @@ class ResellerBotInstance:
                 btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")])
                 await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(btns), parse_mode="HTML")
 
-            elif data.startswith("res_adm_dorenew_"):
-                parts = data.replace("res_adm_dorenew_", "").split("_")
+            elif data.startswith("res_adm_dorenew_") or data.startswith("res_adm_cfren_"):
+                prefix = "res_adm_dorenew_" if data.startswith("res_adm_dorenew_") else "res_adm_cfren_"
+                parts = data.replace(prefix, "").split("_", 1)
                 if len(parts) >= 2:
                     s_id = int(parts[0])
                     p_id = parts[1]
                     plan = db.get_reseller_plan(r_id, p_id)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     if not plan:
                         await query.edit_message_text("❌ پلن یافت نشد.")
                         return
@@ -4481,6 +4526,9 @@ class ResellerBotInstance:
                     s_id = int(parts[1])
                     p_id = parts[2]
                     plan = db.get_reseller_plan(r_id, p_id)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     sub = db.get_subscription(s_id)
                     if not sub or not plan or int(sub.get("reseller_id") or 0) != int(r_id):
                         await query.answer("❌ اشتراک یا پلن نامعتبر است.", show_alert=True)
@@ -4516,11 +4564,14 @@ class ResellerBotInstance:
                     await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
             elif data.startswith("res_adm_rskip_disc_"):
-                parts = data.replace("res_adm_rskip_disc_", "").split("_")
+                parts = data.replace("res_adm_rskip_disc_", "").split("_", 1)
                 if len(parts) >= 2:
                     s_id = int(parts[0])
                     p_id = parts[1]
                     plan = db.get_reseller_plan(r_id, p_id)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     if not plan:
                         await query.edit_message_text("❌ پلن یافت نشد.")
                         return
@@ -4578,8 +4629,12 @@ class ResellerBotInstance:
                 parts = data.replace("res_adm_renpay_", "").split("_")
                 mode = parts[0]
                 sub_id = int(parts[1])
-                plan_id = parts[2]
-                target_card_id = int(parts[3]) if (mode == "card" and len(parts) > 3) else None
+                if mode == "card" and len(parts) > 3:
+                    target_card_id = int(parts[-1])
+                    plan_id = "_".join(parts[2:-1])
+                else:
+                    target_card_id = None
+                    plan_id = "_".join(parts[2:])
 
                 sub = db.get_subscription(sub_id)
                 if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
@@ -4587,6 +4642,18 @@ class ResellerBotInstance:
                     return
 
                 plan = db.get_reseller_plan(r_id, plan_id)
+                if not plan:
+                    plans = db.get_reseller_plans(r_id)
+                    plan = next((p for p in plans if str(p.get("plan_id")) == str(plan_id)), None)
+                if not plan and context.user_data.get("res_renew_plan_id"):
+                    saved_pid = context.user_data.get("res_renew_plan_id")
+                    plan = db.get_reseller_plan(r_id, saved_pid)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(saved_pid)), None)
+                    if plan:
+                        plan_id = saved_pid
+
                 if not plan:
                     await query.answer("❌ پلن یافت نشد.", show_alert=True)
                     return
@@ -5052,7 +5119,7 @@ class ResellerBotInstance:
 
             # ۰.۳. جستجوی اشتراک مشتری جهت تمدید
             if context.user_data.get("waiting_reseller_search_sub"):
-                if is_adm and role in ("main", "sales"):
+                if is_adm and role != "finance":
                     context.user_data.pop("waiting_reseller_search_sub")
                     subs = search_reseller_subscriptions(r_id, text)
                     if not subs:
@@ -5208,6 +5275,9 @@ class ResellerBotInstance:
                     s_id = context.user_data.get("res_renew_sub_id")
                     p_id = context.user_data.get("res_renew_plan_id")
                     plan = db.get_reseller_plan(r_id, p_id)
+                    if not plan:
+                        plans = db.get_reseller_plans(r_id)
+                        plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     sub = db.get_subscription(s_id)
                     if not sub or not plan:
                         await update.message.reply_text("❌ اشتراک یا پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
@@ -5376,11 +5446,11 @@ class ResellerBotInstance:
                     conn.execute("""
                         INSERT OR REPLACE INTO transactions (
                             order_id, user_id, username, plan_name, amount, status, gateway,
-                            tracking_code, reseller_id, is_renewal, account_name, account_comment, source, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, 'reseller_bot', ?, ?)
+                            tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, account_comment, source, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, ?, 'reseller_bot', ?, ?)
                     """, (
                         order_id, user.id, user.username or user.first_name, pname,
-                        price, text[:100], r_id, is_renewal_val, account_name, act_comment, now_iso, now_iso
+                        price, text[:100], r_id, is_renewal_val, renew_sub_id_val, account_name, act_comment, now_iso, now_iso
                     ))
                     conn.commit()
                     conn.close()
