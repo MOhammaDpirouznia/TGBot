@@ -2213,9 +2213,9 @@ class Database:
                     """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
 
                     # ثبت هوشمند اسنپ‌شات مصرف ساعتی
-                    if existing_sub and existing_sub.get("id") and current_usage > 0:
+                    if existing_sub and dict(existing_sub).get("id") and current_usage > 0:
                         try:
-                            self.record_subscription_traffic(existing_sub["id"], current_usage, uuid)
+                            self.record_subscription_traffic(dict(existing_sub).get("id"), current_usage, uuid)
                         except Exception:
                             pass
                 else:

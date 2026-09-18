@@ -8014,8 +8014,8 @@ def admin_trash_bulk():
                     new_start_date=h_res.get("new_start_date"),
                     new_expire_date=h_res.get("new_expire_date"),
                     new_data_used=h_res.get("data_used"),
-        new_data_limit=h_res.get("data_limit"),
-        new_duration=h_res.get("duration")
+                    new_data_limit=h_res.get("data_limit"),
+                    new_duration=h_res.get("duration")
                 )
                 success_count += 1
         db.add_system_log(
@@ -15306,8 +15306,8 @@ def reseller_trash_bulk():
                     new_start_date=h_res.get("new_start_date"),
                     new_expire_date=h_res.get("new_expire_date"),
                     new_data_used=h_res.get("data_used"),
-        new_data_limit=h_res.get("data_limit"),
-        new_duration=h_res.get("duration")
+                    new_data_limit=h_res.get("data_limit"),
+                    new_duration=h_res.get("duration")
                 )
                 success_count += 1
 
