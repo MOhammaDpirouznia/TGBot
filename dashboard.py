@@ -20645,6 +20645,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                     used_days = int(h.get("period_days") or 30)
             elif is_initial_sub and not has_subsequent_renewals:
                 used_days = int(h.get("period_days") or sub.get("duration") or 30)
+            else:
+                used_days = int(h.get("period_days") or 30)
             h["used_days"] = used_days
 
             usage_val = float(h.get("previous_usage_gb") or 0.0)
