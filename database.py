@@ -19460,13 +19460,8 @@ class Database:
             data_limit = float(sub["data_limit"] or 0.0)
             remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
 
-            # بررسی وجود لاگ یا نیاز به Seed اولیه
-            cnt_row = cursor.execute("SELECT COUNT(*) as c FROM subscription_traffic_logs WHERE sub_id = ?", (sub_id,)).fetchone()
-            if (not cnt_row or cnt_row["c"] < 2) and data_used > 0.05:
-                conn.close()
-                self.seed_subscription_traffic_history(sub_id)
-                conn = self.get_connection()
-                cursor = conn.cursor()
+            # آمارگیری زنده و واقعی بر اساس لاگ‌های دقیق ثبت‌شده
+            # (تولید داده‌های تخمینی گذشته غیرفعال شد تا فقط داده‌های ۱۰۰٪ واقعی نمایش داده شوند)
 
             now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
             today_str = now.strftime("%Y-%m-%d")

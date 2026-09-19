@@ -1445,12 +1445,39 @@
             100% { transform: scale(1.15); opacity: 0.95; }
         }
 
-        /* ─── استایل‌های نمودار و تحلیل هوشمند ترافیک (Traffic Analytics Chart) ─── */
+        /* ─── استایل‌های نمودار و تحلیل هوشمند ترافیک (Traffic Analytics Chart & Table) ─── */
+        .traffic-stat-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
+        }
+        [data-bs-theme="light"] .traffic-stat-card {
+            background: rgba(241, 245, 249, 0.8) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+        }
+        .traffic-stat-value {
+            color: #f8fafc;
+        }
+        [data-bs-theme="light"] .traffic-stat-value {
+            color: #0f172a !important;
+        }
+
         .traffic-chart-container {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
             overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: thin;
             scrollbar-color: rgba(56, 189, 248, 0.3) transparent;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
+        }
+        [data-bs-theme="light"] .traffic-chart-container {
+            background: rgba(248, 250, 252, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.02);
         }
         .traffic-chart-container::-webkit-scrollbar {
             height: 4px;
@@ -1501,6 +1528,10 @@
             user-select: none;
             direction: ltr;
         }
+        [data-bs-theme="light"] .traffic-bar-label {
+            color: #475569 !important;
+            font-weight: 600;
+        }
         .traffic-grid-line {
             position: absolute;
             left: 12px;
@@ -1508,6 +1539,9 @@
             border-top: 1px dashed rgba(255, 255, 255, 0.12);
             pointer-events: none;
             z-index: 1;
+        }
+        [data-bs-theme="light"] .traffic-grid-line {
+            border-top: 1px dashed rgba(0, 0, 0, 0.09) !important;
         }
         .traffic-grid-line-max {
             top: 24px;
@@ -1525,6 +1559,11 @@
             padding: 0 4px;
             border-radius: 3px;
         }
+        [data-bs-theme="light"] .traffic-grid-label {
+            color: #64748b !important;
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
         .traffic-tooltip {
             position: absolute;
             background: rgba(15, 23, 42, 0.95);
@@ -1540,6 +1579,114 @@
             transition: opacity 0.15s ease;
             white-space: nowrap;
         }
+        [data-bs-theme="light"] .traffic-tooltip {
+            background: #1e293b !important;
+            color: #ffffff !important;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ─── کارت و جدول ریز جزئیات مصرف (سازگار ۱۰۰٪ با تم روشن و تیره) ─── */
+        .traffic-table-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        [data-bs-theme="light"] .traffic-table-card {
+            background: #ffffff !important;
+            border: 1px solid rgba(0, 0, 0, 0.09) !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+        }
+        .traffic-table {
+            --bs-table-bg: transparent;
+            --bs-table-color: inherit;
+            --bs-table-hover-bg: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.08);
+            margin-bottom: 0;
+        }
+        [data-bs-theme="light"] .traffic-table {
+            --bs-table-bg: #ffffff !important;
+            --bs-table-color: #0f172a !important;
+            --bs-table-hover-bg: rgba(241, 245, 249, 0.75) !important;
+            border-color: rgba(0, 0, 0, 0.06) !important;
+        }
+        .traffic-table th,
+        .traffic-table td {
+            padding: 8px 10px;
+        }
+        .traffic-table-head {
+            background-color: #0c1524 !important;
+            color: #94a3b8 !important;
+            font-size: 0.76rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+        [data-bs-theme="light"] .traffic-table-head {
+            background-color: #f1f5f9 !important;
+            color: #475569 !important;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+            font-weight: 700;
+        }
+        .traffic-table-head th {
+            background-color: inherit !important;
+            color: inherit !important;
+        }
+        .traffic-row-title {
+            color: #f8fafc;
+            font-weight: 600;
+        }
+        [data-bs-theme="light"] .traffic-row-title {
+            color: #0f172a !important;
+            font-weight: 600;
+        }
+        .traffic-row-usage {
+            color: #38bdf8;
+            font-weight: 700;
+        }
+        [data-bs-theme="light"] .traffic-row-usage {
+            color: #0284c7 !important;
+            font-weight: 700;
+        }
+        .traffic-row-progress {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        [data-bs-theme="light"] .traffic-row-progress {
+            background: rgba(0, 0, 0, 0.08) !important;
+        }
+        .traffic-badge-no-usage {
+            background: rgba(148, 163, 184, 0.15);
+            color: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        [data-bs-theme="light"] .traffic-badge-no-usage {
+            background: rgba(0, 0, 0, 0.04) !important;
+            color: #64748b !important;
+            border: 1px solid rgba(0, 0, 0, 0.06) !important;
+        }
+        .traffic-title-text {
+            color: #f8fafc;
+        }
+        [data-bs-theme="light"] .traffic-title-text {
+            color: #0f172a !important;
+        }
+        .traffic-total-badge {
+            background: rgba(148, 163, 184, 0.15);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        [data-bs-theme="light"] .traffic-total-badge {
+            background: rgba(37, 99, 235, 0.08) !important;
+            color: var(--primary, #2563eb) !important;
+            border: 1px solid rgba(37, 99, 235, 0.2) !important;
+            font-weight: 600;
+        }
+        [data-bs-theme="dark"] .modal .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
+        }
+        [data-bs-theme="light"] .modal .btn-close {
+            filter: none;
+            opacity: 0.7;
+        }
+
     </style>
 </head>
 <body class="py-4 portal-layout-{{ portal_layout or 'classic' }}">
@@ -1628,7 +1775,7 @@
                     </div>
                     <div class="small lh-base opacity-90 text-light" style="white-space: pre-line; word-break: break-word;">{{ sub.get('customer_note') }}</div>
                 </div>
-                <button type="button" class="btn-close btn-close-white position-absolute top-0 start-0 m-3" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ sub.get('customer_note')|length }}')" title="بستن پیام"></button>
+                <button type="button" class="btn-close btn-close-white position-absolute top-0 start-0 m-3" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ (sub.get('customer_note') or '')|length }}')" title="بستن پیام"></button>
             </div>
         </div>
         {% endif %}
@@ -1861,7 +2008,18 @@
     {% endmacro %}
 
     {% macro macro_sub_card() %}
-    <div class="glass-card p-4 mb-4">
+    <div class="glass-card p-4 mb-4 border border-primary border-opacity-25">
+        <!-- عنوان وضعیت بسته فعلی -->
+        <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom border-primary border-opacity-25">
+            <span class="badge bg-primary text-white rounded-circle p-2 d-inline-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                <i class="fas fa-box-open"></i>
+            </span>
+            <div>
+                <h6 class="fw-bold text-primary mb-0">وضعیت بسته فعلی</h6>
+                <small class="text-secondary" style="font-size: 0.75rem;">اطلاعات مصرف و اتصال به سرویس</small>
+            </div>
+        </div>
+
         <!-- سربرگ نام مشتری و دکمه‌های فشرده دسترسی سریع -->
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary border-opacity-25">
             <div>
@@ -1930,10 +2088,7 @@
                 {% endif %}
             </div>
         </div>
-
-        <!-- اعلان و مدیریت بسته‌های رزرو در صف تمدید -->
-        {{ macro_queue_card() }}
-
+        
         <!-- نوار پیشرفت مصرف حجم -->
         {% set used_gb = sub.get('data_used', 0) | float %}
         {% set total_gb = sub.get('data_limit', 0) | float %}
@@ -2094,7 +2249,7 @@
             <span class="badge bg-warning text-dark font-monospace" id="countdownTimer">--:--</span>
         </div>
 
-        <div class="alert alert-warning text-dark small border-0 mb-3">
+        <div class="alert alert-warning bg-warning bg-opacity-10 border border-warning border-opacity-25 text-white small mb-3">
             ⚠️ <strong>راهنما:</strong> لطفاً دقیقاً مبلغ تتر زیر را به آدرس ولت اختصاصی اعلام شده انتقال دهید. پس از واریز، تراکنش شما بررسی و اشتراک فعال خواهد شد.
         </div>
 
@@ -2154,7 +2309,7 @@
         </div>
 
         {% if is_auto_confirm_active %}
-        <div class="alert alert-warning text-dark small border-0 mb-3">
+        <div class="alert alert-warning bg-warning bg-opacity-10 border border-warning border-opacity-25 text-white small mb-3">
             ⚠️ <strong>بسیار مهم:</strong> سیستم دارای قابلیت تایید خودکار از طریق پیامک بانک است. لطفاً <strong>دقیقاً مبلغ زیر (شامل ارقام خرد)</strong> را واریز نمایید تا اشتراک شما درجا و بدون نیاز به ارسال فیش تمدید شود.
         </div>
         {% else %}
@@ -2196,6 +2351,17 @@
                     <i class="fas fa-copy me-1"></i> کپی کارت
                 </button>
             </div>
+            {% if invoice.get('shaba_number') %}
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary border-opacity-25">
+                <div class="d-flex flex-column">
+                    <span class="text-secondary small mb-1">شماره شبا:</span>
+                    <span class="fs-6 font-monospace text-info fw-bold" dir="ltr">{{ invoice['shaba_number'] }}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-light copy-btn mt-3" onclick="copyText('{{ invoice['shaba_number'] }}', 'شماره شبا')">
+                    <i class="fas fa-copy me-1"></i> کپی شبا
+                </button>
+            </div>
+            {% endif %}
         </div>
 
         <!-- وضعیت انتظار زنده و دکمه لغو فاکتور -->
@@ -2632,7 +2798,6 @@
         <div class="bento-grid-wrapper">
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
-            {{ macro_queue_card() }}
 
             <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
             <div class="row g-3 mb-3">
@@ -2724,6 +2889,9 @@
                     </div>
                 </div>
             </div>
+
+            <!-- صف بسته‌های رزرو -->
+            {{ macro_queue_card() }}
 
             <!-- ردیف ۳ بنتو: تمدید و انتخاب پلن‌ها -->
             <div class="mb-3">
@@ -2933,7 +3101,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <div class="modal fade" id="trafficAnalyticsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-        <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
+        <div class="modal-content glass-card border-0 p-2 p-md-3">
             <div class="modal-header border-secondary border-opacity-25 pb-3">
                 <div class="d-flex align-items-center gap-2">
                     <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 44px; height: 44px;">
@@ -2944,51 +3112,51 @@
                         <small class="text-secondary">گزارش مصرف ساعتی، روزانه و تحلیل الگوی مصرف «{{ sub.get('account_name') }}»</small>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <div class="modal-body py-3">
                 <!-- ۴ کارت شاخص هوشمند (Smart Insight Cards) -->
                 <div class="row g-2 mb-4">
                     <div class="col-6 col-md-3">
-                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                        <div class="p-2 p-md-3 traffic-stat-card h-100 text-center">
                             <span class="text-warning small d-block mb-1 fw-bold">
                                 <i class="fas fa-bolt me-1"></i>ساعت اوج مصرف
                             </span>
-                            <strong class="text-white fs-6 d-block text-truncate" id="trafficPeakHour">
+                            <strong class="traffic-stat-value fs-6 d-block text-truncate" id="trafficPeakHour">
                                 {{ traffic_analytics.get('peak_hour') or '۱۹:۰۰ الی ۲۲:۰۰' }}
                             </strong>
                             <small class="text-secondary" style="font-size: 0.7rem;">پرمصرف‌ترین بازه در شبانه‌روز</small>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                        <div class="p-2 p-md-3 traffic-stat-card h-100 text-center">
                             <span class="text-info small d-block mb-1 fw-bold">
                                 <i class="fas fa-gauge-high me-1"></i>میانگین روزانه
                             </span>
-                            <strong class="text-white fs-6 d-block" id="trafficDailyAvg">
+                            <strong class="traffic-stat-value fs-6 d-block" id="trafficDailyAvg">
                                 {{ traffic_analytics.get('daily_avg_gb', 0) }} <small class="text-secondary">GB/روز</small>
                             </strong>
                             <small class="text-secondary" style="font-size: 0.7rem;">مصرف معمول در ۲۴ ساعت</small>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                        <div class="p-2 p-md-3 traffic-stat-card h-100 text-center">
                             <span class="text-primary small d-block mb-1 fw-bold">
                                 <i class="fas fa-circle-half-stroke me-1"></i>نسبت روز / شب
                             </span>
-                            <strong class="text-white fs-6 d-block" id="trafficDayNight">
+                            <strong class="traffic-stat-value fs-6 d-block" id="trafficDayNight">
                                 {{ traffic_analytics.get('day_pct', 75) }}٪ / {{ traffic_analytics.get('night_pct', 25) }}٪
                             </strong>
                             <small class="text-secondary" style="font-size: 0.7rem;">ساعات روز (۸-۲۴) به شب (۰-۸)</small>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="p-2 p-md-3 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100 text-center">
+                        <div class="p-2 p-md-3 traffic-stat-card h-100 text-center">
                             <span class="text-success small d-block mb-1 fw-bold">
                                 <i class="fas fa-hourglass-half me-1"></i>تخمین مانده حجم
                             </span>
-                            <strong class="text-white fs-6 d-block" id="trafficEstimatedDays">
+                            <strong class="traffic-stat-value fs-6 d-block" id="trafficEstimatedDays">
                                 {% if traffic_analytics.get('estimated_days_left') %}
                                     حدود {{ traffic_analytics.get('estimated_days_left') }} روز
                                 {% else %}
@@ -3002,7 +3170,7 @@
 
                 <!-- دکمه‌های سوئیچ بازه زمانی -->
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-25">
-                    <span class="small fw-bold text-white d-flex align-items-center gap-1">
+                    <span class="small fw-bold traffic-title-text d-flex align-items-center gap-1">
                         <i class="fas fa-chart-column text-info"></i>
                         نمودار ترافیک مصرفی:
                     </span>
@@ -3020,7 +3188,7 @@
                 </div>
 
                 <!-- کانتینر نمودار میله‌ای اختصاصی (CSS/Canvas Hybrid Bar Chart) -->
-                <div class="traffic-chart-container p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-25 mb-4 position-relative" style="min-height: 240px;">
+                <div class="traffic-chart-container p-3 mb-4 position-relative" style="min-height: 240px;">
                     <!-- تولتیپ شناور -->
                     <div id="trafficChartTooltip" class="traffic-tooltip" style="display: none;"></div>
 
@@ -3039,18 +3207,18 @@
                 </div>
 
                 <!-- جدول ریز جزئیات بازه انتخابی -->
-                <div class="traffic-table-card rounded bg-black bg-opacity-25 border border-secondary border-opacity-25 p-3 mb-3">
+                <div class="traffic-table-card p-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="small fw-bold text-white d-flex align-items-center gap-1">
+                        <span class="small fw-bold traffic-title-text d-flex align-items-center gap-1">
                             <i class="fas fa-table-list text-info"></i>
                             ریز مصرف در <span id="trafficTableRangeTitle">۲۴ ساعت گذشته</span>:
                         </span>
-                        <span class="badge bg-secondary bg-opacity-25 text-white-50 small" id="trafficTableTotalBadge">جمع: 0 MB</span>
+                        <span class="badge traffic-total-badge small" id="trafficTableTotalBadge">جمع: 0 MB</span>
                     </div>
 
                     <div class="table-responsive" style="max-height: 220px; scrollbar-width: thin;">
-                        <table class="table table-dark table-sm table-hover align-middle mb-0" style="font-size: 0.8rem;">
-                            <thead class="text-secondary text-center sticky-top" style="background-color: #0c1524;">
+                        <table class="table traffic-table table-sm table-hover align-middle mb-0" style="font-size: 0.8rem;">
+                            <thead class="traffic-table-head text-center sticky-top">
                                 <tr>
                                     <th class="text-start">بازه / زمان</th>
                                     <th>حجم مصرفی</th>
@@ -4826,6 +4994,9 @@ function applyPortalTheme(theme) {
             label.textContent = 'حالت تیره';
         }
     }
+    try {
+        if (window.refreshTrafficTheme) window.refreshTrafficTheme();
+    } catch(e) {}
 }
 
 function togglePortalTheme() {
@@ -5060,7 +5231,8 @@ window.tgHaptic = function(type = 'light') {
             pill.style.height = heightPct + '%';
 
             if (mbVal === 0) {
-                pill.style.background = 'rgba(255, 255, 255, 0.08)';
+                const isLight = document.documentElement.getAttribute('data-bs-theme') === 'light';
+                pill.style.background = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
                 pill.style.boxShadow = 'none';
             }
 
@@ -5091,7 +5263,7 @@ window.tgHaptic = function(type = 'light') {
 
             function showTooltip(e) {
                 if (!tooltip) return;
-                tooltip.innerHTML = `<strong>${fullTitle}</strong><br><span class="text-info">${formattedUsage}</span>` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
+                tooltip.innerHTML = `<strong>${fullTitle}</strong><br><span class="traffic-row-usage">${formattedUsage}</span>` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
                 tooltip.style.display = 'block';
 
                 const rect = col.getBoundingClientRect();
@@ -5120,20 +5292,20 @@ window.tgHaptic = function(type = 'light') {
                 const pctOfTotal = totalUsageMb > 0 ? Math.round((mbVal / totalUsageMb) * 100) : 0;
                 tr.innerHTML = `
                     <td class="text-start">
-                        <span class="text-white fw-bold">${fullTitle}</span>
+                        <span class="traffic-row-title">${fullTitle}</span>
                         ${item.is_current ? '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>' : ''}
                     </td>
-                    <td><strong class="text-info">${formattedUsage}</strong></td>
+                    <td><strong class="traffic-row-usage">${formattedUsage}</strong></td>
                     <td style="width: 25%;">
                         <div class="d-flex align-items-center gap-1 justify-content-center">
-                            <div class="progress flex-grow-1" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                            <div class="progress flex-grow-1 traffic-row-progress" style="height: 6px; border-radius: 4px;">
                                 <div class="progress-bar ${item.is_peak ? 'bg-warning' : 'bg-primary'}" style="width: ${pctOfTotal}%; border-radius: 4px;"></div>
                             </div>
                             <small class="text-secondary" style="font-size: 0.7rem; min-width: 28px;">${pctOfTotal}٪</small>
                         </div>
                     </td>
                     <td class="text-end">
-                        ${item.is_peak ? '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>' : (mbVal > 0 ? '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>' : '<span class="badge bg-secondary bg-opacity-25 text-white-50" style="font-size: 0.68rem;">بدون مصرف</span>')}
+                        ${item.is_peak ? '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>' : (mbVal > 0 ? '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>' : '<span class="badge traffic-badge-no-usage" style="font-size: 0.68rem;">بدون مصرف</span>')}
                     </td>
                 `;
                 tableBody.appendChild(tr);
@@ -5143,6 +5315,9 @@ window.tgHaptic = function(type = 'light') {
 
     // رندر اولیه روی ۲۴ ساعت
     renderChart('24h');
+    window.refreshTrafficTheme = function() {
+        renderChart(currentRange);
+    };
 
     // رندر مجدد در صورت باز شدن مودال
     const modalEl = document.getElementById('trafficAnalyticsModal');
@@ -5150,6 +5325,7 @@ window.tgHaptic = function(type = 'light') {
         modalEl.addEventListener('shown.bs.modal', function() {
             renderChart(currentRange);
         });
+    }
     // مدیریت پنهان‌سازی هوشمند پیام مدیریت در پورتال
     window.dismissCustomerNotice = function(subId, noteLen) {
         try {
@@ -5160,7 +5336,7 @@ window.tgHaptic = function(type = 'light') {
     const noticeEl = document.getElementById('customerNoticeBanner');
     if (noticeEl) {
         const subId = "{{ sub.get('id') }}";
-        const noteLen = "{{ sub.get('customer_note')|length }}";
+        const noteLen = "{{ (sub.get('customer_note') or '')|length }}";
         try {
             if (sessionStorage.getItem('dismissed_cust_notice_' + subId + '_' + noteLen) === '1') {
                 noticeEl.style.display = 'none';
