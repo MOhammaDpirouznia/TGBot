@@ -1576,7 +1576,7 @@
             z-index: 30;
             box-shadow: 0 4px 18px rgba(0,0,0,0.6);
             border: 1px solid rgba(56, 189, 248, 0.4);
-            transform: translate(-50%, -100%);
+            transform: translateX(-50%);
             transition: opacity 0.15s ease;
             white-space: nowrap;
         }
@@ -5457,9 +5457,16 @@ window.tgHaptic = function(type = 'light') {
 
                 const rect = col.getBoundingClientRect();
                 const parentRect = barsContainer.getBoundingClientRect();
-                const leftPos = (rect.left - parentRect.left) + (rect.width / 2);
+                let leftPos = (rect.left - parentRect.left) + (rect.width / 2);
+
+                // جلوگیری هوشمند از بیرون‌زدگی تولتیپ از حاشیه‌های چپ و راست
+                const halfTooltipWidth = 65;
+                const minLeft = halfTooltipWidth + 6;
+                const maxLeft = parentRect.width - halfTooltipWidth - 6;
+                leftPos = Math.max(minLeft, Math.min(leftPos, maxLeft));
+
                 tooltip.style.left = leftPos + 'px';
-                tooltip.style.top = '35px';
+                tooltip.style.top = '24px';
             }
 
             function hideTooltip() {
