@@ -841,21 +841,47 @@ def filter_shamsi_date(date_str, fmt="%Y/%m/%d %H:%M"):
 
 @app.template_filter("gregorian_clean")
 @app.template_global("format_gregorian_clean")
-def filter_gregorian_clean(date_str, with_seconds=False):
-    """پاکسازی و فرمت‌بندی خوانا برای تاریخ میلادی (حذف T و میکروثانیه)"""
+def filter_gregorian_clean(date_str, with_seconds=False, with_time=True):
+    """پاکسازی و فرمت‌بندی خوانا برای تاریخ میلادی (حذف T و میکروثانیه، با امکان حذف ساعت)"""
     if not date_str or str(date_str).strip() in ["", "None", "null", "-"]:
         return "-"
     try:
         clean = str(date_str).strip().replace("Z", "")
+        clean = clean.split("+")[0]  # حذف آفست تایم‌زون
         if "T" in clean:
-            clean = clean.split("+")[0]  # حذف آفست تایم‌زون
             dt = datetime.fromisoformat(clean)
+            if not with_time:
+                return dt.strftime("%Y-%m-%d")
             if with_seconds:
                 return dt.strftime("%Y-%m-%d %H:%M:%S")
             return dt.strftime("%Y-%m-%d %H:%M")
+        
+        # اگر تاریخ دارای ساعت است (با فاصله)
+        if " " in clean and len(clean) >= 16:
+            try:
+                dt = datetime.strptime(clean[:19], "%Y-%m-%d %H:%M:%S" if len(clean) > 16 else "%Y-%m-%d %H:%M")
+                if not with_time:
+                    return dt.strftime("%Y-%m-%d")
+                if with_seconds:
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+                return dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+
+        if not with_time:
+            return clean[:10]
         return str(date_str)[:19].replace("T", " ")
     except Exception:
+        if not with_time:
+            return str(date_str)[:10]
         return str(date_str)[:19].replace("T", " ")
+
+
+@app.template_filter("gregorian_date")
+@app.template_global("format_gregorian_date")
+def filter_gregorian_date(date_str):
+    """فرمت‌بندی تاریخ میلادی فقط به صورت تاریخ بدون ساعت (YYYY-MM-DD)"""
+    return filter_gregorian_clean(date_str, with_seconds=False, with_time=False)
 
 
 @app.template_filter("diff_time")
@@ -3065,6 +3091,27 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
     item["remaining_gb"] = round(remaining_gb, 2)
     item["usage_pct"] = min(100, usage_pct)
     item["issuer_info"] = get_subscription_issuer_info(item, resellers_map=resellers_map, admins_map=admins_map)
+
+    # تعیین وضعیت دقیق تمدید یا ساخت جدید
+    last_ren = item.get("last_renewed_at")
+    created_at_val = item.get("created_at")
+    is_renewed = False
+    if last_ren and str(last_ren).strip() not in ("", "None", "null", "-"):
+        if created_at_val and str(created_at_val).strip() not in ("", "None", "null", "-"):
+            try:
+                c_clean = str(created_at_val).replace("Z", "").split(".")[0].split("+")[0].strip()
+                r_clean = str(last_ren).replace("Z", "").split(".")[0].split("+")[0].strip()
+                c_dt = datetime.strptime(c_clean[:19], "%Y-%m-%d %H:%M:%S")
+                r_dt = datetime.strptime(r_clean[:19], "%Y-%m-%d %H:%M:%S")
+                # اگر اختلاف زمانی تمدید با ساخت بیش از ۱۲۰ ثانیه باشد، قطعا تمدید واقعی است
+                if (r_dt - c_dt).total_seconds() > 120:
+                    is_renewed = True
+            except Exception:
+                if str(last_ren)[:16] != str(created_at_val)[:16]:
+                    is_renewed = True
+        else:
+            is_renewed = True
+    item["is_renewed"] = is_renewed
 
     # قالب‌بندی تفکیک‌شده حجم به همراه حجم هدیه (مثلاً: 30روزه 30گیگ + 5گیگ هدیه)
     gift_traffic = float(item.get("gift_traffic_gb") or 0.0)
@@ -14028,8 +14075,8 @@ def reseller_create_user():
              payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by,
              reseller_note, reseller_note_updated_at, reseller_note_updated_by,
              customer_note, customer_note_updated_at, customer_note_updated_by,
-             gift_traffic_gb, discount_amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             gift_traffic_gb, discount_amount, created_at, updated_at, last_lifecycle_event_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             effective_limit_gb, duration_days, start_date, expire_date, reseller_id, user_limit, final_price,
@@ -14037,7 +14084,7 @@ def reseller_create_user():
             actual_payment_source, reseller_creator,
             internal_note or None, (now if internal_note else None), (reseller_creator if internal_note else None),
             customer_note or None, (now if customer_note else None), (reseller_creator if customer_note else None),
-            gift_traffic, discount_amount, now, now
+            gift_traffic, discount_amount, now, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -14363,9 +14410,9 @@ def reseller_users():
             subs.append(item)
 
         if sort_by == "oldest":
-            subs.sort(key=lambda x: (x.get("last_renewed_at") or x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)))
+            subs.sort(key=lambda x: ((x.get("last_renewed_at") if x.get("is_renewed") else (x.get("last_lifecycle_event_at") or x.get("created_at"))) or "", x.get("id", 0)))
         else:
-            subs.sort(key=lambda x: (x.get("last_renewed_at") or x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)), reverse=True)
+            subs.sort(key=lambda x: ((x.get("last_renewed_at") if x.get("is_renewed") else (x.get("last_lifecycle_event_at") or x.get("created_at"))) or "", x.get("id", 0)), reverse=True)
 
     total_count = len(subs)
     total_pages = max(1, (total_count + per_page - 1) // per_page)

@@ -472,7 +472,8 @@
                                 <span>{{ issuer.get('text', 'مدیریت') }}</span>
                             </span>
                         </td>
-                        {% set event_date = sub.get('last_renewed_at') or sub.get('last_lifecycle_event_at') or sub.get('created_at') %}
+                        {% set is_sub_renewed = sub.get('is_renewed') if sub.get('is_renewed') is not none else (sub.get('last_renewed_at') and sub.get('created_at') and (sub.get('last_renewed_at')[:16] != sub.get('created_at')[:16])) %}
+                        {% set event_date = sub.get('last_renewed_at') if is_sub_renewed else (sub.get('created_at') or sub.get('last_lifecycle_event_at')) %}
                         <td data-value="{{ event_date or '' }}">
                             {% if event_date %}
                                 <div class="d-flex flex-column text-nowrap">
@@ -480,9 +481,9 @@
                                         {{ event_date|shamsi_date }}
                                     </span>
                                     <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
-                                        {{ event_date|gregorian_clean }}
+                                        {{ event_date|gregorian_clean(with_time=False) }}
                                     </span>
-                                    {% if sub.get('last_renewed_at') or (sub.get('last_lifecycle_event_at') and sub.get('last_lifecycle_event_at') != sub.get('created_at')) %}
+                                    {% if is_sub_renewed %}
                                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تمدید اشتراک">تمدید</span>
                                     {% else %}
                                         <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه ساخته شده">ساخت جدید</span>

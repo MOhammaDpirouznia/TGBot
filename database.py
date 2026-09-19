@@ -1594,19 +1594,36 @@ class Database:
             except Exception:
                 pass
 
-        # همگام‌سازی و اصلاح یکپارچه تاریخ‌های تمدید و ساخت اشتراک‌ها (حذف انقضا از اولویت‌بندی)
+        # همگام‌سازی و اصلاح یکپارچه تاریخ‌های تمدید و ساخت اشتراک‌ها (تفکیک دقیق ساخت جدید از تمدید)
         try:
-            # ۱. استخراج تاریخ آخرین تمدید واقعی از جدول سوابق دوره‌ها
+            # ۱. استخراج تاریخ آخرین تمدید واقعی از جدول سوابق دوره‌ها (منحصراً تمدیدها، بدون ساخت جدید یا انتقال به نماینده یا بدهی اولیه)
             cursor.execute("""
                 UPDATE subscriptions
                 SET last_renewed_at = (
                     SELECT MAX(renewed_at)
                     FROM subscription_history
                     WHERE subscription_history.subscription_id = subscriptions.id
+                      AND renewal_type NOT IN ('new_subscription', 'migrated_to_reseller', 'initial', 'debt_record')
                 )
                 WHERE last_renewed_at IS NULL
+                   OR last_renewed_at IN (
+                       SELECT renewed_at FROM subscription_history
+                       WHERE subscription_history.subscription_id = subscriptions.id
+                         AND renewal_type IN ('new_subscription', 'migrated_to_reseller', 'initial', 'debt_record')
+                   )
             """)
-            # ۲. تنظیم دقیق last_lifecycle_event_at منحصراً بر اساس تمدید یا ساخت
+            # ۲. پاک‌سازی قطعی last_renewed_at برای اشتراک‌هایی که اختلاف زمانی آن با created_at کمتر از ۲ دقیقه است و سابقه تمدید واقعی ندارند
+            cursor.execute("""
+                UPDATE subscriptions
+                SET last_renewed_at = NULL
+                WHERE last_renewed_at IS NOT NULL
+                  AND (SELECT count(*) FROM subscription_history WHERE subscription_history.subscription_id = subscriptions.id AND renewal_type NOT IN ('new_subscription', 'migrated_to_reseller', 'initial', 'debt_record')) = 0
+                  AND (
+                      substr(last_renewed_at, 1, 16) = substr(created_at, 1, 16)
+                      OR last_renewed_at IN (SELECT renewed_at FROM subscription_history WHERE subscription_history.subscription_id = subscriptions.id AND renewal_type IN ('new_subscription', 'migrated_to_reseller', 'initial', 'debt_record'))
+                  )
+            """)
+            # ۳. تنظیم دقیق last_lifecycle_event_at منحصراً بر اساس تمدید واقعی یا ساخت
             cursor.execute("""
                 UPDATE subscriptions
                 SET last_lifecycle_event_at = COALESCE(last_renewed_at, created_at)
@@ -7980,11 +7997,23 @@ class Database:
             ))
             if subscription_id:
                 try:
-                    cursor.execute("""
-                        UPDATE subscriptions
-                        SET last_renewed_at = ?, last_lifecycle_event_at = ?
-                        WHERE id = ?
-                    """, (now_str, now_str, subscription_id))
+                    if renewal_type == "new_subscription":
+                        # برای اشتراک تازه ساخته شده، last_renewed_at هرگز تنظیم نمی‌شود و خالی می‌ماند
+                        cursor.execute("""
+                            UPDATE subscriptions
+                            SET last_renewed_at = NULL,
+                                last_lifecycle_event_at = COALESCE(last_lifecycle_event_at, created_at, ?)
+                            WHERE id = ?
+                        """, (now_str, subscription_id))
+                    elif renewal_type == "migrated_to_reseller":
+                        # انتقال سازمانی به نماینده تمدید نیست و نباید تاریخ تمدید را دستکاری کند
+                        pass
+                    else:
+                        cursor.execute("""
+                            UPDATE subscriptions
+                            SET last_renewed_at = ?, last_lifecycle_event_at = ?
+                            WHERE id = ?
+                        """, (now_str, now_str, subscription_id))
                 except Exception:
                     pass
             conn.commit()
