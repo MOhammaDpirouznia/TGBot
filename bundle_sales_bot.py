@@ -37,6 +37,7 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    TypeHandler,
     filters
 )
 
@@ -814,7 +815,17 @@ class BundleSalesBotRunner:
 
         async def _main_async():
             app = Application.builder().token(token).build()
-            self._app = app
+            # میان‌افزار ردگیری فعالیت تلگرامی مدیران سامانه در ربات فروش بسته
+            async def bsb_track_activity_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+                try:
+                    user = update.effective_user
+                    if user and not user.is_bot and user.id:
+                        db.track_telegram_activity_if_admin(user.id)
+                except Exception:
+                    pass
+
+            app.add_handler(TypeHandler(Update, bsb_track_activity_middleware), group=-1)
+
             app.add_handler(CommandHandler("start", start_command))
             app.add_handler(CommandHandler("admin", start_command))
             app.add_handler(CallbackQueryHandler(bsb_callback_handler))

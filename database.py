@@ -6761,6 +6761,14 @@ class Database:
 
     def is_support_online_for_sub(self, sub_id: int, reseller_id: int = 0) -> dict:
         """تشخیص وضعیت آنلاین یا آفلاین بودن پشتیبان برای یک اشتراک خاص (پشتیبانی نماینده یا مدیر)"""
+        if (not reseller_id or int(reseller_id) <= 0) and sub_id and int(sub_id) > 0:
+            try:
+                sub = self.get_subscription(int(sub_id))
+                if sub and sub.get("reseller_id"):
+                    reseller_id = int(sub["reseller_id"])
+            except Exception:
+                pass
+
         mode = self.get_setting("chat_fake_online_mode", "real")
         raw_agents = self.get_setting("chat_fake_online_agents", [])
         if isinstance(raw_agents, list):
@@ -6815,87 +6823,115 @@ class Database:
         cursor = conn.cursor()
         try:
             now_tehran = datetime.now(TEHRAN_TZ)
+            def _is_recent(dt_str: Optional[str], max_sec: int = 15 * 60) -> bool:
+                if not dt_str:
+                    return False
+                try:
+                    dt = datetime.fromisoformat(dt_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=TEHRAN_TZ)
+                    return abs((now_tehran - dt).total_seconds()) <= max_sec
+                except Exception:
+                    return False
 
             if reseller_id and int(reseller_id) > 0:
-                # بررسی لاگین نماینده یا زیرمدیران فعال او
+                r_id = int(reseller_id)
+                # الف) بررسی لاگین نماینده یا زیرمدیران فعال او در وب پنل (۱۵ دقیقه اخیر)
                 cursor.execute("""
                     SELECT last_active_at, login_at FROM login_logs
-                    WHERE user_type IN ('reseller', 'reseller_subadmin') AND user_id = ? AND is_active = 1
+                    WHERE is_active = 1 AND (
+                        (user_type = 'reseller' AND user_id = ?)
+                        OR (user_type = 'reseller_subadmin' AND user_id IN (
+                            SELECT id FROM admin_users WHERE reseller_id = ?
+                        ))
+                    )
                     ORDER BY id DESC LIMIT 1
-                """, (reseller_id,))
+                """, (r_id, r_id))
                 row = cursor.fetchone()
-                if row:
-                    last_time_str = row[0] or row[1]
-                    if last_time_str:
-                        try:
-                            last_time = datetime.fromisoformat(last_time_str)
-                            if last_time.tzinfo is None:
-                                last_time = last_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - last_time).total_seconds()) <= 15 * 60:
-                                is_online = True
-                        except Exception:
-                            pass
+                if row and (_is_recent(row[0]) or _is_recent(row[1])):
+                    is_online = True
 
-                # بررسی ارسال پیام اخیر تیکت توسط نماینده
+                # ب) بررسی ارسال پیام اخیر تیکت توسط نماینده (۲۰ دقیقه اخیر)
                 if not is_online:
                     cursor.execute("""
                         SELECT created_at FROM ticket_messages
                         WHERE sender_type = 'reseller' AND sender_id = ?
                         ORDER BY id DESC LIMIT 1
-                    """, (reseller_id,))
+                    """, (r_id,))
                     t_msg = cursor.fetchone()
-                    if t_msg and t_msg[0]:
-                        try:
-                            t_time = datetime.fromisoformat(t_msg[0])
-                            if t_time.tzinfo is None:
-                                t_time = t_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - t_time).total_seconds()) <= 20 * 60:
-                                is_online = True
-                        except Exception:
-                            pass
+                    if t_msg and _is_recent(t_msg[0], max_sec=20 * 60):
+                        is_online = True
 
-                # بررسی فعالیت مستقیم نماینده و اپراتورهای تلگرام در ربات
+                # ج) بررسی فعالیت مستقیم نماینده و اپراتورها/ادمین‌های ربات تلگرام این نماینده (۱۵ دقیقه اخیر)
                 if not is_online:
                     try:
+                        # ۱. بررسی بر اساس ستون reseller_id در telegram_activity
                         cursor.execute("""
                             SELECT last_active_at FROM telegram_activity
-                            WHERE (reseller_id = ? OR telegram_id IN (
-                                SELECT telegram_id FROM resellers WHERE id = ?
-                                UNION
-                                SELECT telegram_id FROM admin_users WHERE reseller_id = ? AND is_active = 1
-                            ))
+                            WHERE reseller_id = ?
                             ORDER BY last_active_at DESC LIMIT 1
-                        """, (reseller_id, reseller_id, reseller_id))
+                        """, (r_id,))
                         act_row = cursor.fetchone()
-                        if act_row and act_row[0]:
-                            act_time = datetime.fromisoformat(act_row[0])
-                            if act_time.tzinfo is None:
-                                act_time = act_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - act_time).total_seconds()) <= 15 * 60:
-                                is_online = True
-                    except Exception:
-                        pass
+                        if act_row and _is_recent(act_row[0]):
+                            is_online = True
+
+                        # ۲. استعلام کلیه شناسه‌های تلگرامی مجاز برای این نماینده
+                        if not is_online:
+                            auth_tg_ids = set()
+                            cursor.execute("SELECT telegram_id, bot_admins FROM resellers WHERE id = ?", (r_id,))
+                            r_row = cursor.fetchone()
+                            if r_row:
+                                if r_row["telegram_id"]:
+                                    try:
+                                        auth_tg_ids.add(int(r_row["telegram_id"]))
+                                    except (ValueError, TypeError):
+                                        pass
+                                if r_row["bot_admins"]:
+                                    try:
+                                        b_adms = json.loads(r_row["bot_admins"])
+                                        for adm in b_adms:
+                                            if adm.get("telegram_id"):
+                                                auth_tg_ids.add(int(adm["telegram_id"]))
+                                    except Exception:
+                                        pass
+
+                            # اعضای تیم در admin_users متعلق به این نماینده
+                            cursor.execute("""
+                                SELECT telegram_id FROM admin_users
+                                WHERE reseller_id = ? AND is_active = 1 AND (bot_access = 1 OR bot_access_main = 1)
+                                  AND telegram_id IS NOT NULL AND telegram_id > 0
+                            """, (r_id,))
+                            for tu in cursor.fetchall():
+                                try:
+                                    auth_tg_ids.add(int(tu["telegram_id"]))
+                                except (ValueError, TypeError):
+                                    pass
+
+                            if auth_tg_ids:
+                                placeholders = ",".join("?" for _ in auth_tg_ids)
+                                cursor.execute(f"""
+                                    SELECT last_active_at FROM telegram_activity
+                                    WHERE telegram_id IN ({placeholders})
+                                    ORDER BY last_active_at DESC LIMIT 1
+                                """, tuple(auth_tg_ids))
+                                act_row2 = cursor.fetchone()
+                                if act_row2 and _is_recent(act_row2[0]):
+                                    is_online = True
+                    except Exception as ex:
+                        logger.error(f"Error checking reseller telegram activity: {ex}")
+
             else:
-                # بررسی ادمین اصلی و سایر مدیران پنل
+                # الف) بررسی ادمین اصلی و مدیران مرکزی در وب پنل (۱۵ دقیقه اخیر)
                 cursor.execute("""
                     SELECT last_active_at, login_at FROM login_logs
                     WHERE user_type = 'admin' AND is_active = 1
                     ORDER BY id DESC LIMIT 1
                 """)
                 row = cursor.fetchone()
-                if row:
-                    last_time_str = row[0] or row[1]
-                    if last_time_str:
-                        try:
-                            last_time = datetime.fromisoformat(last_time_str)
-                            if last_time.tzinfo is None:
-                                last_time = last_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - last_time).total_seconds()) <= 15 * 60:
-                                is_online = True
-                        except Exception:
-                            pass
+                if row and (_is_recent(row[0]) or _is_recent(row[1])):
+                    is_online = True
 
-                # بررسی ارسال پیام اخیر توسط ادمین
+                # ب) بررسی ارسال پیام اخیر تیکت توسط ادمین (۲۰ دقیقه اخیر)
                 if not is_online:
                     cursor.execute("""
                         SELECT created_at FROM ticket_messages
@@ -6903,35 +6939,59 @@ class Database:
                         ORDER BY id DESC LIMIT 1
                     """)
                     t_msg = cursor.fetchone()
-                    if t_msg and t_msg[0]:
-                        try:
-                            t_time = datetime.fromisoformat(t_msg[0])
-                            if t_time.tzinfo is None:
-                                t_time = t_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - t_time).total_seconds()) <= 20 * 60:
-                                is_online = True
-                        except Exception:
-                            pass
+                    if t_msg and _is_recent(t_msg[0], max_sec=20 * 60):
+                        is_online = True
 
-                # بررسی فعالیت مستقیم مدیران، پشتیبانان و مدیر ارشد در ربات تلگرام
+                # ج) بررسی فعالیت مستقیم مدیران، پشتیبانان و مدیر ارشد در ربات تلگرام (۱۵ دقیقه اخیر)
                 if not is_online:
                     try:
+                        # ۱. بررسی تلگرام اکتیویتی مربوط به مدیران ارشد سیستم (reseller_id خالی یا ۰)
                         cursor.execute("""
                             SELECT last_active_at FROM telegram_activity
-                            WHERE (role IN ('admin', 'super_admin', 'support', 'finance', 'creator') OR telegram_id IN (
-                                SELECT telegram_id FROM admin_users WHERE is_active = 1
-                            ))
+                            WHERE (reseller_id IS NULL OR reseller_id = 0)
+                              AND role IN ('admin', 'super_admin', 'support', 'finance', 'creator')
                             ORDER BY last_active_at DESC LIMIT 1
                         """)
                         act_row = cursor.fetchone()
-                        if act_row and act_row[0]:
-                            act_time = datetime.fromisoformat(act_row[0])
-                            if act_time.tzinfo is None:
-                                act_time = act_time.replace(tzinfo=TEHRAN_TZ)
-                            if abs((now_tehran - act_time).total_seconds()) <= 15 * 60:
-                                is_online = True
-                    except Exception:
-                        pass
+                        if act_row and _is_recent(act_row[0]):
+                            is_online = True
+
+                        # ۲. استعلام کلیه شناسه‌های تلگرامی مجاز برای مدیریت مرکزی
+                        if not is_online:
+                            admin_tg_ids = set()
+                            admin_env_id = os.getenv("ADMIN_ID", "0")
+                            if admin_env_id and admin_env_id.isdigit() and int(admin_env_id) > 0:
+                                admin_tg_ids.add(int(admin_env_id))
+                            admin_set_id = str(self.get_setting("admin_telegram_id", "") or "").strip()
+                            if admin_set_id and admin_set_id.isdigit() and int(admin_set_id) > 0:
+                                admin_tg_ids.add(int(admin_set_id))
+
+                            # مدیران مرکزی مجاز در admin_users (صرفاً مدیران کل سیستم نه نمایندگان)
+                            cursor.execute("""
+                                SELECT telegram_id FROM admin_users
+                                WHERE (reseller_id IS NULL OR reseller_id = 0)
+                                  AND is_active = 1
+                                  AND (bot_access_main = 1 OR bot_access = 1 OR role = 'super_admin')
+                                  AND telegram_id IS NOT NULL AND telegram_id > 0
+                            """)
+                            for au in cursor.fetchall():
+                                try:
+                                    admin_tg_ids.add(int(au["telegram_id"]))
+                                except (ValueError, TypeError):
+                                    pass
+
+                            if admin_tg_ids:
+                                placeholders = ",".join("?" for _ in admin_tg_ids)
+                                cursor.execute(f"""
+                                    SELECT last_active_at FROM telegram_activity
+                                    WHERE telegram_id IN ({placeholders})
+                                    ORDER BY last_active_at DESC LIMIT 1
+                                """, tuple(admin_tg_ids))
+                                act_row2 = cursor.fetchone()
+                                if act_row2 and _is_recent(act_row2[0]):
+                                    is_online = True
+                    except Exception as ex:
+                        logger.error(f"Error checking admin telegram activity: {ex}")
         except Exception as e:
             logger.error(f"Error checking support real online status: {e}")
             is_online = False
@@ -6946,11 +7006,12 @@ class Database:
             "mode": "real"
         }
 
-    def record_telegram_activity(self, telegram_id: int, role: str = "user", reseller_id: int = None):
+    def record_telegram_activity(self, telegram_id: int, role: str = "user", reseller_id: Optional[int] = None):
         """ثبت زمان آخرین فعالیت تلگرامی مدیر، نماینده یا پشتیبان جهت نمایش آنلاین بودن در پرتال مشتری"""
         if not telegram_id or int(telegram_id) <= 0:
             return
         now = get_now_iso()
+        r_id = int(reseller_id) if (reseller_id is not None and str(reseller_id).isdigit() and int(reseller_id) > 0) else None
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
@@ -6959,13 +7020,97 @@ class Database:
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(telegram_id) DO UPDATE SET 
                     role = excluded.role,
-                    reseller_id = COALESCE(excluded.reseller_id, telegram_activity.reseller_id),
+                    reseller_id = excluded.reseller_id,
                     last_active_at = excluded.last_active_at
-            """, (int(telegram_id), role, reseller_id, now))
+            """, (int(telegram_id), role, r_id, now))
             conn.commit()
             conn.close()
         except Exception as e:
             logger.debug(f"Error recording telegram activity for {telegram_id}: {e}")
+
+    def track_telegram_activity_if_admin(self, telegram_id: int, explicit_reseller_id: Optional[int] = None) -> bool:
+        """
+        ردگیری بلادرنگ و سریع فعالیت تلگرامی مدیران، نمایندگان و اعضای مجاز تیم در ربات‌ها
+        جهت انعکاس آنلاین بودن پشتیبانی در پورتال وب مشتریان به صورت کاملاً تفکیک‌شده و ایزوله.
+        دارای سیستم کش و بازه کنترل (Throttle) برای جلوگیری از کوئری‌ها و نوشتن‌های مکرر در دیتابیس.
+        """
+        if not telegram_id:
+            return False
+        try:
+            tg_id = int(telegram_id)
+            if tg_id <= 0:
+                return False
+        except (ValueError, TypeError):
+            return False
+
+        # ۱. کنترل نرخ ثبت در دیتابیس (Throttle) - اگر در ۴۵ ثانیه گذشته ثبت شده، صرف‌نظر کن
+        try:
+            from cache_manager import cache
+            last_recorded = cache.get(f"tg_act_throttle:{tg_id}")
+            if last_recorded and (time.time() - last_recorded < 45):
+                return True
+        except Exception:
+            pass
+
+        # ۲. بررسی اینکه آیا کاربر مدیر اصلی سامانه است یا خیر
+        admin_env_id = os.getenv("ADMIN_ID", "0")
+        admin_setting_id = str(self.get_setting("admin_telegram_id", "") or "").strip()
+        tg_id_str = str(tg_id)
+
+        is_central_admin = False
+        if (admin_env_id and admin_env_id.isdigit() and tg_id == int(admin_env_id)) or (admin_setting_id and tg_id_str == admin_setting_id):
+            is_central_admin = True
+        else:
+            admin_mgr = self.get_admin_manager_by_telegram_id(tg_id)
+            if admin_mgr:
+                is_central_admin = True
+
+        if is_central_admin:
+            self.record_telegram_activity(tg_id, role="admin", reseller_id=None)
+            try:
+                from cache_manager import cache
+                cache.set(f"tg_act_throttle:{tg_id}", time.time(), ttl=60)
+            except Exception:
+                pass
+            return True
+
+        # ۳. بررسی نماینده یا اعضای مجاز تیم ربات نماینده
+        if explicit_reseller_id and int(explicit_reseller_id) > 0:
+            r_id = int(explicit_reseller_id)
+            is_r_adm, r_role = self.is_reseller_bot_admin(r_id, tg_id)
+            if is_r_adm:
+                self.record_telegram_activity(tg_id, role=r_role or "reseller", reseller_id=r_id)
+                try:
+                    from cache_manager import cache
+                    cache.set(f"tg_act_throttle:{tg_id}", time.time(), ttl=60)
+                except Exception:
+                    pass
+                return True
+        else:
+            # جستجو در کلیه نمایندگان
+            is_any_r_adm, r_id_found, r_role = self.is_telegram_user_any_reseller_admin(tg_id)
+            if is_any_r_adm and r_id_found:
+                self.record_telegram_activity(tg_id, role=r_role or "reseller", reseller_id=r_id_found)
+                try:
+                    from cache_manager import cache
+                    cache.set(f"tg_act_throttle:{tg_id}", time.time(), ttl=60)
+                except Exception:
+                    pass
+                return True
+
+            # بررسی فیلد مستقیم telegram_id در جدول resellers
+            reseller = self.get_reseller_by_telegram_id(tg_id)
+            if reseller and reseller.get("id"):
+                r_id = reseller["id"]
+                self.record_telegram_activity(tg_id, role="main", reseller_id=r_id)
+                try:
+                    from cache_manager import cache
+                    cache.set(f"tg_act_throttle:{tg_id}", time.time(), ttl=60)
+                except Exception:
+                    pass
+                return True
+
+        return False
 
     # ═══════════════════════════════════════════════════════════════
     # بنرها و اطلاعیه‌های پرتال مشتریان (مختص مدیریت)

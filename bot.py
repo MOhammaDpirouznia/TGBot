@@ -55,6 +55,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ConversationHandler,
     ContextTypes,
+    TypeHandler,
     filters,
 )
 
@@ -10090,6 +10091,17 @@ def main():
         ] + main_menu_handlers,
         conversation_timeout=600,  # 10 دقیقه timeout
     )
+
+    # میان‌افزار سراسری ردگیری بلادرنگ فعالیت تلگرامی مدیران، نمایندگان و اعضای مجاز تیم در ربات
+    async def track_activity_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            user = update.effective_user
+            if user and not user.is_bot and user.id:
+                db.track_telegram_activity_if_admin(user.id)
+        except Exception:
+            pass
+
+    application.add_handler(TypeHandler(Update, track_activity_middleware), group=-1)
 
     # اضافه کردن هندلرها
     application.add_handler(conv_handler)

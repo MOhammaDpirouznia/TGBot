@@ -68,6 +68,7 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    TypeHandler,
     filters
 )
 
@@ -5761,6 +5762,17 @@ class ResellerBotInstance:
 
             # ۴. پاسخ پیش‌فرض
             await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.")
+
+        # میان‌افزار ردگیری بلادرنگ فعالیت تلگرامی نماینده و ادمین‌های ربات نماینده
+        async def reseller_track_activity_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            try:
+                user = update.effective_user
+                if user and not user.is_bot and user.id:
+                    db.track_telegram_activity_if_admin(user.id, explicit_reseller_id=r_id)
+            except Exception:
+                pass
+
+        app.add_handler(TypeHandler(Update, reseller_track_activity_middleware), group=-1)
 
         # ثبت هندلرها
         app.add_handler(CommandHandler("start", start_handler))
