@@ -26,15 +26,17 @@
                     <tr>
                         <th class="ps-3 sortable-th" data-column="0">کد تخفیف</th>
                         <th class="sortable-th" data-column="1">میزان تخفیف</th>
-                        <th class="sortable-th" data-column="2">سقف استفاده</th>
-                        <th class="sortable-th" data-column="3">تعداد استفاده شده</th>
-                        <th class="sortable-th" data-column="4">مهلت اعتبار</th>
-                        <th class="sortable-th" data-column="5">وضعیت</th>
-                        <th class="text-end pe-3">عملیات</th>
+                        <th class="sortable-th" data-column="2">پلن‌های مجاز</th>
+                        <th class="sortable-th" data-column="3">سقف استفاده</th>
+                        <th class="sortable-th" data-column="4">تعداد استفاده شده</th>
+                        <th class="sortable-th" data-column="5">مهلت اعتبار</th>
+                        <th class="sortable-th" data-column="6">وضعیت</th>
+                        <th class="text-end pe-3" style="min-width: 130px;">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for d in discounts %}
+                    {% set d_allowed = (d.get('allowed_plans') or '').split(',') %}
                     <tr>
                         <td class="ps-3" data-value="{{ d.get('code') }}"><strong class="font-monospace fs-6 text-primary">{{ d.get('code') }}</strong></td>
                         <td data-value="{{ d.get('discount_percent') or d.get('discount_amount') or 0 }}">
@@ -42,6 +44,22 @@
                                 <span class="badge bg-primary fs-6">{{ d.get('discount_percent') }}%</span>
                             {% else %}
                                 <span class="badge bg-success fs-6 font-monospace">{{ "{:,}".format(d.get('discount_amount') or 0) }} تومان</span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ d.get('allowed_plans') or '' }}">
+                            {% if d.get('allowed_plans') and d.get('allowed_plans').strip() %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for pid in d_allowed %}
+                                        {% if pid.strip() %}
+                                            {% set p_info = plans_dict.get(pid.strip()) %}
+                                            <span class="badge bg-info-subtle text-info border border-info" style="font-size: 0.72rem;">
+                                                <i class="fas fa-cube me-1"></i>{{ p_info.name if p_info else pid }}
+                                            </span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <span class="badge bg-light text-secondary border"><i class="fas fa-layer-group me-1"></i>همه پلن‌ها</span>
                             {% endif %}
                         </td>
                         <td data-value="{{ d.get('max_uses') or 99999 }}">{{ d.get('max_uses') if d.get('max_uses') > 0 else 'نامحدود' }}</td>
@@ -54,15 +72,18 @@
                                 <span class="badge bg-secondary">غیرفعال</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
-                                <form action="{{ url_for('reseller_discount_toggle', discount_id=d['id']) }}" method="POST" class="d-inline">
-                                    <button type="submit" class="btn {{ 'btn-outline-warning' if d.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت">
+                                <button type="button" class="btn btn-outline-primary py-1 px-2" data-bs-toggle="modal" data-bs-target="#editDiscountModal{{ d['id'] }}" title="ویرایش کد تخفیف">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
+                                <form action="{{ url_for('reseller_discount_toggle', discount_id=d['id']) }}" method="POST" class="d-inline m-0">
+                                    <button type="submit" class="btn {{ 'btn-outline-warning' if d.get('is_active') else 'btn-outline-success' }} py-1 px-2" title="{{ 'غیرفعال‌سازی' if d.get('is_active') else 'فعال‌سازی' }}">
                                         <i class="fas fa-power-off"></i>
                                     </button>
                                 </form>
-                                <form action="{{ url_for('reseller_discount_delete', discount_id=d['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کد تخفیف اطمینان دارید؟');">
-                                    <button type="submit" class="btn btn-outline-danger" title="حذف کد">
+                                <form action="{{ url_for('reseller_discount_delete', discount_id=d['id']) }}" method="POST" class="d-inline m-0" onsubmit="return confirm('آیا از حذف این کد تخفیف اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-danger py-1 px-2" title="حذف کد">
                                         <i class="fas fa-trash-can"></i>
                                     </button>
                                 </form>
@@ -123,16 +144,20 @@
                         </div>
                     </div>
                     <div class="mb-3 mt-3">
-                        <label class="form-label fw-bold">پلن‌های مجاز (اختیاری - در صورت عدم انتخاب برای همه اعمال می‌شود)</label>
-                        <div class="border p-2 rounded" style="max-height: 150px; overflow-y: auto;">
+                        <label class="form-label fw-bold">پلن‌های مجاز (اختیاری - در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
+                        <div class="border p-2 rounded bg-light" style="max-height: 180px; overflow-y: auto;">
                             {% for p in plans %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="allowed_plans" value="{{ p.id }}" id="plan_{{ p.id }}">
-                                <label class="form-check-label" for="plan_{{ p.id }}">
-                                    {{ p.name }} ({{ p.days }} روزه - {{ p.size_gb }} گیگ)
+                            <div class="form-check py-1 border-bottom border-light">
+                                <input class="form-check-input" type="checkbox" name="allowed_plans" value="{{ p.id }}" id="r_add_plan_{{ p.id }}">
+                                <label class="form-check-label d-flex justify-content-between align-items-center w-100 pe-2 cursor-pointer" for="r_add_plan_{{ p.id }}">
+                                    <span class="fw-semibold text-dark">{{ p.name }}</span>
+                                    <small class="text-muted font-monospace">({{ p.duration }} روزه - {{ p.data_limit }} گیگ) - {{ "{:,}".format(p.price) }} ت</small>
                                 </label>
                             </div>
                             {% endfor %}
+                            {% if not plans %}
+                            <div class="text-center py-2 text-muted small">هیچ پلن فعالی یافت نشد.</div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -144,4 +169,74 @@
         </div>
     </div>
 </div>
+
+<!-- مودال‌های ویرایش کدهای تخفیف نماینده -->
+{% for d in discounts %}
+{% set d_allowed = (d.get('allowed_plans') or '').split(',') %}
+<div class="modal fade text-start" id="editDiscountModal{{ d['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square me-2"></i>ویرایش کد تخفیف «{{ d.get('code') }}»</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('reseller_discount_edit', discount_id=d['id']) }}" method="POST">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">کد تخفیف (انگلیسی) <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace text-uppercase" name="code" value="{{ d.get('code') }}" dir="ltr" required pattern="^[a-zA-Z0-9_.-]+$">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">درصد تخفیف (درصدی)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace" name="discount_percent" min="0" max="100" value="{{ d.get('discount_percent') or '' }}" placeholder="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">یا مبلغ ثابت (تومان)</label>
+                            <input type="number" class="form-control font-monospace" name="discount_amount" min="0" value="{{ d.get('discount_amount') or '' }}" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">حداکثر دفعات استفاده (0 = نامحدود)</label>
+                            <input type="number" class="form-control font-monospace" name="max_uses" min="0" value="{{ d.get('max_uses') or 0 }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">تاریخ انقضا (اختیاری)</label>
+                            <input type="date" class="form-control font-monospace" name="valid_until" value="{{ d.get('valid_until') or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" name="is_active" value="1" id="r_editActive{{ d['id'] }}" {% if d.get('is_active') %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold" for="r_editActive{{ d['id'] }}">
+                            وضعیت فعال بودن کد تخفیف
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">پلن‌های مجاز (در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
+                        <div class="border p-2 rounded bg-light" style="max-height: 180px; overflow-y: auto;">
+                            {% for p in plans %}
+                            <div class="form-check py-1 border-bottom border-light">
+                                <input class="form-check-input" type="checkbox" name="allowed_plans" value="{{ p.id }}" id="r_edit_plan_{{ d['id'] }}_{{ p.id }}" {% if p.id in d_allowed %}checked{% endif %}>
+                                <label class="form-check-label d-flex justify-content-between align-items-center w-100 pe-2 cursor-pointer" for="r_edit_plan_{{ d['id'] }}_{{ p.id }}">
+                                    <span class="fw-semibold text-dark">{{ p.name }}</span>
+                                    <small class="text-muted font-monospace">({{ p.duration }} روزه - {{ p.data_limit }} گیگ) - {{ "{:,}".format(p.price) }} ت</small>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

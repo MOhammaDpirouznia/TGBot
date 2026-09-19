@@ -6165,7 +6165,7 @@ class Database:
         finally:
             conn.close()
 
-    def use_discount_code(self, code):
+    def use_discount_code(self, code, plan_id: str = None):
         """استفاده از کد تخفیف"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6174,19 +6174,27 @@ class Database:
             cursor.execute("SELECT * FROM discount_codes WHERE code = ? AND is_active = 1", (code.upper(),))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "کد تخفیف یافت نشد"}
+                return {"success": False, "error": "کد تخفیف یافت نشد."}
             
             discount = dict(row)
             
+            # بررسی پلن‌های مجاز
+            raw_allowed = (discount.get("allowed_plans") or "").strip()
+            if raw_allowed:
+                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
+                if allowed_list:
+                    if not plan_id or str(plan_id).strip() not in allowed_list:
+                        return {"success": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+
             # بررسی تاریخ اعتبار
             if discount["valid_until"]:
                 valid_until = datetime.fromisoformat(discount["valid_until"])
                 if get_now_naive() > valid_until:
-                    return {"success": False, "error": "کد تخفیف منقضی شده"}
+                    return {"success": False, "error": "کد تخفیف منقضی شده است."}
             
             # بررسی تعداد استفاده
             if discount["max_uses"] > 0 and discount["used_count"] >= discount["max_uses"]:
-                return {"success": False, "error": "کد تخفیف به حداکثر استفاده رسیده"}
+                return {"success": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
             
             # بروزرسانی تعداد استفاده
             cursor.execute("UPDATE discount_codes SET used_count = used_count + 1, updated_at = ? WHERE code = ?", (now, code.upper()))
@@ -6215,11 +6223,13 @@ class Database:
             
             d = dict(row)
             
-            if plan_id and d.get("allowed_plans"):
-                allowed_plans = d.get("allowed_plans").split(",")
-                allowed_plans = [p.strip() for p in allowed_plans if p.strip()]
-                if allowed_plans and str(plan_id) not in allowed_plans:
-                    return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+            # بررسی پلن‌های مجاز
+            raw_allowed = (d.get("allowed_plans") or "").strip()
+            if raw_allowed:
+                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
+                if allowed_list:
+                    if not plan_id or str(plan_id).strip() not in allowed_list:
+                        return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
 
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
@@ -6343,6 +6353,80 @@ class Database:
             return {"success": True}
         except Exception as e:
             logger.error(f"Error deleting discount code: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_discount_code(self, code_or_id):
+        """دریافت مشخصات یک کد تخفیف بر اساس شناسه یا کد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if isinstance(code_or_id, int) or (isinstance(code_or_id, str) and code_or_id.isdigit()):
+                cursor.execute("SELECT * FROM discount_codes WHERE id = ?", (int(code_or_id),))
+            else:
+                cursor.execute("SELECT * FROM discount_codes WHERE code = ?", (str(code_or_id).strip().upper(),))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting discount code: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def update_discount_code(self, discount_id: int, **kwargs) -> dict:
+        """ویرایش مشخصات و دسترسی‌های یک کد تخفیف مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            allowed_fields = ["code", "discount_percent", "discount_amount", "max_uses", "valid_until", "is_active", "allowed_plans"]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k in allowed_fields:
+                    if k == "code":
+                        clean_code = str(v).strip().upper()
+                        cursor.execute("SELECT id FROM discount_codes WHERE code = ? AND id != ?", (clean_code, discount_id))
+                        if cursor.fetchone():
+                            return {"success": False, "error": "این کد تخفیف قبلاً برای کوپن دیگری ثبت شده است."}
+                        fields.append(f"{k} = ?")
+                        params.append(clean_code)
+                    else:
+                        fields.append(f"{k} = ?")
+                        params.append(v)
+            if not fields:
+                return {"success": False, "error": "هیچ فیلدی برای تغییر ارسال نشده است."}
+
+            fields.append("updated_at = ?")
+            params.append(now)
+            params.append(discount_id)
+
+            cursor.execute(f"UPDATE discount_codes SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating discount code: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_discount_code(self, discount_id: int) -> dict:
+        """فعال یا غیرفعال کردن کد تخفیف مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT is_active FROM discount_codes WHERE id = ?", (discount_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "کد تخفیف یافت نشد."}
+            new_st = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE discount_codes SET is_active = ?, updated_at = ? WHERE id = ?", (new_st, now, discount_id))
+            conn.commit()
+            return {"success": True, "is_active": new_st}
+        except Exception as e:
+            logger.error(f"Error toggling discount code: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -15128,11 +15212,13 @@ class Database:
 
             d = dict(row)
             
-            if plan_id and d.get("allowed_plans"):
-                allowed_plans = d.get("allowed_plans").split(",")
-                allowed_plans = [p.strip() for p in allowed_plans if p.strip()]
-                if allowed_plans and str(plan_id) not in allowed_plans:
-                    return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+            # بررسی پلن‌های مجاز
+            raw_allowed = (d.get("allowed_plans") or "").strip()
+            if raw_allowed:
+                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
+                if allowed_list:
+                    if not plan_id or str(plan_id).strip() not in allowed_list:
+                        return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
 
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
@@ -15161,6 +15247,53 @@ class Database:
             }
         except Exception as e:
             return {"valid": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_discount_code(self, code_id: int, reseller_id: int) -> Optional[dict]:
+        """دریافت اطلاعات یک کد تخفیف نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_discount_codes WHERE id = ? AND reseller_id = ?", (code_id, reseller_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching reseller discount code: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def update_reseller_discount_code(self, code_id: int, reseller_id: int, **kwargs) -> dict:
+        """ویرایش مشخصات کد تخفیف نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            allowed_fields = ["code", "discount_percent", "discount_amount", "max_uses", "valid_until", "is_active", "allowed_plans"]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k in allowed_fields:
+                    if k == "code":
+                        clean_code = str(v).strip().upper()
+                        cursor.execute("SELECT id FROM reseller_discount_codes WHERE reseller_id = ? AND code = ? AND id != ?", (reseller_id, clean_code, code_id))
+                        if cursor.fetchone():
+                            return {"success": False, "error": "این کد تخفیف قبلاً برای شما ثبت شده است."}
+                        fields.append(f"{k} = ?")
+                        params.append(clean_code)
+                    else:
+                        fields.append(f"{k} = ?")
+                        params.append(v)
+            if not fields:
+                return {"success": False, "error": "هیچ فیلدی برای تغییر ارسال نشده است."}
+
+            params.extend([code_id, reseller_id])
+            cursor.execute(f"UPDATE reseller_discount_codes SET {', '.join(fields)} WHERE id = ? AND reseller_id = ?", params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller discount code: {e}")
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 

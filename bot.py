@@ -2618,10 +2618,11 @@ async def enter_discount_code(update: Update, context: ContextTypes.DEFAULT_TYPE
     plan = plans.get(plan_id, {})
     original_price = plan.get("price", 0)
 
-    res = db.use_discount_code(code)
+    res = db.use_discount_code(code, plan_id=plan_id)
     if not res.get("success"):
+        err_msg = res.get("error") or "کد تخفیف نامعتبر، منقضی شده یا ظرفیت استفاده از آن به اتمام رسیده است!"
         await update.message.reply_text(
-            "❌ کد تخفیف نامعتبر، منقضی شده یا ظرفیت استفاده از آن به اتمام رسیده است!\n"
+            f"❌ {err_msg}\n"
             "لطفاً کد دیگری وارد کنید یا برای انصراف /cancel را بزنید:"
         )
         return ENTERING_DISCOUNT_CODE

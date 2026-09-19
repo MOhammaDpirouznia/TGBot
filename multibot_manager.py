@@ -5560,7 +5560,7 @@ class ResellerBotInstance:
                 plan_id = context.user_data.pop("waiting_discount_code_plan")
                 plan = db.get_reseller_plan(r_id, plan_id)
                 base_price = plan.get("display_price", 0) if plan else 0
-                val_res = db.validate_reseller_discount_code(r_id, text, base_price)
+                val_res = db.validate_reseller_discount_code(r_id, text, base_price, plan_id=plan_id)
                 if val_res.get("valid"):
                     context.user_data["applied_discount_code"] = val_res["discount_code"]
                     context.user_data["applied_discount_amount"] = val_res["discount_amount"]

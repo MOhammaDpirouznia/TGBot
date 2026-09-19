@@ -12548,9 +12548,92 @@ def admin_discounts_page():
             flash("لطفاً کد تخفیف و درصد یا مبلغ تخفیف را وارد کنید.", "warning")
         return redirect(url_for("admin_discounts_page"))
 
+    raw_plans = db.get_active_plans()
+    plans_list = []
+    plans_dict = {}
+    if isinstance(raw_plans, dict):
+        for pid, p in raw_plans.items():
+            p_obj = {
+                "id": str(pid),
+                "name": p.get("name") or str(pid),
+                "duration": p.get("duration") or 30,
+                "data_limit": p.get("data_limit") or 0,
+                "price": p.get("price") or 0,
+                "is_active": p.get("is_active", True)
+            }
+            if p_obj["is_active"]:
+                plans_list.append(p_obj)
+            plans_dict[str(pid)] = p_obj
+
     discounts = db.get_all_discount_codes()
-    plans = db.get_active_plans()
-    return render_template("discounts.html", discounts=discounts, plans=plans)
+    return render_template("discounts.html", discounts=discounts, plans=plans_list, plans_dict=plans_dict)
+
+
+@app.route("/discounts/edit/<int:discount_id>", methods=["POST"])
+@permission_required("discounts")
+def admin_discount_edit(discount_id):
+    """ویرایش مشخصات و دسترسی‌های کد تخفیف مدیریت"""
+    code = request.form.get("code", "").strip().upper()
+    try:
+        percent = int(request.form.get("discount_percent") or 0)
+    except (ValueError, TypeError):
+        percent = 0
+
+    try:
+        amount = int(request.form.get("discount_amount") or 0)
+    except (ValueError, TypeError):
+        amount = 0
+
+    try:
+        max_uses = int(request.form.get("max_uses") or 0)
+    except (ValueError, TypeError):
+        max_uses = 0
+
+    is_active = 1 if request.form.get("is_active") in ("1", "on", "true") else 0
+    valid_until = request.form.get("valid_until", "").strip() or None
+    valid_days = request.form.get("valid_days")
+    if valid_days and str(valid_days).isdigit() and int(valid_days) > 0:
+        valid_until = (get_now_naive() + timedelta(days=int(valid_days))).isoformat()
+
+    allowed_plans_list = request.form.getlist("allowed_plans")
+    allowed_plans = ",".join(allowed_plans_list) if allowed_plans_list else ""
+
+    if not code:
+        flash("کد تخفیف نمی‌تواند خالی باشد.", "warning")
+        return redirect(url_for("admin_discounts_page"))
+
+    if percent <= 0 and amount <= 0:
+        flash("حداقل درصد تخفیف یا مبلغ ثابت باید مشخص باشد.", "warning")
+        return redirect(url_for("admin_discounts_page"))
+
+    res = db.update_discount_code(
+        discount_id,
+        code=code,
+        discount_percent=percent,
+        discount_amount=amount,
+        max_uses=max_uses,
+        valid_until=valid_until,
+        is_active=is_active,
+        allowed_plans=allowed_plans
+    )
+    if res.get("success"):
+        flash(f"کد تخفیف «{code}» با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در ویرایش کد تخفیف: {res.get('error')}", "danger")
+    return redirect(url_for("admin_discounts_page"))
+
+
+@app.route("/discounts/toggle/<int:discount_id>", methods=["POST"])
+@permission_required("discounts")
+def admin_discount_toggle(discount_id):
+    """تغییر وضعیت فعال/غیرفعال کد تخفیف مدیریت"""
+    res = db.toggle_discount_code(discount_id)
+    if res.get("success"):
+        status_str = "فعال" if res.get("is_active") else "غیرفعال"
+        flash(f"وضعیت کد تخفیف با موفقیت به «{status_str}» تغییر یافت.", "info")
+    else:
+        flash(f"خطا: {res.get('error')}", "danger")
+    return redirect(url_for("admin_discounts_page"))
 
 
 @app.route("/discounts/delete/<code>")
@@ -18051,8 +18134,75 @@ def reseller_discounts():
         return redirect(url_for("reseller_discounts"))
 
     discounts = db.get_reseller_discount_codes(reseller_id)
-    plans = db.get_active_plans()
-    return render_template("reseller_discounts.html", discounts=discounts, plans=plans)
+    r_plans = db.get_reseller_plans(reseller_id)
+    plans_list = []
+    plans_dict = {}
+    for p in r_plans:
+        if p.get("is_active") and p.get("master_is_active", True):
+            pid = str(p.get("plan_id"))
+            p_obj = {
+                "id": pid,
+                "name": p.get("custom_name") or p.get("name") or pid,
+                "duration": p.get("custom_duration") or p.get("duration") or 30,
+                "data_limit": p.get("custom_data_limit") or p.get("data_limit") or 0,
+                "price": p.get("custom_price") or p.get("price") or 0
+            }
+            plans_list.append(p_obj)
+            plans_dict[pid] = p_obj
+
+    return render_template("reseller_discounts.html", discounts=discounts, plans=plans_list, plans_dict=plans_dict)
+
+
+@app.route("/reseller/discount/<int:discount_id>/edit", methods=["POST"])
+@reseller_required
+def reseller_discount_edit(discount_id):
+    """ویرایش مشخصات و دسترسی‌های کد تخفیف نماینده"""
+    reseller_id = session.get("reseller_id")
+    code = request.form.get("code", "").strip().upper()
+    try:
+        discount_percent = int(request.form.get("discount_percent") or 0)
+    except (ValueError, TypeError):
+        discount_percent = 0
+
+    try:
+        discount_amount = int(request.form.get("discount_amount") or 0)
+    except (ValueError, TypeError):
+        discount_amount = 0
+
+    try:
+        max_uses = int(request.form.get("max_uses") or 0)
+    except (ValueError, TypeError):
+        max_uses = 0
+
+    is_active = 1 if request.form.get("is_active") in ("1", "on", "true") else 0
+    valid_until = request.form.get("valid_until", "").strip() or None
+    allowed_plans_list = request.form.getlist("allowed_plans")
+    allowed_plans = ",".join(allowed_plans_list) if allowed_plans_list else ""
+
+    if not code:
+        flash("کد تخفیف نمی‌تواند خالی باشد.", "warning")
+        return redirect(url_for("reseller_discounts"))
+
+    if discount_percent <= 0 and discount_amount <= 0:
+        flash("درصد تخفیف یا مبلغ تخفیف باید تعیین شود.", "warning")
+        return redirect(url_for("reseller_discounts"))
+
+    res = db.update_reseller_discount_code(
+        discount_id,
+        reseller_id,
+        code=code,
+        discount_percent=discount_percent,
+        discount_amount=discount_amount,
+        max_uses=max_uses,
+        valid_until=valid_until,
+        is_active=is_active,
+        allowed_plans=allowed_plans
+    )
+    if res.get("success"):
+        flash(f"کد تخفیف «{code}» با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در ویرایش کد تخفیف: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_discounts"))
 
 
 @app.route("/reseller/discount/<int:discount_id>/toggle", methods=["POST"])
