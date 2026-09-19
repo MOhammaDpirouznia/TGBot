@@ -1526,7 +1526,8 @@
             color: rgba(255, 255, 255, 0.65);
             white-space: nowrap;
             user-select: none;
-            direction: ltr;
+            direction: rtl;
+            text-align: center;
         }
         [data-bs-theme="light"] .traffic-bar-label {
             color: #475569 !important;
@@ -5198,6 +5199,30 @@ window.tgHaptic = function(type = 'light') {
         renderChart(range);
     };
 
+    const FA_WEEKDAYS = {
+        'saturday': 'شنبه',
+        'sunday': 'یکشنبه',
+        'monday': 'دوشنبه',
+        'tuesday': 'سه‌شنبه',
+        'wednesday': 'چهارشنبه',
+        'thursday': 'پنج‌شنبه',
+        'friday': 'جمعه',
+        'sat': 'شنبه',
+        'sun': 'یکشنبه',
+        'mon': 'دوشنبه',
+        'tue': 'سه‌شنبه',
+        'wed': 'چهارشنبه',
+        'thu': 'پنج‌شنبه',
+        'fri': 'جمعه'
+    };
+
+    function getDayFa(rawDay) {
+        if (!rawDay) return '';
+        const clean = String(rawDay).trim();
+        const lower = clean.toLowerCase();
+        return FA_WEEKDAYS[lower] || clean;
+    }
+
     function renderChart(range) {
         barsContainer.innerHTML = '';
         if (tableBody) tableBody.innerHTML = '';
@@ -5273,8 +5298,9 @@ window.tgHaptic = function(type = 'light') {
             label.className = 'traffic-bar-label';
 
             let shortLabel = item.label || '';
+            const faDay = getDayFa(item.day_name);
             if (range === '7d') {
-                shortLabel = item.day_name ? item.day_name.replace('‌', '') : '';
+                shortLabel = faDay;
             } else if (range === '30d') {
                 shortLabel = (index % 5 === 0 || index === items.length - 1) ? (item.jalali_date ? item.jalali_date.split(' ')[0] : (index + 1)) : '';
             } else if (range === '24h') {
@@ -5286,7 +5312,7 @@ window.tgHaptic = function(type = 'light') {
             col.appendChild(label);
 
             // ایجاد رویدادهای هاور / لمس جهت نمایش تولتیپ
-            const fullTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : (item.day_name + ' ' + (item.jalali_date || item.date));
+            const fullTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : (faDay + ' ' + (item.jalali_date || item.date));
             const formattedUsage = mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت';
 
             function showTooltip(e) {

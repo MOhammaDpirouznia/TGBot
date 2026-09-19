@@ -19518,10 +19518,11 @@ class Database:
                 try:
                     dt_j = jdatetime.datetime.fromgregorian(datetime=d_dt)
                     j_date_str = f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]}"
-                    day_name = dt_j.strftime("%A")
+                    day_name = jdatetime.date.j_weekdays_fa[dt_j.weekday()]
                 except Exception:
                     j_date_str = d_str
-                    day_name = d_dt.strftime("%a")
+                    gregorian_fa = {0: "دوشنبه", 1: "سه‌شنبه", 2: "چهارشنبه", 3: "پنج‌شنبه", 4: "جمعه", 5: "شنبه", 6: "یکشنبه"}
+                    day_name = gregorian_fa.get(d_dt.weekday(), d_dt.strftime("%a"))
 
                 row = cursor.execute("""
                     SELECT SUM(delta_usage_gb) as day_total
@@ -19561,10 +19562,11 @@ class Database:
                 try:
                     dt_j = jdatetime.datetime.fromgregorian(datetime=d_dt)
                     j_date_str = f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]}"
-                    day_name = dt_j.strftime("%A")
+                    day_name = jdatetime.date.j_weekdays_fa[dt_j.weekday()]
                 except Exception:
                     j_date_str = d_str
-                    day_name = d_dt.strftime("%a")
+                    gregorian_fa = {0: "دوشنبه", 1: "سه‌شنبه", 2: "چهارشنبه", 3: "پنج‌شنبه", 4: "جمعه", 5: "شنبه", 6: "یکشنبه"}
+                    day_name = gregorian_fa.get(d_dt.weekday(), d_dt.strftime("%a"))
 
                 row = cursor.execute("""
                     SELECT SUM(delta_usage_gb) as day_total
