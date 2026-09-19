@@ -18958,11 +18958,16 @@ class Database:
         conn.close()
         return None
 
-    def get_admin_users(self):
-        """لیست تمام مدیران سیستم"""
+    def get_admin_users(self, only_main_admins: bool = False, reseller_id: int = None):
+        """لیست تمام مدیران سیستم (با امکان تفکیک مدیران مرکزی از اعضای نمایندگان)"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM admin_users ORDER BY id ASC")
+        if only_main_admins:
+            cursor.execute("SELECT * FROM admin_users WHERE (reseller_id IS NULL OR reseller_id = 0) ORDER BY id ASC")
+        elif reseller_id is not None:
+            cursor.execute("SELECT * FROM admin_users WHERE reseller_id = ? ORDER BY id ASC", (reseller_id,))
+        else:
+            cursor.execute("SELECT * FROM admin_users ORDER BY id ASC")
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -19182,6 +19187,7 @@ class Database:
                     SELECT d.*, u.display_name as admin_name, u.role as admin_role
                     FROM admin_debts d
                     LEFT JOIN admin_users u ON d.admin_id = u.id
+                    WHERE (u.reseller_id IS NULL OR u.reseller_id = 0)
                     ORDER BY d.id DESC LIMIT ?
                 """, (limit,))
             rows = cursor.fetchall()
@@ -19205,7 +19211,7 @@ class Database:
                            COALESCE((SELECT SUM(share_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_share_earned,
                            COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='settlement'), 0) as total_settled_amount
                     FROM admin_users u
-                    WHERE u.id=?
+                    WHERE u.id=? AND (u.reseller_id IS NULL OR u.reseller_id = 0)
                 """, (admin_id,))
             else:
                 cursor.execute("""
@@ -19215,6 +19221,7 @@ class Database:
                            COALESCE((SELECT SUM(share_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_share_earned,
                            COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='settlement'), 0) as total_settled_amount
                     FROM admin_users u
+                    WHERE (u.reseller_id IS NULL OR u.reseller_id = 0)
                     ORDER BY u.id ASC
                 """)
             rows = cursor.fetchall()

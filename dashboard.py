@@ -18791,7 +18791,7 @@ def admin_managers():
             flash("لطفاً تمامی فیلدهای الزامی را تکمیل نمایید.", "warning")
         return redirect(get_redirect_target("admin_managers"))
 
-    managers_list = db.get_admin_users()
+    managers_list = db.get_admin_users(only_main_admins=True)
     return render_template("managers.html", managers=managers_list)
 
 
@@ -18799,6 +18799,11 @@ def admin_managers():
 @super_admin_required
 def admin_manager_edit(admin_id):
     """ویرایش اطلاعات و دسترسی‌های مدیر"""
+    target_admin = db.get_admin_user(admin_id)
+    if not target_admin or (target_admin.get("reseller_id") and int(target_admin.get("reseller_id") or 0) > 0):
+        flash("مدیر مورد نظر یافت نشد.", "danger")
+        return redirect(get_redirect_target("admin_managers"))
+
     display_name = request.form.get("display_name", "").strip()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
@@ -18851,6 +18856,11 @@ def admin_manager_toggle(admin_id):
         flash("شما نمی‌توانید حساب کاربری خودتان را غیرفعال کنید!", "warning")
         return redirect(get_redirect_target("admin_managers"))
 
+    target_admin = db.get_admin_user(admin_id)
+    if not target_admin or (target_admin.get("reseller_id") and int(target_admin.get("reseller_id") or 0) > 0):
+        flash("مدیر مورد نظر یافت نشد.", "danger")
+        return redirect(get_redirect_target("admin_managers"))
+
     res = db.toggle_admin_user(admin_id)
     if res.get("success"):
         flash("وضعیت مدیر با موفقیت تغییر یافت.", "info")
@@ -18865,6 +18875,11 @@ def admin_manager_delete(admin_id):
     """حذف مدیر"""
     if admin_id == session.get("admin_id"):
         flash("شما نمی‌توانید حساب کاربری خودتان را حذف کنید!", "danger")
+        return redirect(get_redirect_target("admin_managers"))
+
+    target_admin = db.get_admin_user(admin_id)
+    if not target_admin or (target_admin.get("reseller_id") and int(target_admin.get("reseller_id") or 0) > 0):
+        flash("مدیر مورد نظر یافت نشد.", "danger")
         return redirect(get_redirect_target("admin_managers"))
 
     res = db.delete_admin_user(admin_id)
@@ -18882,7 +18897,7 @@ def admin_profile():
     admin_id = session.get("admin_id")
     admin_user = db.get_admin_user(admin_id) if admin_id else None
     if not admin_user:
-        admins = db.get_admin_users()
+        admins = db.get_admin_users(only_main_admins=True)
         admin_user = admins[0] if admins else {
             "id": 1,
             "username": session.get("username", "admin"),
