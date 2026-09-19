@@ -4355,23 +4355,23 @@ def dashboard():
     conn = db.get_connection()
 
     total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    total_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
-    active_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE status='active'").fetchone()[0]
-    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed') AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
-    pending_payments = conn.execute("SELECT COUNT(*) FROM transactions WHERE status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
+    total_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE (is_deleted = 0 OR is_deleted IS NULL)").fetchone()[0]
+    active_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status='active'").fetchone()[0]
+    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
+    pending_payments = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
     open_tickets = conn.execute("SELECT COUNT(*) FROM support_tickets WHERE status='open' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
-    total_resellers = conn.execute("SELECT COUNT(*) FROM resellers").fetchone()[0]
+    total_resellers = conn.execute("SELECT COUNT(*) FROM resellers WHERE status != 'deleted'").fetchone()[0]
 
     recent_transactions = conn.execute("""
         SELECT * FROM transactions 
-        WHERE ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+        WHERE (is_deleted = 0 OR is_deleted IS NULL) AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
         ORDER BY created_at DESC LIMIT 8
     """).fetchall()
 
     daily_revenue = conn.execute("""
         SELECT DATE(created_at) as date, SUM(amount) as total
         FROM transactions 
-        WHERE status IN ('approved', 'completed') 
+        WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') 
           AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
           AND created_at >= DATE('now', '-7 days')
         GROUP BY DATE(created_at)
@@ -5035,7 +5035,7 @@ def payments():
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where_clause = " WHERE " + " AND ".join(base_conditions) if base_conditions else ""
-    query = f"SELECT * FROM transactions {where_clause} ORDER BY created_at DESC LIMIT 300"
+    query = f"SELECT * FROM transactions {where_clause} ORDER BY created_at DESC LIMIT 2000"
     raw_payment_list = conn.execute(query, params).fetchall()
 
     # شمارنده‌های آماری بر اساس تب منبع فعلی
@@ -6725,9 +6725,17 @@ def api_admin_notifications_check():
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
+        SELECT COUNT(*) FROM transactions 
+        WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status='pending' 
+          AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+    """)
+    pending_payments_count = cursor.fetchone()[0] or 0
+
+    cursor.execute("""
         SELECT id, user_id, username, amount, plan_name, tracking_code, created_at 
         FROM transactions 
-        WHERE status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+        WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status='pending' 
+          AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
         ORDER BY created_at DESC LIMIT 10
     """)
     pending_payments = [dict(p) for p in cursor.fetchall()]
@@ -6753,11 +6761,11 @@ def api_admin_notifications_check():
     conn.close()
 
     return jsonify({
-        "pending_payments_count": len(pending_payments),
+        "pending_payments_count": pending_payments_count,
         "open_customer_tickets_count": len(customer_tickets),
         "open_reseller_tickets_count": len(reseller_tickets),
         "open_tickets_count": len(customer_tickets) + len(reseller_tickets),
-        "total_alerts": len(pending_payments) + len(customer_tickets) + len(reseller_tickets),
+        "total_alerts": pending_payments_count + len(customer_tickets) + len(reseller_tickets),
         "pending_payments": pending_payments,
         "customer_tickets": customer_tickets,
         "reseller_tickets": reseller_tickets

@@ -112,12 +112,44 @@
     </div>
 </div>
 
+<style>
+    #adminPaymentsSearchInput {
+        padding-right: 38px !important;
+        padding-left: 32px !important;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        transition: all 0.2s ease;
+        background-color: var(--card-bg, #fff);
+        border: 1px solid var(--card-border, #e2e8f0);
+        color: var(--text-main, #1e293b);
+    }
+    #adminPaymentsSearchInput:focus {
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        border-color: var(--primary, #4f46e5);
+    }
+    #adminPaymentsPaginationCard .page-link {
+        color: var(--text-main, #334155);
+        border-color: var(--card-border, #e2e8f0);
+        background-color: var(--card-bg, #fff);
+        font-size: 0.82rem;
+    }
+    #adminPaymentsPaginationCard .page-item.active .page-link {
+        background-color: var(--primary, #4f46e5) !important;
+        border-color: var(--primary, #4f46e5) !important;
+        color: #fff !important;
+    }
+    #adminPaymentsPaginationCard .page-item.disabled .page-link {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
 <!-- جدول اصلی و واکنش‌گرای پرداخت‌ها -->
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <h5 class="mb-0 fw-bold"><i class="fas fa-receipt text-primary me-2"></i>لیست پرداخت‌ها</h5>
-            <span class="badge bg-secondary" id="adminPaymentsCount" data-table-count="paymentsTable">{{ payments|length }} مورد</span>
+            <span class="badge bg-secondary" id="adminPaymentsCount">{{ payments|length }} مورد</span>
 
             <!-- دکمه‌های فیلتر سریع بر اساس مبدأ سفارش -->
             <div class="btn-group btn-group-sm ms-2" role="group" id="adminSourceFilterBtnGroup">
@@ -137,8 +169,8 @@
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="paymentsTable" placeholder="جستجو زنده در پرداخت‌ها...">
-            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+            <input type="text" class="form-control" id="adminPaymentsSearchInput" placeholder="جستجو زنده در پرداخت‌ها...">
+            <button type="button" class="table-search-clear" id="adminPaymentsSearchClear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
         </div>
     </div>
     <div class="card-body p-0">
@@ -413,6 +445,62 @@
             </table>
         </div>
     </div>
+    <!-- ─── نوار صفحه‌بندی و کنترل تعداد نمایش در صفحه (Pagination Controls) ─── -->
+    {% if payments and payments|length > 0 %}
+    <div class="card-footer bg-white py-2 px-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2" id="adminPaymentsPaginationCard">
+        <!-- بخش انتخاب تعداد نمایش در هر صفحه و شمارنده وضعیت -->
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-1">
+                <label for="adminPaymentsPageSizeSelect" class="small text-muted mb-0 fw-medium text-nowrap">
+                    <i class="fas fa-list-ol me-1 text-primary"></i>تعداد در صفحه:
+                </label>
+                <select id="adminPaymentsPageSizeSelect" class="form-select form-select-sm" style="width: auto; min-width: 95px; border-radius: 8px;">
+                    <option value="25" selected>۲۵ مورد</option>
+                    <option value="50">۵۰ مورد</option>
+                    <option value="100">۱۰۰ مورد</option>
+                    <option value="all">همه موارد</option>
+                </select>
+            </div>
+            <div class="small text-muted" id="adminPaymentsPaginationInfo">
+                نمایش <span id="adminPaymentsStartItem" class="fw-bold text-dark font-monospace">۱</span> تا <span id="adminPaymentsEndItem" class="fw-bold text-dark font-monospace">۲۵</span> از مجموع <span id="adminPaymentsTotalItems" class="fw-bold text-primary font-monospace">{{ payments|length }}</span> پرداخت
+            </div>
+        </div>
+
+        <!-- کنترل‌های ناوبری صفحات -->
+        <nav aria-label="صفحه‌بندی پرداخت‌ها" id="adminPaymentsNav">
+            <ul class="pagination pagination-sm mb-0 gap-1 align-items-center" id="adminPaymentsPaginationList">
+                <!-- صفحه اول -->
+                <li class="page-item" id="adminPaymentsFirstItem">
+                    <button class="page-link rounded px-2" type="button" id="adminPaymentsFirstBtn" onclick="goToAdminPaymentPage(1)" title="صفحه اول">
+                        <i class="fas fa-angles-right"></i>
+                    </button>
+                </li>
+                <!-- صفحه قبلی -->
+                <li class="page-item" id="adminPaymentsPrevItem">
+                    <button class="page-link rounded px-2 fw-bold" type="button" id="adminPaymentsPrevBtn" onclick="changeAdminPaymentPage(-1)">
+                        <i class="fas fa-chevron-right me-1"></i> قبلی
+                    </button>
+                </li>
+
+                <!-- دکمه‌های شماره صفحات -->
+                <div class="d-flex gap-1 align-items-center" id="adminPaymentsPageNumbers"></div>
+
+                <!-- صفحه بعدی -->
+                <li class="page-item" id="adminPaymentsNextItem">
+                    <button class="page-link rounded px-2 fw-bold" type="button" id="adminPaymentsNextBtn" onclick="changeAdminPaymentPage(1)">
+                        بعدی <i class="fas fa-chevron-left ms-1"></i>
+                    </button>
+                </li>
+                <!-- صفحه آخر -->
+                <li class="page-item" id="adminPaymentsLastItem">
+                    <button class="page-link rounded px-2" type="button" id="adminPaymentsLastBtn" title="صفحه آخر">
+                        <i class="fas fa-angles-left"></i>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 <!-- ─── نوار ابزار شناور مدیریت گروهی پرداخت‌ها و فیش‌ها ─── -->
@@ -1208,62 +1296,318 @@ function openReceiptPreview(imgUrl, username, orderId, userId) {
     modal.show();
 }
 
-// فیلتر سریع بر اساس مبدأ سفارش (همه / پرتال مشتری / ربات تلگرام / بسته نماینده)
-document.addEventListener('DOMContentLoaded', function() {
-    const filterBtns = document.querySelectorAll('#adminSourceFilterBtnGroup [data-source-filter]');
-    const rows = document.querySelectorAll('#paymentsTable tbody tr.payment-row');
-    const counterBadge = document.getElementById('adminPaymentsCount');
+// ─── موتور صفحه‌بندی هوشمند، فیلتر مبدأ و جستجوی زنده پرداخت‌ها ───
+(function() {
+    let currentPage = 1;
+    let pageSize = 25; // پیش‌فرض: ۲۵ تایی طبق درخواست کاربر
+    let currentSourceFilter = 'all';
 
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const filter = this.getAttribute('data-source-filter');
+    // بازیابی تنظیم تعداد در صفحه از حافظه مرورگر در صورت وجود
+    const savedSize = localStorage.getItem('admin_payments_page_size');
+    if (savedSize === 'all') {
+        pageSize = 'all';
+    } else if (savedSize && !isNaN(parseInt(savedSize, 10))) {
+        pageSize = parseInt(savedSize, 10);
+    }
 
-            filterBtns.forEach(b => {
-                b.classList.remove('active', 'btn-primary', 'btn-dark', 'btn-info', 'btn-secondary');
-                const bFilter = b.getAttribute('data-source-filter');
-                if (bFilter === 'portal') {
-                    b.classList.add('btn-outline-info');
-                } else if (bFilter === 'admin') {
-                    b.classList.add('btn-outline-dark');
-                } else if (bFilter === 'reseller' || bFilter === 'bundle') {
-                    b.classList.add('btn-outline-secondary');
-                } else {
-                    b.classList.add('btn-outline-primary');
-                }
-            });
+    function getTableElements() {
+        const table = document.getElementById('paymentsTable');
+        const tbody = table ? table.querySelector('tbody') : null;
+        const allRows = tbody ? Array.from(tbody.querySelectorAll('tr.payment-row')) : [];
+        return { table, tbody, allRows };
+    }
 
-            this.classList.add('active');
-            if (filter === 'portal') {
-                this.classList.remove('btn-outline-info');
-                this.classList.add('btn-info', 'text-white');
-            } else if (filter === 'admin') {
-                this.classList.remove('btn-outline-dark');
-                this.classList.add('btn-dark', 'text-white');
-            } else if (filter === 'reseller' || filter === 'bundle') {
-                this.classList.remove('btn-outline-secondary');
-                this.classList.add('btn-secondary', 'text-white');
-            } else {
-                this.classList.remove('btn-outline-primary');
-                this.classList.add('btn-primary');
+    function getMatchedRows() {
+        const { allRows } = getTableElements();
+        const searchInput = document.getElementById('adminPaymentsSearchInput');
+        const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+        const words = query.split(/\s+/).filter(w => w.length > 0);
+
+        return allRows.filter(row => {
+            // فیلتر مبدأ سفارش
+            const rowSource = row.getAttribute('data-source') || 'telegram';
+            if (currentSourceFilter !== 'all' && rowSource !== currentSourceFilter) {
+                return false;
             }
 
-            let visibleCount = 0;
-            rows.forEach(row => {
-                const rowSource = row.getAttribute('data-source');
-                if (filter === 'all' || rowSource === filter) {
-                    row.style.display = '';
-                    visibleCount++;
-                } else {
-                    row.style.display = 'none';
+            // فیلتر جستجوی زنده
+            if (words.length > 0) {
+                const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+                if (!words.every(w => text.includes(w))) {
+                    return false;
                 }
-            });
+            }
 
-            if (counterBadge) {
-                counterBadge.textContent = visibleCount + ' مورد';
+            return true;
+        });
+    }
+
+    function renderPagination() {
+        const { table, tbody, allRows } = getTableElements();
+        if (!table || !tbody) return;
+
+        const matchedRows = getMatchedRows();
+        const totalItems = matchedRows.length;
+
+        // به‌روزرسانی نشانگر تعداد کل در هدر کارت
+        const countBadge = document.getElementById('adminPaymentsCount');
+        if (countBadge) {
+            countBadge.textContent = totalItems + ' مورد';
+        }
+
+        const isAll = (pageSize === 'all');
+        const effectivePageSize = isAll ? Math.max(1, totalItems) : Number(pageSize);
+        const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
+
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        const startIdx = isAll ? 0 : (currentPage - 1) * effectivePageSize;
+        const endIdx = isAll ? totalItems : Math.min(startIdx + effectivePageSize, totalItems);
+
+        // پنهان کردن تمام ردیف‌ها
+        allRows.forEach(r => {
+            r.style.display = 'none';
+        });
+
+        // نمایش ردیف‌های صفحه جاری
+        matchedRows.forEach((r, idx) => {
+            if (idx >= startIdx && idx < endIdx) {
+                r.style.display = '';
+            } else {
+                r.style.display = 'none';
             }
         });
+
+        // مدیریت پیام عدم وجود نتیجه
+        const existingNoResults = tbody.querySelector('.payments-no-search-results');
+        if (existingNoResults) existingNoResults.remove();
+
+        if (totalItems === 0 && allRows.length > 0) {
+            const noRow = document.createElement('tr');
+            noRow.className = 'payments-no-search-results';
+            noRow.innerHTML = '<td colspan="10" class="text-center py-5 text-muted"><i class="fas fa-search-minus fs-2 opacity-50 mb-3 d-block text-secondary"></i><h6 class="fw-bold">تراکنشی با این شرایط یا عبارت جستجو یافت نشد.</h6></td>';
+            tbody.appendChild(noRow);
+        }
+
+        // به‌روزرسانی متن اطلاعات صفحه‌بندی
+        const startItemEl = document.getElementById('adminPaymentsStartItem');
+        const endItemEl = document.getElementById('adminPaymentsEndItem');
+        const totalItemsEl = document.getElementById('adminPaymentsTotalItems');
+        if (startItemEl) startItemEl.textContent = totalItems === 0 ? '0' : (startIdx + 1);
+        if (endItemEl) endItemEl.textContent = endIdx;
+        if (totalItemsEl) totalItemsEl.textContent = totalItems;
+
+        // فعال/غیرفعال کردن دکمه‌های ناوبری
+        const navEl = document.getElementById('adminPaymentsNav');
+        const prevItem = document.getElementById('adminPaymentsPrevItem');
+        const nextItem = document.getElementById('adminPaymentsNextItem');
+        const firstItem = document.getElementById('adminPaymentsFirstItem');
+        const lastItem = document.getElementById('adminPaymentsLastItem');
+        const prevBtn = document.getElementById('adminPaymentsPrevBtn');
+        const nextBtn = document.getElementById('adminPaymentsNextBtn');
+        const firstBtn = document.getElementById('adminPaymentsFirstBtn');
+        const lastBtn = document.getElementById('adminPaymentsLastBtn');
+
+        if (navEl) {
+            navEl.style.display = (isAll || totalPages <= 1) ? 'none' : '';
+        }
+
+        if (prevBtn && prevItem) {
+            const disablePrev = (currentPage <= 1);
+            prevItem.classList.toggle('disabled', disablePrev);
+            prevBtn.disabled = disablePrev;
+        }
+
+        if (firstBtn && firstItem) {
+            const disableFirst = (currentPage <= 1);
+            firstItem.classList.toggle('disabled', disableFirst);
+            firstBtn.disabled = disableFirst;
+        }
+
+        if (nextBtn && nextItem) {
+            const disableNext = (currentPage >= totalPages);
+            nextItem.classList.toggle('disabled', disableNext);
+            nextBtn.disabled = disableNext;
+        }
+
+        if (lastBtn && lastItem) {
+            const disableLast = (currentPage >= totalPages);
+            lastItem.classList.toggle('disabled', disableLast);
+            lastBtn.disabled = disableLast;
+            lastBtn.onclick = () => {
+                currentPage = totalPages;
+                renderPagination();
+                table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            };
+        }
+
+        // رندر شماره صفحات
+        const pageNumbersContainer = document.getElementById('adminPaymentsPageNumbers');
+        if (pageNumbersContainer) {
+            pageNumbersContainer.innerHTML = '';
+            if (!isAll && totalPages > 1) {
+                let pagesToShow = [];
+                if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pagesToShow.push(i);
+                } else {
+                    pagesToShow.push(1);
+                    let s = Math.max(2, currentPage - 1);
+                    let e = Math.min(totalPages - 1, currentPage + 1);
+
+                    if (currentPage <= 3) {
+                        s = 2;
+                        e = 4;
+                    } else if (currentPage >= totalPages - 2) {
+                        s = totalPages - 3;
+                        e = totalPages - 1;
+                    }
+
+                    if (s > 2) pagesToShow.push('...');
+                    for (let i = s; i <= e; i++) pagesToShow.push(i);
+                    if (e < totalPages - 1) pagesToShow.push('...');
+                    pagesToShow.push(totalPages);
+                }
+
+                pagesToShow.forEach(p => {
+                    if (p === '...') {
+                        const dots = document.createElement('span');
+                        dots.className = 'px-1 text-muted';
+                        dots.textContent = '...';
+                        pageNumbersContainer.appendChild(dots);
+                    } else {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = `btn btn-sm ${p === currentPage ? 'btn-primary active' : 'btn-outline-secondary'} px-2 py-1 fw-bold font-monospace`;
+                        btn.style.minWidth = '32px';
+                        btn.style.borderRadius = '6px';
+                        btn.textContent = p;
+                        btn.onclick = () => {
+                            currentPage = p;
+                            renderPagination();
+                            table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        };
+                        pageNumbersContainer.appendChild(btn);
+                    }
+                });
+            }
+        }
+
+        // به‌روزرسانی چک‌باکس انتخاب همه برای تطابق با ردیف‌های قابل مشاهده فعلی
+        const selectAllCb = table.querySelector('.bulk-select-all');
+        if (selectAllCb) {
+            const visibleRowCbs = allRows.filter(tr => tr.style.display !== 'none').map(tr => tr.querySelector('.bulk-select-row')).filter(Boolean);
+            const visibleChecked = visibleRowCbs.filter(cb => cb.checked).length;
+            selectAllCb.checked = (visibleRowCbs.length > 0 && visibleChecked === visibleRowCbs.length);
+            selectAllCb.indeterminate = (visibleChecked > 0 && visibleChecked < visibleRowCbs.length);
+        }
+    }
+
+    window.changeAdminPaymentPage = function(delta) {
+        currentPage += delta;
+        renderPagination();
+        const table = document.getElementById('paymentsTable');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    window.goToAdminPaymentPage = function(p) {
+        currentPage = p;
+        renderPagination();
+        const table = document.getElementById('paymentsTable');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // تنظیم منوی دراپ‌داون تعداد در صفحه
+        const sizeSelect = document.getElementById('adminPaymentsPageSizeSelect');
+        if (sizeSelect) {
+            sizeSelect.value = String(pageSize);
+            sizeSelect.addEventListener('change', function() {
+                const val = this.value;
+                if (val === 'all') {
+                    pageSize = 'all';
+                } else {
+                    pageSize = parseInt(val, 10) || 25;
+                }
+                localStorage.setItem('admin_payments_page_size', val);
+                currentPage = 1;
+                renderPagination();
+            });
+        }
+
+        // تنظیم فیلتر مبدأ سفارش
+        const filterBtns = document.querySelectorAll('#adminSourceFilterBtnGroup [data-source-filter]');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.getAttribute('data-source-filter');
+                currentSourceFilter = filter;
+
+                filterBtns.forEach(b => {
+                    b.classList.remove('active', 'btn-primary', 'btn-dark', 'btn-info', 'btn-secondary');
+                    const bFilter = b.getAttribute('data-source-filter');
+                    if (bFilter === 'portal') b.classList.add('btn-outline-info');
+                    else if (bFilter === 'admin') b.classList.add('btn-outline-dark');
+                    else if (bFilter === 'reseller' || bFilter === 'bundle') b.classList.add('btn-outline-secondary');
+                    else b.classList.add('btn-outline-primary');
+                });
+
+                this.classList.add('active');
+                if (filter === 'portal') {
+                    this.classList.remove('btn-outline-info');
+                    this.classList.add('btn-info', 'text-white');
+                } else if (filter === 'admin') {
+                    this.classList.remove('btn-outline-dark');
+                    this.classList.add('btn-dark', 'text-white');
+                } else if (filter === 'reseller' || filter === 'bundle') {
+                    this.classList.remove('btn-outline-secondary');
+                    this.classList.add('btn-secondary', 'text-white');
+                } else {
+                    this.classList.remove('btn-outline-primary');
+                    this.classList.add('btn-primary');
+                }
+
+                currentPage = 1;
+                renderPagination();
+            });
+        });
+
+        // تنظیم جستجوی زنده
+        const searchInput = document.getElementById('adminPaymentsSearchInput');
+        const clearBtn = document.getElementById('adminPaymentsSearchClear');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                if (clearBtn) clearBtn.style.display = this.value.trim() ? 'block' : 'none';
+                currentPage = 1;
+                renderPagination();
+            });
+        }
+        if (clearBtn && searchInput) {
+            clearBtn.addEventListener('click', function() {
+                searchInput.value = '';
+                clearBtn.style.display = 'none';
+                currentPage = 1;
+                renderPagination();
+                searchInput.focus();
+            });
+        }
+
+        // هماهنگی با مرتب‌سازی ستون‌ها
+        const sortHeaders = document.querySelectorAll('#paymentsTable thead th.sortable-th');
+        sortHeaders.forEach(th => {
+            th.addEventListener('click', function() {
+                setTimeout(renderPagination, 50);
+            });
+        });
+
+        // هماهنگی با رویداد دریافت خودکار پرداخت جدید
+        document.addEventListener('newPaymentReceived', function() {
+            setTimeout(renderPagination, 200);
+        });
+
+        // اجرای اولیه صفحه‌بندی
+        renderPagination();
     });
-});
+})();
 
 // سنتز صوتی صدای زنگ/اعلان اختصاصی رسید نمایندگان با Web Audio API
 function playResellerReceiptChime(manual = false) {
