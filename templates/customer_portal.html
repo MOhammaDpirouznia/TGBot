@@ -3208,7 +3208,7 @@
                             ⏱️ ۲۴ ساعت گذشته
                         </button>
                         <button type="button" class="btn btn-outline-info" id="btnTrafficRange7d" onclick="switchTrafficRange('7d')">
-                            📅 ۷ روز گذشته
+                            📅 ۷ روز هفته
                         </button>
                         <button type="button" class="btn btn-outline-info" id="btnTrafficRange30d" onclick="switchTrafficRange('30d')">
                             🗓️ ۳۰ روز گذشته
@@ -5201,19 +5201,27 @@ window.tgHaptic = function(type = 'light') {
 
     const FA_WEEKDAYS = {
         'saturday': 'شنبه',
-        'sunday': 'یکشنبه',
+        'sunday': 'یک‌شنبه',
         'monday': 'دوشنبه',
         'tuesday': 'سه‌شنبه',
         'wednesday': 'چهارشنبه',
         'thursday': 'پنج‌شنبه',
         'friday': 'جمعه',
         'sat': 'شنبه',
-        'sun': 'یکشنبه',
+        'sun': 'یک‌شنبه',
         'mon': 'دوشنبه',
         'tue': 'سه‌شنبه',
         'wed': 'چهارشنبه',
         'thu': 'پنج‌شنبه',
-        'fri': 'جمعه'
+        'fri': 'جمعه',
+        'شنبه': 'شنبه',
+        'یک‌شنبه': 'یک‌شنبه',
+        'یکشنبه': 'یک‌شنبه',
+        'دوشنبه': 'دوشنبه',
+        'سه‌شنبه': 'سه‌شنبه',
+        'چهارشنبه': 'چهارشنبه',
+        'پنج‌شنبه': 'پنج‌شنبه',
+        'جمعه': 'جمعه'
     };
 
     function getDayFa(rawDay) {
@@ -5236,7 +5244,7 @@ window.tgHaptic = function(type = 'light') {
             rangeTitle = '۲۴ ساعت گذشته (ساعتی)';
         } else if (range === '7d') {
             items = trafficData.daily_7d || [];
-            rangeTitle = '۷ روز گذشته (روزانه)';
+            rangeTitle = 'مصرف ۷ روز هفته (شنبه تا جمعه)';
         } else if (range === '30d') {
             items = trafficData.daily_30d || [];
             rangeTitle = '۳۰ روز گذشته (ماهانه)';
@@ -5312,12 +5320,15 @@ window.tgHaptic = function(type = 'light') {
             col.appendChild(label);
 
             // ایجاد رویدادهای هاور / لمس جهت نمایش تولتیپ
-            const fullTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : (faDay + ' ' + (item.jalali_date || item.date));
-            const formattedUsage = mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت';
+            const fullTitle = (range === '24h') 
+                ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) 
+                : (faDay + ' ' + (item.jalali_date || item.date) + (item.is_today ? ' (امروز)' : (item.is_future ? ' (آینده)' : '')));
+            const formattedUsage = item.is_future ? '—' : (mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت');
 
             function showTooltip(e) {
                 if (!tooltip) return;
-                tooltip.innerHTML = `<strong>${fullTitle}</strong><br><span class="traffic-row-usage">${formattedUsage}</span>` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
+                const tooltipUsage = item.is_future ? '<span class="traffic-row-usage text-muted" style="font-size: 0.7rem;">در انتظار شروع</span>' : `<span class="traffic-row-usage">${formattedUsage}</span>`;
+                tooltip.innerHTML = `<strong>${fullTitle}</strong><br>${tooltipUsage}` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
                 tooltip.style.display = 'block';
 
                 const rect = col.getBoundingClientRect();
@@ -5344,10 +5355,30 @@ window.tgHaptic = function(type = 'light') {
             if (tableBody) {
                 const tr = document.createElement('tr');
                 const pctOfTotal = totalUsageMb > 0 ? Math.round((mbVal / totalUsageMb) * 100) : 0;
+                let dayBadge = '';
+                if (item.is_today) {
+                    dayBadge = '<span class="badge bg-primary bg-opacity-25 text-primary ms-1" style="font-size: 0.65rem;">امروز</span>';
+                } else if (item.is_current) {
+                    dayBadge = '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>';
+                }
+
+                let statusBadgeHtml = '';
+                if (item.is_future) {
+                    statusBadgeHtml = '<span class="badge bg-secondary bg-opacity-25 text-secondary" style="font-size: 0.68rem;">در انتظار</span>';
+                } else if (item.is_peak) {
+                    statusBadgeHtml = '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>';
+                } else if (mbVal > 0) {
+                    statusBadgeHtml = '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>';
+                } else {
+                    statusBadgeHtml = '<span class="badge traffic-badge-no-usage" style="font-size: 0.68rem;">بدون مصرف</span>';
+                }
+
+                const displayTitle = (range === '24h') ? ('ساعت ' + item.label) : (faDay + ' ' + (item.jalali_date || item.date || ''));
+
                 tr.innerHTML = `
                     <td class="text-start">
-                        <span class="traffic-row-title">${fullTitle}</span>
-                        ${item.is_current ? '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>' : ''}
+                        <span class="traffic-row-title">${displayTitle}</span>
+                        ${dayBadge}
                     </td>
                     <td><strong class="traffic-row-usage">${formattedUsage}</strong></td>
                     <td style="width: 25%;">
@@ -5359,7 +5390,7 @@ window.tgHaptic = function(type = 'light') {
                         </div>
                     </td>
                     <td class="text-end">
-                        ${item.is_peak ? '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>' : (mbVal > 0 ? '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>' : '<span class="badge traffic-badge-no-usage" style="font-size: 0.68rem;">بدون مصرف</span>')}
+                        ${statusBadgeHtml}
                     </td>
                 `;
                 tableBody.appendChild(tr);

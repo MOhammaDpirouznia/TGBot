@@ -19652,13 +19652,24 @@ class Database:
                         h_item["is_peak"] = True
                         break
 
-            # ۲. مصرف روزانه در ۷ روز گذشته (Daily Last 7 Days)
+            # ۲. مصرف روزانه در ۷ روز هفته جاری (از شنبه تا جمعه مطابق تقویم جلالی و ایرانی)
             daily_7d = []
             peak_7d_gb = 0.0
             sum_7d_gb = 0.0
 
-            for i in range(6, -1, -1):
-                d_dt = now - timedelta(days=i)
+            # محاسبه شروع هفته بر اساس تقویم ایرانی (شنبه)
+            try:
+                now_j = jdatetime.datetime.fromgregorian(datetime=now)
+                # در jdatetime متد weekday(): 0=شنبه، 1=یکشنبه، ...، 6=جمعه
+                days_since_saturday = now_j.weekday()
+            except Exception:
+                gw = now.weekday()  # 0=Mon..4=Fri, 5=Sat, 6=Sun
+                days_since_saturday = (gw + 2) % 7 if gw != 5 else 0
+
+            saturday_dt = now - timedelta(days=days_since_saturday)
+
+            for i in range(7):
+                d_dt = saturday_dt + timedelta(days=i)
                 d_str = d_dt.strftime("%Y-%m-%d")
                 try:
                     dt_j = jdatetime.datetime.fromgregorian(datetime=d_dt)
@@ -19666,21 +19677,28 @@ class Database:
                     day_name = jdatetime.date.j_weekdays_fa[dt_j.weekday()]
                 except Exception:
                     j_date_str = d_str
-                    gregorian_fa = {0: "دوشنبه", 1: "سه‌شنبه", 2: "چهارشنبه", 3: "پنج‌شنبه", 4: "جمعه", 5: "شنبه", 6: "یکشنبه"}
+                    gregorian_fa = {0: "دوشنبه", 1: "سه‌شنبه", 2: "چهارشنبه", 3: "پنج‌شنبه", 4: "جمعه", 5: "شنبه", 6: "یک‌شنبه"}
                     day_name = gregorian_fa.get(d_dt.weekday(), d_dt.strftime("%a"))
 
-                row = cursor.execute("""
-                    SELECT SUM(delta_usage_gb) as day_total
-                    FROM subscription_traffic_logs
-                    WHERE sub_id = ? AND log_date = ?
-                """, (sub_id, d_str)).fetchone()
+                is_today = (d_dt.date() == now.date())
+                is_future = (d_dt.date() > now.date())
 
-                d_gb = round(float(row["day_total"] or 0.0), 3) if row and row["day_total"] else 0.0
-                d_mb = round(d_gb * 1024.0, 1)
-                sum_7d_gb += d_gb
+                d_gb = 0.0
+                d_mb = 0.0
 
-                if d_gb > peak_7d_gb:
-                    peak_7d_gb = d_gb
+                if not is_future:
+                    row = cursor.execute("""
+                        SELECT SUM(delta_usage_gb) as day_total
+                        FROM subscription_traffic_logs
+                        WHERE sub_id = ? AND log_date = ?
+                    """, (sub_id, d_str)).fetchone()
+
+                    d_gb = round(float(row["day_total"] or 0.0), 3) if row and row["day_total"] else 0.0
+                    d_mb = round(d_gb * 1024.0, 1)
+                    sum_7d_gb += d_gb
+
+                    if d_gb > peak_7d_gb:
+                        peak_7d_gb = d_gb
 
                 daily_7d.append({
                     "date": d_str,
@@ -19688,7 +19706,8 @@ class Database:
                     "day_name": day_name,
                     "usage_gb": d_gb,
                     "usage_mb": d_mb,
-                    "is_today": (i == 0),
+                    "is_today": is_today,
+                    "is_future": is_future,
                     "is_peak": False
                 })
 
@@ -19780,8 +19799,9 @@ class Database:
                 estimated_days_left = round(remaining_gb / daily_avg_gb, 1)
 
             # ۸. مصرف امروز (Today's Total)
-            today_total_gb = daily_7d[-1]["usage_gb"] if daily_7d else 0.0
-            today_total_mb = daily_7d[-1]["usage_mb"] if daily_7d else 0.0
+            today_item = next((d for d in daily_7d if d.get("is_today")), None)
+            today_total_gb = today_item["usage_gb"] if today_item else (daily_7d[0]["usage_gb"] if daily_7d else 0.0)
+            today_total_mb = today_item["usage_mb"] if today_item else (daily_7d[0]["usage_mb"] if daily_7d else 0.0)
 
             return {
                 "sub_id": sub_id,
