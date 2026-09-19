@@ -503,22 +503,22 @@
                                 </button>
                                 {% endif %}
 
-                                <!-- ۳. دکمه سریع کپی لینک پورتال و پروفایل مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پورتال مشتری', this)" title="مشاهده و کپی لینک پورتال مشتری">
+                                <!-- ۳. دکمه سریع کپی لینک پرتال و پروفایل مشتری -->
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پرتال مشتری', this)" title="مشاهده و کپی لینک پرتال مشتری">
                                     <i class="fas fa-link"></i>
-                                    <span class="d-none d-lg-inline">پورتال مشتری</span>
+                                    <span class="d-none d-lg-inline">پرتال</span>
                                 </button>
 
-                                <!-- ۳.۵. دکمه ارسال پیامک اختصاصی -->
-                                <button type="button" class="btn btn-sm btn-outline-warning d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="openCustomerSmsModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub['phone_number'] or '' }}', {{ 1 if is_debtor else 0 }}, {{ sub.get('debt_amount')|int if is_debtor else 0 }})" title="ارسال پیامک اختصاصی به مشتری">
-                                    <i class="fas fa-comment-sms"></i>
-                                    <span class="d-none d-xl-inline">پیامک</span>
+                                <!-- ۳.۵. دکمه مشاهده نمودار و آمار دقیق مصرف مشتری -->
+                                <button type="button" class="btn btn-sm btn-outline-warning d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="openCustomerTrafficModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub.get('hidify_uuid') or sub['id'] }}')" title="مشاهده نمودار و آمار دقیق مصرف ترافیک مشتری">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span class="d-none d-xl-inline">آمار</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
-                                    <span class="d-none d-md-inline">مدیریت و اتصال</span>
+                                    <span class="d-none d-md-inline">مدیریت</span>
                                 </button>
                             </div>
                         </td>
@@ -2116,6 +2116,127 @@
     </div>
 </div>
 
+<!-- ─── Modal آمار و تحلیل زنده ترافیک مصرفی مشتری (Customer Traffic Analytics Modal) ─── -->
+<div class="modal fade" id="adminTrafficAnalyticsModal" tabindex="-1" aria-labelledby="adminTrafficAnalyticsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-line text-warning fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="adminTrafficModalTitle">آمار و نمودار مصرف ترافیک</h5>
+                        <small class="text-secondary" id="adminTrafficModalSubtitle">در حال بارگذاری اطلاعات...</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3 p-md-4">
+                <!-- اسپینر لودینگ -->
+                <div id="adminTrafficLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">در حال دریافت اطلاعات...</span>
+                    </div>
+                    <div class="text-muted small mt-2">در حال بارگذاری آمار زنده مصرف از سرور...</div>
+                </div>
+
+                <!-- باکس خطا -->
+                <div id="adminTrafficError" class="alert alert-danger d-none" role="alert">
+                    <i class="fas fa-exclamation-circle me-1"></i>
+                    <span id="adminTrafficErrorMsg">خطا در بارگذاری اطلاعات</span>
+                </div>
+
+                <!-- محتوای اصلی آمار -->
+                <div id="adminTrafficContent" class="d-none">
+                    <!-- ۴ کارت شاخص هوشمند -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="p-2 p-md-3 border rounded-3 bg-light text-center h-100">
+                                <span class="text-warning small d-block mb-1 fw-bold">
+                                    <i class="fas fa-bolt me-1"></i>ساعت اوج مصرف
+                                </span>
+                                <strong class="fs-6 d-block text-truncate" id="adminTrafficPeakHour">—</strong>
+                                <small class="text-secondary" style="font-size: 0.7rem;">بازه پرمصرف ۲۴ساعت</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2 p-md-3 border rounded-3 bg-light text-center h-100">
+                                <span class="text-success small d-block mb-1 fw-bold">
+                                    <i class="fas fa-calendar-day me-1"></i>مصرف امروز
+                                </span>
+                                <strong class="fs-6 d-block" id="adminTrafficTodayUsage">—</strong>
+                                <small class="text-secondary" style="font-size: 0.7rem;">کل ترافیک مصرفی امروز</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2 p-md-3 border rounded-3 bg-light text-center h-100">
+                                <span class="text-info small d-block mb-1 fw-bold">
+                                    <i class="fas fa-gauge-high me-1"></i>میانگین روزانه
+                                </span>
+                                <strong class="fs-6 d-block" id="adminTrafficDailyAvg">—</strong>
+                                <small class="text-secondary" style="font-size: 0.7rem;">مصرف معمول در ۲۴ ساعت</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2 p-md-3 border rounded-3 bg-light text-center h-100">
+                                <span class="text-primary small d-block mb-1 fw-bold">
+                                    <i class="fas fa-circle-half-stroke me-1"></i>نسبت روز / شب
+                                </span>
+                                <strong class="fs-6 d-block" id="adminTrafficDayNight">—</strong>
+                                <small class="text-secondary" style="font-size: 0.7rem;">روز (۸-۲۴) / شب (۰-۸)</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- تب‌های سوییچ بازه زمانی -->
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary active" id="btnAdminTraffic24h" onclick="switchAdminTrafficRange('24h')">
+                                ⏱️ ۲۴ ساعت گذشته
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" id="btnAdminTraffic7d" onclick="switchAdminTrafficRange('7d')">
+                                📅 ۷ روز هفته
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" id="btnAdminTraffic30d" onclick="switchAdminTrafficRange('30d')">
+                                🗓️ ۳۰ روز گذشته
+                            </button>
+                        </div>
+                        <span class="badge bg-secondary-subtle text-secondary border px-2 py-1 small" id="adminTrafficTotalBadge">
+                            جمع کل: 0 MB
+                        </span>
+                    </div>
+
+                    <!-- کانتینر نمودار میله‌ای -->
+                    <div class="border rounded-3 p-3 bg-body-tertiary mb-3 position-relative" style="min-height: 180px;">
+                        <div class="d-flex align-items-end justify-content-between gap-1 w-100" id="adminTrafficBarsContainer" style="height: 140px; position: relative;">
+                            <!-- میله‌ها داینامیک اضافه می‌شوند -->
+                        </div>
+                    </div>
+
+                    <!-- جدول جزئیات -->
+                    <div class="table-responsive border rounded-3" style="max-height: 280px; overflow-y: auto;">
+                        <table class="table table-hover table-sm align-middle text-center mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="text-start">بازه زمانی / ساعت</th>
+                                    <th>حجم مصرفی</th>
+                                    <th>سهم از کل</th>
+                                    <th class="text-end">وضعیت</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminTrafficTableBody">
+                                <!-- سطرها داینامیک اضافه می‌شوند -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2 bg-light">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ─── Modal ارسال پیامک به مشتری (Customer SMS Modal) ─── -->
 <div class="modal fade text-start" id="customerSmsModal" tabindex="-1" aria-labelledby="customerSmsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -2589,6 +2710,180 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+
+// ─── مدیریت و رندر مودال تحلیل ترافیک مصرفی مشتری (Reseller Traffic Analytics) ───
+let currentAdminTrafficData = null;
+let currentAdminTrafficRange = '24h';
+
+function openCustomerTrafficModal(subId, accountName, token) {
+    const modalEl = document.getElementById('adminTrafficAnalyticsModal');
+    if (!modalEl) return;
+
+    document.getElementById('adminTrafficModalTitle').innerText = 'آمار و تحلیل مصرف: ' + (accountName || ('#' + subId));
+    document.getElementById('adminTrafficModalSubtitle').innerText = 'شناسه اشتراک: #' + subId;
+    
+    document.getElementById('adminTrafficLoading').classList.remove('d-none');
+    document.getElementById('adminTrafficError').classList.add('d-none');
+    document.getElementById('adminTrafficContent').classList.add('d-none');
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    fetch('/api/subscription/' + encodeURIComponent(token) + '/traffic-analytics')
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success || !data.analytics) {
+                throw new Error(data.error || 'اطلاعاتی یافت نشد');
+            }
+            currentAdminTrafficData = data.analytics;
+            
+            // همگام‌سازی ساعت با زمان محلی دستگاه کلاینت
+            if (currentAdminTrafficData.hourly_24h) {
+                currentAdminTrafficData.hourly_24h.forEach(item => {
+                    if (item.timestamp) {
+                        const d = new Date(item.timestamp * 1000);
+                        const h = d.getHours();
+                        item.local_hour = h;
+                        item.label = String(h).padStart(2, '0') + ':۰۰';
+                    }
+                });
+            }
+
+            // پر کردن شاخص‌ها
+            document.getElementById('adminTrafficPeakHour').innerText = currentAdminTrafficData.peak_hour || 'عصر';
+            const todayMb = currentAdminTrafficData.today_usage_mb || 0;
+            document.getElementById('adminTrafficTodayUsage').innerText = todayMb >= 1024 ? (todayMb / 1024).toFixed(2) + ' GB' : Math.round(todayMb) + ' MB';
+            document.getElementById('adminTrafficDailyAvg').innerHTML = (currentAdminTrafficData.daily_avg_gb || 0) + ' <small class="text-secondary">GB</small>';
+            document.getElementById('adminTrafficDayNight').innerText = (currentAdminTrafficData.day_pct || 75) + '٪ / ' + (currentAdminTrafficData.night_pct || 25) + '٪';
+
+            document.getElementById('adminTrafficLoading').classList.add('d-none');
+            document.getElementById('adminTrafficContent').classList.remove('d-none');
+
+            switchAdminTrafficRange('24h');
+        })
+        .catch(err => {
+            document.getElementById('adminTrafficLoading').classList.add('d-none');
+            document.getElementById('adminTrafficError').classList.remove('d-none');
+            document.getElementById('adminTrafficErrorMsg').innerText = err.message || 'خطا در بارگذاری داده‌های مصرف';
+        });
+}
+
+function switchAdminTrafficRange(range) {
+    currentAdminTrafficRange = range;
+    ['btnAdminTraffic24h', 'btnAdminTraffic7d', 'btnAdminTraffic30d'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+    const activeBtn = document.getElementById('btnAdminTraffic' + range);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    renderAdminTrafficChart(range);
+}
+
+function renderAdminTrafficChart(range) {
+    if (!currentAdminTrafficData) return;
+    const barsContainer = document.getElementById('adminTrafficBarsContainer');
+    const tableBody = document.getElementById('adminTrafficTableBody');
+    const totalBadge = document.getElementById('adminTrafficTotalBadge');
+    if (!barsContainer || !tableBody) return;
+
+    barsContainer.innerHTML = '';
+    tableBody.innerHTML = '';
+
+    let items = [];
+    if (range === '24h') items = currentAdminTrafficData.hourly_24h || [];
+    else if (range === '7d') items = currentAdminTrafficData.daily_7d || [];
+    else if (range === '30d') items = currentAdminTrafficData.daily_30d || [];
+
+    if (!items || items.length === 0) {
+        barsContainer.innerHTML = '<div class="text-center text-muted small w-100 py-4">داده‌ای برای نمایش در این بازه ثبت نشده است.</div>';
+        if (totalBadge) totalBadge.textContent = 'جمع کل: 0 MB';
+        return;
+    }
+
+    let maxUsage = 0;
+    let totalUsageMb = 0;
+    items.forEach(it => {
+        const mb = (it.usage_mb !== undefined) ? item.usage_mb : ((it.usage_gb || 0) * 1024);
+        if (mb > maxUsage) maxUsage = mb;
+        totalUsageMb += mb;
+    });
+
+    if (totalBadge) {
+        totalBadge.textContent = totalUsageMb >= 1024 ? 'جمع کل: ' + (totalUsageMb / 1024).toFixed(2) + ' GB' : 'جمع کل: ' + Math.round(totalUsageMb) + ' MB';
+    }
+
+    // رندر میله‌های نمودار
+    items.forEach((item, index) => {
+        const col = document.createElement('div');
+        col.className = 'd-flex flex-column align-items-center justify-content-end flex-grow-1 h-100';
+        col.style.minWidth = '0';
+
+        const pill = document.createElement('div');
+        pill.className = 'w-100 rounded-top';
+        const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);
+        const heightPct = (maxUsage > 0 && mbVal > 0) ? Math.max(8, (mbVal / maxUsage) * 100) : 4;
+        pill.style.height = heightPct + '%';
+        pill.style.backgroundColor = item.is_peak ? '#ffc107' : (mbVal > 0 ? '#0d6efd' : 'rgba(108, 117, 125, 0.2)');
+        pill.style.transition = 'height 0.3s ease';
+
+        const label = document.createElement('span');
+        label.className = 'text-muted mt-1';
+        label.style.fontSize = '0.65rem';
+        let shortLabel = item.label || '';
+        if (range === '7d') shortLabel = item.day_name || '';
+        else if (range === '30d') shortLabel = (index % 5 === 0 || index === items.length - 1) ? (item.jalali_date ? item.jalali_date.split(' ')[0] : (index + 1)) : '';
+        else if (range === '24h') shortLabel = (index % 3 === 0 || index === items.length - 1) ? item.label.split(':')[0] : '';
+        label.textContent = shortLabel;
+
+        const formattedUsage = item.is_future ? '—' : (mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' GB' : Math.round(mbVal) + ' MB');
+        const displayTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : ((item.day_name || '') + ' ' + (item.jalali_date || item.date || ''));
+        col.title = displayTitle + ': ' + formattedUsage;
+
+        col.appendChild(pill);
+        col.appendChild(label);
+        barsContainer.appendChild(col);
+    });
+
+    // رندر جدول جزئیات: برای ۲۴ ساعته، سطر اول ساعت «اکنون» در بالا
+    const tableItems = (range === '24h') ? items.slice().reverse() : items;
+    tableItems.forEach(item => {
+        const tr = document.createElement('tr');
+        const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);
+        const pctOfTotal = totalUsageMb > 0 ? Math.round((mbVal / totalUsageMb) * 100) : 0;
+        const formattedUsage = item.is_future ? '—' : (mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت');
+
+        let dayBadge = '';
+        if (item.is_today) dayBadge = '<span class="badge bg-primary bg-opacity-25 text-primary ms-1" style="font-size: 0.65rem;">امروز</span>';
+        else if (item.is_current) dayBadge = '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>';
+
+        let statusBadgeHtml = '';
+        if (item.is_future) statusBadgeHtml = '<span class="badge bg-secondary bg-opacity-25 text-secondary" style="font-size: 0.68rem;">در انتظار</span>';
+        else if (item.is_peak) statusBadgeHtml = '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>';
+        else if (mbVal > 0) statusBadgeHtml = '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>';
+        else statusBadgeHtml = '<span class="badge bg-secondary bg-opacity-10 text-muted" style="font-size: 0.68rem;">بدون مصرف</span>';
+
+        const displayTitle = (range === '24h') ? ('ساعت ' + item.label) : ((item.day_name || '') + ' ' + (item.jalali_date || item.date || ''));
+
+        tr.innerHTML = `
+            <td class="text-start">
+                <span>${displayTitle}</span>
+                ${dayBadge}
+            </td>
+            <td><strong>${formattedUsage}</strong></td>
+            <td style="width: 25%;">
+                <div class="d-flex align-items-center gap-1 justify-content-center">
+                    <div class="progress flex-grow-1" style="height: 6px; border-radius: 4px;">
+                        <div class="progress-bar ${item.is_peak ? 'bg-warning' : 'bg-primary'}" style="width: ${pctOfTotal}%;"></div>
+                    </div>
+                    <small class="text-secondary" style="font-size: 0.7rem; min-width: 28px;">${pctOfTotal}٪</small>
+                </div>
+            </td>
+            <td class="text-end">${statusBadgeHtml}</td>
+        `;
+        tableBody.appendChild(tr);
+    });
+}
 
 let isTableEditingCustomSms = false;
 

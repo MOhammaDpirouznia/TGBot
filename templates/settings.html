@@ -1692,6 +1692,12 @@ function selectPalette(pid) {
                             نمایش دکمه و لینک راهنما و عیب‌یابی اتصال در بالای پورتال
                         </label>
                     </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" name="portal_clock_check_enabled" id="portalClockCheckEnabled" value="1" {% if customer_portal_config.portal_clock_check_enabled %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold small" for="portalClockCheckEnabled">
+                            پایش و هشدار هوشمند عدم تطابق ساعت دستگاه مشتری (پیشگیری از قطعی اتصال و خطای Handshake)
+                        </label>
+                    </div>
                 </div>
 
                 <!-- ۱. انتخاب قالب و طرح‌بندی ظاهری پورتال مشتری -->

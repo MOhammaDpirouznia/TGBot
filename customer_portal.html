@@ -3208,7 +3208,7 @@
                             ⏱️ ۲۴ ساعت گذشته
                         </button>
                         <button type="button" class="btn btn-outline-info" id="btnTrafficRange7d" onclick="switchTrafficRange('7d')">
-                            📅 ۷ روز گذشته
+                            📅 ۷ روز هفته
                         </button>
                         <button type="button" class="btn btn-outline-info" id="btnTrafficRange30d" onclick="switchTrafficRange('30d')">
                             🗓️ ۳۰ روز گذشته
@@ -3755,6 +3755,118 @@
         </div>
     </div>
 </div>
+
+{% if portal_clock_check_enabled %}
+<!-- مودال هوشمند هشدار عدم تطابق ساعت دستگاه مشتری (Smart Clock Desync Modal) -->
+<div class="modal fade" id="deviceClockModal" tabindex="-1" aria-labelledby="deviceClockModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content glass-card border-0 text-white p-3 p-md-4 shadow-lg rounded-4" style="background: rgba(18, 24, 38, 0.96); backdrop-filter: blur(20px); border: 1px solid rgba(255, 193, 7, 0.35) !important;">
+            <div class="modal-header border-warning border-opacity-25 pb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="avatar-sm bg-warning bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-warning p-2" style="width: 48px; height: 48px; min-width: 48px;">
+                        <i class="fas fa-triangle-exclamation fs-4"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-warning mb-0" id="deviceClockModalLabel">⚠️ ساعت یا تاریخ دستگاه شما تنظیم نیست!</h5>
+                        <small class="text-secondary" id="deviceClockDiffText">اختلاف ساعت با زمان استاندارد جهانی شناسایی شد</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body py-3">
+                <!-- پیام فنی و دلیل بروز اختلال -->
+                <div class="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-25 text-white rounded-3 mb-3 p-3">
+                    <div class="d-flex gap-2">
+                        <i class="fas fa-shield-virus fs-5 text-warning flex-shrink-0 mt-1"></i>
+                        <div>
+                            <strong class="d-block text-warning mb-1">چرا تنظیم ساعت بسیار حیاتی است؟</strong>
+                            <p class="small mb-0 opacity-90" style="line-height: 1.7;">
+                                پروتکل‌های رمزنگاری و امنیتی مدرن فیلترشکن‌ها و اینترنت آزاد (مانند <strong>V2Ray، Xray، TLS، WebSocket و Reality</strong>) برای تایید گواهی‌های امنیتی و برقراری ارتباط با سرورها نیازمند زمان دقیق دستگاه هستند. در صورت اختلاف زمانی بیش از ۲ دقیقه، دست‌دهی (Handshake) با سرور شکست خورده و <strong>اینترنت شما قطع خواهد شد یا اتصال مکرراً قطع و وصل می‌شود</strong>.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- راهنمای گام‌به‌گام تنظیم خودکار ساعت در سیستم‌عامل‌های مختلف -->
+                <h6 class="fw-bold text-info mb-2 small"><i class="fas fa-screwdriver-wrench me-1"></i>راهنمای فعال‌سازی حالت خودکار ساعت در دستگاه شما:</h6>
+                <div class="accordion accordion-flush rounded-3 overflow-hidden border border-secondary border-opacity-25 mb-3" id="clockGuideAccordion">
+                    <!-- اندروید -->
+                    <div class="accordion-item bg-black bg-opacity-40 text-white border-bottom border-secondary border-opacity-25">
+                        <h2 class="accordion-header" id="headingAndroidClock">
+                            <button class="accordion-button collapsed bg-transparent text-white shadow-none py-2 px-3 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAndroidClock" aria-expanded="false" aria-controls="collapseAndroidClock">
+                                <i class="fab fa-android text-success me-2 fs-5"></i> راهنمای گوشی‌های اندروید (Samsung, Xiaomi, Huawei, ...)
+                            </button>
+                        </h2>
+                        <div id="collapseAndroidClock" class="accordion-collapse collapse show" aria-labelledby="headingAndroidClock" data-bs-parent="#clockGuideAccordion">
+                            <div class="accordion-body small py-2 px-3 opacity-90" style="line-height: 1.8;">
+                                ۱. وارد <strong>تنظیمات (Settings)</strong> گوشی شوید.<br>
+                                ۲. به بخش <strong>مدیریت عمومی (General Management)</strong> یا <strong>سیستم (System / Additional Settings)</strong> بروید.<br>
+                                ۳. گزینه <strong>تاریخ و ساعت (Date and time)</strong> را انتخاب کنید.<br>
+                                ۴. گزینه <strong>«تاریخ و ساعت خودکار» (Automatic date and time)</strong> و <strong>«منطقه زمانی خودکار» (Automatic time zone)</strong> را روشن (فعال) کنید.
+                            </div>
+                        </div>
+                    </div>
+                    <!-- آیفون -->
+                    <div class="accordion-item bg-black bg-opacity-40 text-white border-bottom border-secondary border-opacity-25">
+                        <h2 class="accordion-header" id="headingIosClock">
+                            <button class="accordion-button collapsed bg-transparent text-white shadow-none py-2 px-3 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseIosClock" aria-expanded="false" aria-controls="collapseIosClock">
+                                <i class="fab fa-apple text-light me-2 fs-5"></i> راهنمای آیفون و آیپد (iOS / iPadOS)
+                            </button>
+                        </h2>
+                        <div id="collapseIosClock" class="accordion-collapse collapse" aria-labelledby="headingIosClock" data-bs-parent="#clockGuideAccordion">
+                            <div class="accordion-body small py-2 px-3 opacity-90" style="line-height: 1.8;">
+                                ۱. وارد <strong>Settings</strong> آیفون شوید.<br>
+                                ۲. روی <strong>General</strong> و سپس <strong>Date & Time</strong> بزنید.<br>
+                                ۳. گزینه <strong>Set Automatically</strong> را روشن (سبز) کنید.<br>
+                                <span class="text-warning">نکته: در صورت خاموش بودن Location Services برای ساعت، موقعیت زمانی را به صورت دستی روی شهر خود انتخاب کنید.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ویندوز -->
+                    <div class="accordion-item bg-black bg-opacity-40 text-white">
+                        <h2 class="accordion-header" id="headingWinClock">
+                            <button class="accordion-button collapsed bg-transparent text-white shadow-none py-2 px-3 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWinClock" aria-expanded="false" aria-controls="collapseWinClock">
+                                <i class="fab fa-windows text-info me-2 fs-5"></i> راهنمای کامپیوتر و لپ‌تاپ (ویندوز ۱۰ و ۱۱)
+                            </button>
+                        </h2>
+                        <div id="collapseWinClock" class="accordion-collapse collapse" aria-labelledby="headingWinClock" data-bs-parent="#clockGuideAccordion">
+                            <div class="accordion-body small py-2 px-3 opacity-90" style="line-height: 1.8;">
+                                ۱. روی ساعت گوشه تسک‌بار راست‌کلیک کرده و <strong>Adjust date and time</strong> را بزنید.<br>
+                                ۲. گزینه <strong>Set time automatically</strong> را روشن (On) کنید.<br>
+                                ۳. در بخش پایین‌تر روی دکمه <strong>Sync now</strong> کلیک کنید تا ساعت ویندوز با سرور مایکروسافت دقیقاً هماهنگ شود.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-secondary border-opacity-25 pt-2 pb-0">
+                <button type="button" class="btn btn-warning w-100 rounded-pill py-2 fw-bold text-dark shadow" onclick="dismissClockWarningModal()">
+                    <i class="fas fa-check me-1"></i> متوجه شدم، ساعت را تنظیم خواهم کرد
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نوار یادآوری شناور پایین صفحه در صورت عدم تطابق ساعت (Sticky Bottom Banner) -->
+<div id="deviceClockBottomBanner" class="d-none position-fixed bottom-0 start-0 end-0 p-2 z-3" style="z-index: 1080;">
+    <div class="container" style="max-width: 650px;">
+        <div class="alert alert-warning border-warning shadow-lg rounded-pill py-2 px-3 mb-0 d-flex align-items-center justify-content-between gap-2" style="background: rgba(33, 37, 41, 0.95); backdrop-filter: blur(10px); border: 1px solid #ffc107;">
+            <div class="d-flex align-items-center gap-2 overflow-hidden text-truncate">
+                <i class="fas fa-clock text-warning fs-5 flex-shrink-0 animate__animated animate__pulse animate__infinite"></i>
+                <span class="text-white small text-truncate" id="deviceClockBannerText">
+                    ساعت دستگاه شما دقیق نیست؛ برای اتصال پایدار وی‌پی‌ان ساعت را خودکار کنید.
+                </span>
+            </div>
+            <button type="button" class="btn btn-sm btn-warning rounded-pill px-3 text-dark fw-bold text-nowrap flex-shrink-0" onclick="showClockWarningModal()">
+                راهنمای تنظیم
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -5185,6 +5297,18 @@ window.tgHaptic = function(type = 'light') {
 
     if (!barsContainer) return;
 
+    // همگام‌سازی برچسب‌های ساعت با ساعت محلی دستگاه مشتری (پشتیبانی از کاربران در هر کجای دنیا)
+    if (trafficData && trafficData.hourly_24h) {
+        trafficData.hourly_24h.forEach(item => {
+            if (item.timestamp) {
+                const clientDate = new Date(item.timestamp * 1000);
+                const clientHour = clientDate.getHours();
+                item.local_hour = clientHour;
+                item.label = String(clientHour).padStart(2, '0') + ':۰۰';
+            }
+        });
+    }
+
     let currentRange = '24h';
 
     window.switchTrafficRange = function(range) {
@@ -5201,19 +5325,27 @@ window.tgHaptic = function(type = 'light') {
 
     const FA_WEEKDAYS = {
         'saturday': 'شنبه',
-        'sunday': 'یکشنبه',
+        'sunday': 'یک‌شنبه',
         'monday': 'دوشنبه',
         'tuesday': 'سه‌شنبه',
         'wednesday': 'چهارشنبه',
         'thursday': 'پنج‌شنبه',
         'friday': 'جمعه',
         'sat': 'شنبه',
-        'sun': 'یکشنبه',
+        'sun': 'یک‌شنبه',
         'mon': 'دوشنبه',
         'tue': 'سه‌شنبه',
         'wed': 'چهارشنبه',
         'thu': 'پنج‌شنبه',
-        'fri': 'جمعه'
+        'fri': 'جمعه',
+        'شنبه': 'شنبه',
+        'یک‌شنبه': 'یک‌شنبه',
+        'یکشنبه': 'یک‌شنبه',
+        'دوشنبه': 'دوشنبه',
+        'سه‌شنبه': 'سه‌شنبه',
+        'چهارشنبه': 'چهارشنبه',
+        'پنج‌شنبه': 'پنج‌شنبه',
+        'جمعه': 'جمعه'
     };
 
     function getDayFa(rawDay) {
@@ -5236,7 +5368,7 @@ window.tgHaptic = function(type = 'light') {
             rangeTitle = '۲۴ ساعت گذشته (ساعتی)';
         } else if (range === '7d') {
             items = trafficData.daily_7d || [];
-            rangeTitle = '۷ روز گذشته (روزانه)';
+            rangeTitle = 'مصرف ۷ روز هفته (شنبه تا جمعه)';
         } else if (range === '30d') {
             items = trafficData.daily_30d || [];
             rangeTitle = '۳۰ روز گذشته (ماهانه)';
@@ -5271,7 +5403,7 @@ window.tgHaptic = function(type = 'light') {
             tableTotalBadge.textContent = totalUsageMb >= 1024 ? 'جمع کل: ' + (totalUsageMb / 1024).toFixed(2) + ' GB' : 'جمع کل: ' + Math.round(totalUsageMb) + ' MB';
         }
 
-        // رندر میله‌های نمودار
+        // ۱. رندر میله‌های نمودار (به ترتیب زمانی از چپ به راست / گذشته به حال)
         items.forEach((item, index) => {
             const col = document.createElement('div');
             col.className = 'traffic-bar-col';
@@ -5312,12 +5444,15 @@ window.tgHaptic = function(type = 'light') {
             col.appendChild(label);
 
             // ایجاد رویدادهای هاور / لمس جهت نمایش تولتیپ
-            const fullTitle = (range === '24h') ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) : (faDay + ' ' + (item.jalali_date || item.date));
-            const formattedUsage = mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت';
+            const fullTitle = (range === '24h') 
+                ? ('ساعت ' + item.label + (item.is_current ? ' (اکنون)' : '')) 
+                : (faDay + ' ' + (item.jalali_date || item.date) + (item.is_today ? ' (امروز)' : (item.is_future ? ' (آینده)' : '')));
+            const formattedUsage = item.is_future ? '—' : (mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت');
 
             function showTooltip(e) {
                 if (!tooltip) return;
-                tooltip.innerHTML = `<strong>${fullTitle}</strong><br><span class="traffic-row-usage">${formattedUsage}</span>` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
+                const tooltipUsage = item.is_future ? '<span class="traffic-row-usage text-muted" style="font-size: 0.7rem;">در انتظار شروع</span>' : `<span class="traffic-row-usage">${formattedUsage}</span>`;
+                tooltip.innerHTML = `<strong>${fullTitle}</strong><br>${tooltipUsage}` + (item.is_peak ? ' <span class="badge bg-warning text-dark px-1 ms-1">🔥 اوج</span>' : '');
                 tooltip.style.display = 'block';
 
                 const rect = col.getBoundingClientRect();
@@ -5339,15 +5474,42 @@ window.tgHaptic = function(type = 'light') {
             }, { passive: true });
 
             barsContainer.appendChild(col);
+        });
 
-            // رندر ردیف جدول جزئیات
-            if (tableBody) {
+        // ۲. رندر ردیف‌های جدول جزئیات (برای ۲۴ ساعته: سطر اول ساعت «اکنون» در بالا و بدون نیاز به اسکرول)
+        if (tableBody) {
+            const tableItems = (range === '24h') ? items.slice().reverse() : items;
+            tableItems.forEach(item => {
                 const tr = document.createElement('tr');
+                const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);
                 const pctOfTotal = totalUsageMb > 0 ? Math.round((mbVal / totalUsageMb) * 100) : 0;
+                const formattedUsage = item.is_future ? '—' : (mbVal >= 1024 ? (mbVal / 1024).toFixed(2) + ' گیگابایت' : Math.round(mbVal) + ' مگابایت');
+                const faDay = getDayFa(item.day_name);
+
+                let dayBadge = '';
+                if (item.is_today) {
+                    dayBadge = '<span class="badge bg-primary bg-opacity-25 text-primary ms-1" style="font-size: 0.65rem;">امروز</span>';
+                } else if (item.is_current) {
+                    dayBadge = '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>';
+                }
+
+                let statusBadgeHtml = '';
+                if (item.is_future) {
+                    statusBadgeHtml = '<span class="badge bg-secondary bg-opacity-25 text-secondary" style="font-size: 0.68rem;">در انتظار</span>';
+                } else if (item.is_peak) {
+                    statusBadgeHtml = '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>';
+                } else if (mbVal > 0) {
+                    statusBadgeHtml = '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>';
+                } else {
+                    statusBadgeHtml = '<span class="badge traffic-badge-no-usage" style="font-size: 0.68rem;">بدون مصرف</span>';
+                }
+
+                const displayTitle = (range === '24h') ? ('ساعت ' + item.label) : (faDay + ' ' + (item.jalali_date || item.date || ''));
+
                 tr.innerHTML = `
                     <td class="text-start">
-                        <span class="traffic-row-title">${fullTitle}</span>
-                        ${item.is_current ? '<span class="badge bg-info bg-opacity-25 text-info ms-1" style="font-size: 0.65rem;">اکنون</span>' : ''}
+                        <span class="traffic-row-title">${displayTitle}</span>
+                        ${dayBadge}
                     </td>
                     <td><strong class="traffic-row-usage">${formattedUsage}</strong></td>
                     <td style="width: 25%;">
@@ -5359,12 +5521,12 @@ window.tgHaptic = function(type = 'light') {
                         </div>
                     </td>
                     <td class="text-end">
-                        ${item.is_peak ? '<span class="badge bg-warning text-dark" style="font-size: 0.68rem;">🔥 اوج مصرف</span>' : (mbVal > 0 ? '<span class="badge bg-success bg-opacity-25 text-success" style="font-size: 0.68rem;">فعال</span>' : '<span class="badge traffic-badge-no-usage" style="font-size: 0.68rem;">بدون مصرف</span>')}
+                        ${statusBadgeHtml}
                     </td>
                 `;
                 tableBody.appendChild(tr);
-            }
-        });
+            });
+        }
     }
 
     // رندر اولیه روی ۲۴ ساعت
@@ -5397,6 +5559,70 @@ window.tgHaptic = function(type = 'light') {
             }
         } catch(e) {}
     }
+})();
+
+// ─── پایش هوشمند عدم تطابق ساعت و تاریخ دستگاه مشتری (Smart Device Clock Desync Monitor) ───
+(function initDeviceClockCheck() {
+    const clockCheckEnabled = {{ 'true' if portal_clock_check_enabled else 'false' }};
+    const serverTimeMs = {{ server_time_ms or 0 }};
+
+    if (!clockCheckEnabled || !serverTimeMs) return;
+
+    // محاسبه میزان اختلاف زمانی دستگاه مشتری با زمان استاندارد جهانی سرور
+    const nowDeviceMs = Date.now();
+    const diffMs = Math.abs(nowDeviceMs - serverTimeMs);
+    const diffMinutes = Math.round(diffMs / 60000);
+
+    // اگر اختلاف بیش از ۲ دقیقه (۱۲۰,۰۰۰ میلی‌ثانیه) باشد
+    if (diffMs > 120000) {
+        console.warn(`[ClockDesync] Device time diff: ~${diffMinutes} minutes with server.`);
+
+        const diffText = document.getElementById('deviceClockDiffText');
+        if (diffText) {
+            diffText.innerText = `ساعت دستگاه شما حدود ${diffMinutes} دقیقه با زمان دقیق جهانی اختلاف دارد`;
+        }
+        const bannerText = document.getElementById('deviceClockBannerText');
+        if (bannerText) {
+            bannerText.innerText = `ساعت دستگاه شما دقیق نیست (~${diffMinutes} دقیقه اختلاف) و ممکن است باعث اختلال در اتصال وی‌پی‌ان شود.`;
+        }
+
+        // نمایش نوار یادآوری شناور پایین صفحه
+        const banner = document.getElementById('deviceClockBottomBanner');
+        if (banner) banner.classList.remove('d-none');
+
+        // نمایش پاپ‌آپ هشدار (حداکثر یک‌بار در روز)
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let dismissedDate = null;
+        try {
+            dismissedDate = localStorage.getItem('device_clock_dismissed_date');
+        } catch(e) {}
+
+        if (dismissedDate !== todayStr) {
+            setTimeout(function() {
+                showClockWarningModal();
+            }, 1000);
+        }
+    }
+
+    window.showClockWarningModal = function() {
+        const modalEl = document.getElementById('deviceClockModal');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+    };
+
+    window.dismissClockWarningModal = function() {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        try {
+            localStorage.setItem('device_clock_dismissed_date', todayStr);
+        } catch(e) {}
+        const modalEl = document.getElementById('deviceClockModal');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+        }
+    };
 })();
 </script>
 </body>

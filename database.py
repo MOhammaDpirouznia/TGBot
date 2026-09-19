@@ -1204,6 +1204,12 @@ class Database:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE subscription_traffic_logs ADD COLUMN timestamp INTEGER")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_traffic_timestamp ON subscription_traffic_logs(sub_id, timestamp)")
+        except Exception:
+            pass
+
         # ستون‌های فعال‌سازی موقت رسید (Grace Period)
         try:
             cursor.execute("ALTER TABLE payments ADD COLUMN is_grace_active INTEGER DEFAULT 0")
@@ -19468,20 +19474,21 @@ class Database:
             if curr_val < 0:
                 return False
 
-            now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
-            today_str = now.strftime("%Y-%m-%d")
-            hour_val = now.hour
-            now_iso = now.isoformat()
+            now_utc = datetime.now(timezone.utc)
+            today_str = now_utc.strftime("%Y-%m-%d")
+            hour_val = now_utc.hour
+            now_ts = int(now_utc.timestamp())
+            now_iso = now_utc.isoformat()
 
             conn = ext_conn if ext_conn else self.get_connection()
             cursor = conn.cursor()
 
             # دریافت آخرین رکورد ترافیک برای محاسبه دلتا
             last_row = cursor.execute("""
-                SELECT cumulative_usage_gb, delta_usage_gb, log_date, log_hour
+                SELECT cumulative_usage_gb, delta_usage_gb, log_date, log_hour, timestamp
                 FROM subscription_traffic_logs
                 WHERE sub_id = ?
-                ORDER BY log_date DESC, log_hour DESC
+                ORDER BY id DESC
                 LIMIT 1
             """, (sub_id,)).fetchone()
 
@@ -19497,7 +19504,7 @@ class Database:
                 # اولین بار که لاگ ساعتی ثبت می‌شود: دلتای اولیه صفر ثبت می‌شود تا حجم گذشته ناگهان به این ساعت منسوب نشود
                 delta = 0.0
 
-            # بررسی وجود رکورد برای ساعت جاری همین روز
+            # بررسی وجود رکورد برای ساعت جاری همین روز (بر اساس تاریخ و ساعت UTC)
             existing = cursor.execute("""
                 SELECT id, delta_usage_gb FROM subscription_traffic_logs
                 WHERE sub_id = ? AND log_date = ? AND log_hour = ?
@@ -19509,17 +19516,18 @@ class Database:
                     UPDATE subscription_traffic_logs SET
                         cumulative_usage_gb = ?,
                         delta_usage_gb = ?,
-                        updated_at = ?
+                        updated_at = ?,
+                        timestamp = COALESCE(timestamp, ?)
                     WHERE id = ?
-                """, (curr_val, new_delta, now_iso, existing["id"]))
+                """, (curr_val, new_delta, now_iso, now_ts, existing["id"]))
             else:
                 cursor.execute("""
                     INSERT INTO subscription_traffic_logs (
                         sub_id, hidify_uuid, log_date, log_hour,
                         cumulative_usage_gb, delta_usage_gb,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (sub_id, hidify_uuid, today_str, hour_val, curr_val, delta, now_iso, now_iso))
+                        created_at, updated_at, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (sub_id, hidify_uuid, today_str, hour_val, curr_val, delta, now_iso, now_iso, now_ts))
 
             if not ext_conn:
                 conn.commit()
@@ -19637,9 +19645,10 @@ class Database:
             # آمارگیری زنده و واقعی بر اساس لاگ‌های دقیق ثبت‌شده
             # (تولید داده‌های تخمینی گذشته غیرفعال شد تا فقط داده‌های ۱۰۰٪ واقعی نمایش داده شوند)
 
-            now = datetime.now(TEHRAN_TZ) if 'TEHRAN_TZ' in globals() else datetime.now()
-            today_str = now.strftime("%Y-%m-%d")
-            current_hour = now.hour
+            now_utc = datetime.now(timezone.utc)
+            now = now_utc
+            today_str = now_utc.strftime("%Y-%m-%d")
+            current_hour = now_utc.hour
 
             # ۱. مصرف ۲۴ ساعت گذشته (Hourly Last 24 Hours)
             hourly_24h = []
@@ -19647,15 +19656,22 @@ class Database:
             peak_24h_hour_label = ""
 
             for i in range(23, -1, -1):
-                h_dt = now - timedelta(hours=i)
+                h_dt = now_utc - timedelta(hours=i)
                 h_d_str = h_dt.strftime("%Y-%m-%d")
                 h_val = h_dt.hour
                 h_label = f"{h_val:02d}:۰۰"
+                bucket_ts = int(h_dt.replace(minute=0, second=0, microsecond=0).timestamp())
 
                 row = cursor.execute("""
-                    SELECT delta_usage_gb FROM subscription_traffic_logs
-                    WHERE sub_id = ? AND log_date = ? AND log_hour = ?
-                """, (sub_id, h_d_str, h_val)).fetchone()
+                    SELECT delta_usage_gb, timestamp FROM subscription_traffic_logs
+                    WHERE sub_id = ? AND (
+                        (timestamp >= ? AND timestamp < ?)
+                        OR
+                        (log_date = ? AND log_hour = ?)
+                    )
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (sub_id, bucket_ts, bucket_ts + 3600, h_d_str, h_val)).fetchone()
 
                 delta_gb = float(row["delta_usage_gb"] or 0.0) if row else 0.0
                 delta_mb = round(delta_gb * 1024.0, 1)
@@ -19667,6 +19683,7 @@ class Database:
                 hourly_24h.append({
                     "hour": h_val,
                     "date": h_d_str,
+                    "timestamp": bucket_ts,
                     "label": h_label,
                     "usage_gb": round(delta_gb, 4),
                     "usage_mb": delta_mb,

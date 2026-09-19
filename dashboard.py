@@ -13386,6 +13386,7 @@ def settings():
             support_username = request.form.get("support_username", "").strip().lstrip("@")
             portal_enable_renewal = "1" if request.form.get("portal_enable_renewal") else "0"
             portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
+            portal_clock_check_enabled = "1" if request.form.get("portal_clock_check_enabled") else "0"
             portal_layout = request.form.get("portal_layout", "classic").strip().lower()
             portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
             portal_palette = request.form.get("portal_palette", "inherit").strip()
@@ -13397,6 +13398,7 @@ def settings():
             db.save_setting("support_username", support_username)
             db.save_setting("portal_enable_renewal", portal_enable_renewal)
             db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
+            db.save_setting("portal_clock_check_enabled", portal_clock_check_enabled)
             db.save_setting("portal_layout", portal_layout)
             db.save_setting("portal_plan_style", portal_plan_style)
 
@@ -13590,6 +13592,7 @@ def settings():
         "support_username": db.get_setting("support_username", ""),
         "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
         "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true"),
+        "portal_clock_check_enabled": str(db.get_setting("portal_clock_check_enabled", "1")).lower() in ("1", "true"),
         "server_status_mode": db.get_setting("server_status_mode", "smart"),
         "server_status_manual_state": db.get_setting("server_status_manual_state", "operational"),
         "server_status_custom_text": db.get_setting("server_status_custom_text", ""),
@@ -20976,6 +20979,9 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     safe_sub.pop("reseller_note", None)
     safe_sub.pop("internal_note", None)
 
+    portal_clock_check_enabled = str(db.get_setting("portal_clock_check_enabled", "1")).lower() in ("1", "true")
+    server_time_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
     return render_template(
         "customer_portal.html",
         sub=safe_sub,
@@ -20993,6 +20999,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         troubleshoot_url=troubleshoot_url,
         portal_enable_renewal=portal_enable_renewal,
         portal_show_troubleshoot=portal_show_troubleshoot,
+        portal_clock_check_enabled=portal_clock_check_enabled,
+        server_time_ms=server_time_ms,
         pending_queue=pending_queue,
         pending_queues=pending_queues,
         sub_history=sub_history,
