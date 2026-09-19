@@ -16927,9 +16927,13 @@ class Database:
             {"id": "cancel_payment", "title": "❌ انصراف", "enabled": True, "row": 2, "col": 1, "order": 5, "style": "danger"}
         ],
         "support": [
-            {"id": "ticket_new", "title": "📝 ارسال تیکت جدید", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
-            {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
-            {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"}
+            {"id": "ticket_new", "title": "✍️ ارسال پیام دلخواه (ثبت تیکت)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "topic_disconnect", "title": "🔴 قطعی و عدم اتصال سرویس", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "danger"},
+            {"id": "topic_speed", "title": "📉 کندی شدید سرعت اینترنت", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"},
+            {"id": "topic_billing", "title": "💳 سوال درباره تمدید یا واریزی", "enabled": True, "row": 2, "col": 0, "order": 5, "style": "default"},
+            {"id": "topic_server", "title": "🔄 درخواست سرور یا کانفیگ جدید", "enabled": True, "row": 2, "col": 1, "order": 6, "style": "default"},
+            {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 3, "col": 0, "order": 7, "style": "default"}
         ],
         "tutorials": [
             {"id": "wiz_tb_start", "title": "🧭 عیب‌یابی قدم‌به‌قدم اتصال (تلگرام)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
@@ -16966,14 +16970,136 @@ class Database:
             {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 2, "col": 1, "order": 6, "style": "danger"}
         ],
         "my_subscriptions": [
-            {"id": "sub_refresh", "title": "🔄 استعلام لحظه‌ای و بروزرسانی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
-            {"id": "sub_renew", "title": "⚡ تمدید این اشتراک", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
-            {"id": "sub_test_traffic", "title": "🧪 تست اتصال و سرعت", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"},
-            {"id": "sub_tutorial", "title": "🚀 آموزش و راهنمای اتصال", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "primary"},
-            {"id": "sub_support", "title": "🎧 گزارش خرابی / پشتیبانی", "enabled": True, "row": 2, "col": 0, "order": 5, "style": "default"},
-            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 2, "col": 1, "order": 6, "style": "danger"}
+            {"id": "sub_renew", "title": "🔄 تمدید اشتراک", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "success"},
+            {"id": "sub_qr", "title": "📱 دریافت بارکد QR", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "primary"},
+            {"id": "sub_single_config", "title": "📥 دریافت کانفیگ تکی", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "primary"},
+            {"id": "sub_tutorial", "title": "📖 راهنمای اتصال", "enabled": True, "row": 2, "col": 0, "order": 4, "style": "primary"},
+            {"id": "sub_troubleshoot", "title": "🛠️ عیب‌یابی", "enabled": True, "row": 2, "col": 1, "order": 5, "style": "danger"},
+            {"id": "sub_refresh", "title": "🔄 استعلام لحظه‌ای و بروزرسانی", "enabled": True, "row": 3, "col": 0, "order": 6, "style": "default"},
+            {"id": "sub_support", "title": "🎧 گزارش خرابی / پشتیبانی", "enabled": True, "row": 3, "col": 1, "order": 7, "style": "default"}
+        ],
+        "test_sub": [
+            {"id": "get_test", "title": "⚡ دریافت اشتراک تست رایگان", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "success"},
+            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "danger"}
+        ],
+        "referral": [
+            {"id": "referral_link", "title": "🔗 دریافت لینک اختصاصی دعوت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "referral_stats", "title": "📊 آمار زیرمجموعه‌ها و پاداش‌ها", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
+            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "danger"}
+        ],
+        "payments": [
+            {"id": "payments_refresh", "title": "🔄 بروزرسانی لیست پرداخت‌ها", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "danger"}
         ]
     }
+
+    # ═══════════════════════════════════════════════════════════════
+    # متن‌های پیش‌فرض پیام‌ها و سربرگ‌های منو و زیرمنوهای ربات
+    # ═══════════════════════════════════════════════════════════════
+
+    DEFAULT_MENU_TEXTS = {
+        "plans": {
+            "header": "📦 تعرفه‌های اشتراک {brand}:\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:",
+            "empty": "❌ هیچ پلن فعالی وجود ندارد!\n\nلطفاً با پشتیبانی تماس بگیرید."
+        },
+        "account_naming": {
+            "header": "👤 تعیین نام اشتراک:\n\nلطفاً یکی از روش‌های زیر را جهت نام‌گذاری اشتراک انتخاب نمایید:\n\n📦 پلن انتخابی: {plan_name}",
+            "custom_prompt": "✏️ لطفاً نام کاربری دلخواه خود را به حروف یا اعداد انگلیسی وارد نمایید:"
+        },
+        "confirm_subscription": {
+            "header": "📋 پیش‌فاکتور خرید اشتراک:\n\n• پلن: {plan_name}\n• مدت: {duration} روز\n• حجم: {data_limit} گیگابایت\n• مبلغ قابل پرداخت: {price} تومان\n\nلطفاً اطلاعات فاکتور را بررسی نموده و جهت تکمیل خرید ادامه دهید:"
+        },
+        "payment": {
+            "header": "💳 انتخاب روش پرداخت:\n\nلطفاً روش پرداخت مورد نظر خود را انتخاب فرمایید:"
+        },
+        "card_payment": {
+            "header": "💳 اطلاعات پرداخت کارت به کارت:\n\nلطفاً مبلغ مورد نظر را به شماره کارت زیر واریز نموده و سپس تصویر فیش واریزی یا شماره پیگیری را ارسال نمایید."
+        },
+        "renew": {
+            "header": "🔄 تمدید اشتراک «{account_name}»:\n\nلطفاً نحوه تمدید مورد نظر خود را انتخاب نمایید:",
+            "no_sub": "❌ شما در حال حاضر هیچ اشتراکی ندارید!\n\nبرای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید.",
+            "choose_plan": "🔄 تمدید اشتراک «{account_name}»:\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:"
+        },
+        "my_subscriptions": {
+            "header": "📊 وضعیت لحظه‌ای اشتراک‌های شما:",
+            "empty": "ℹ️ شما در حال حاضر هیچ اشتراک فعالی ندارید.\n\nجهت مشاهده تعرفه‌ها و خرید سرویس پرسرعت، روی دکمه «🛍️ خرید اشتراک» بزنید.",
+            "querying": "⏳ در حال استعلام آخرین وضعیت و مصرف از سرور..."
+        },
+        "support": {
+            "header": "🎧 واحد پشتیبانی و خدمات مشتریان {brand}\n\nبرای ارسال سریع پیام، می‌توانید یکی از موضوعات آماده زیر را انتخاب فرمایید یا روی «✍️ ارسال پیام دلخواه» بزنید تا پیام شما مستقیماً ثبت و بررسی گردد:",
+            "prompt": "✍️ ارسال پیام به پشتیبانی:\n\nلطفاً متن پیام یا مشکل خود را تایپ و ارسال فرمایید تا برای تیم پشتیبانی ارسال گردد.\n(پاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد)"
+        },
+        "tutorials": {
+            "header": "📖 مرکز آموزش و راهنمای جامع اتصال\n\nبرای اتصال آسان یا رفع هرگونه اختلال و قطعی، روش مورد نظر خود را انتخاب نمایید:\n\n📱 اندروید: v2rayNG, Hiddify, Happ, NekoBox\n🍏 آیفون و آیپد: Streisand, FoXray, V2Box, Shadowrocket\n💻 ویندوز و مک: v2rayN, Hiddify, Nekoray\n📺 تلویزیون هوشمند: Android TV, Spark\n🌐 مودم و روتر: OpenWrt, MikroTik"
+        },
+        "wallet": {
+            "header": "💳 موجودی کیف پول شما: {balance} تومان",
+            "charge_prompt": "💰 لطفاً مبلغ مورد نظر جهت شارژ کیف پول را به تومان وارد نمایید:"
+        },
+        "language": {
+            "header": "🌐 لطفاً زبان مورد نظر خود را انتخاب کنید:\nPlease select your language:"
+        },
+        "test_sub": {
+            "header": "⚡ دریافت اشتراک تست رایگان:\n\nبا این اشتراک می‌توانید کیفیت و سرعت سرورها را تست فرمایید.",
+            "already_received": "⚠️ شما قبلاً از اشتراک تست رایگان استفاده کرده‌اید و هر کاربر فقط یک‌بار مجاز به دریافت تست است."
+        },
+        "referral": {
+            "header": "🎁 سیستم کسب درآمد و دعوت از دوستان:\n\nبا ارسال لینک اختصاصی خود به دوستان، درصدی از مبلغ خریدهای آن‌ها به کیف پول شما واریز خواهد شد:"
+        },
+        "payments": {
+            "header": "🧾 آخرین سوابق پرداخت شما:",
+            "empty": "🧾 شما تاکنون پرداختی در این ربات ثبت نکرده‌اید."
+        }
+    }
+
+    def get_menu_text(self, bot_type: str, menu_key: str, text_key: str = "header", default: str = None, **kwargs) -> str:
+        """دریافت متن پیام اختصاصی یک منو/زیرمنو با جایگزینی خودکار متغیرها"""
+        bot_kind = "reseller" if str(bot_type).lower() in ("reseller", "resellers") else "admin"
+        setting_key = f"menu_text_{bot_kind}_{menu_key}_{text_key}"
+        saved = self.get_setting(setting_key)
+        if not saved and bot_kind == "reseller":
+            saved = self.get_setting(f"menu_text_admin_{menu_key}_{text_key}")
+        if not saved:
+            menu_defaults = self.DEFAULT_MENU_TEXTS.get(menu_key, {})
+            saved = menu_defaults.get(text_key, default or "")
+
+        if not saved:
+            saved = default or ""
+
+        if kwargs and saved:
+            try:
+                for k, v in kwargs.items():
+                    saved = saved.replace(f"{{{k}}}", str(v))
+            except Exception:
+                pass
+        return saved
+
+    def set_menu_text(self, bot_type: str, menu_key: str, text_key: str, text_value: str) -> bool:
+        """ذخیره متن پیام یک منو/زیرمنو در دیتابیس"""
+        bot_kind = "reseller" if str(bot_type).lower() in ("reseller", "resellers") else "admin"
+        setting_key = f"menu_text_{bot_kind}_{menu_key}_{text_key}"
+        return self.set_setting(setting_key, str(text_value or "").strip())
+
+    def reset_menu_texts(self, bot_type: str, menu_key: str) -> bool:
+        """بازنشانی کلیه متن‌های یک منو/زیرمنو به حالت پیش‌فرض اولیه"""
+        bot_kind = "reseller" if str(bot_type).lower() in ("reseller", "resellers") else "admin"
+        menu_defaults = self.DEFAULT_MENU_TEXTS.get(menu_key, {})
+        for t_key in menu_defaults.keys():
+            setting_key = f"menu_text_{bot_kind}_{menu_key}_{t_key}"
+            self.set_setting(setting_key, "")
+        return True
+
+    def get_all_menu_texts(self, bot_type: str) -> dict:
+        """دریافت نقشه کامل تمام متن‌های سفارشی یا پیش‌فرض برای نمایش در پنل مدیریت"""
+        bot_kind = "reseller" if str(bot_type).lower() in ("reseller", "resellers") else "admin"
+        result = {}
+        for m_key, t_dict in self.DEFAULT_MENU_TEXTS.items():
+            result[m_key] = {}
+            for t_key, def_val in t_dict.items():
+                setting_key = f"menu_text_{bot_kind}_{m_key}_{t_key}"
+                saved = self.get_setting(setting_key)
+                result[m_key][t_key] = saved if (saved and saved.strip()) else def_val
+        return result
 
     def _parse_sub_menu_args(self, arg1, arg2=None, is_reseller=False, reseller_id=None):
         bot_raw = str(arg1 or "").strip().lower()

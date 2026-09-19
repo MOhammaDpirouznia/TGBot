@@ -585,8 +585,10 @@ class ResellerBotInstance:
             """نمایش پلن‌های فروش برای مشتری نماینده (با اعمال نام و قیمت سفارشی نماینده)"""
             try:
                 plans = db.get_reseller_active_plans(r_id)
+                brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
                 if not plans:
-                    msg = "❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است."
+                    def_empty = "❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است."
+                    msg = db.get_menu_text("reseller", "plans", "empty", default=def_empty, brand=brand)
                     if update.callback_query:
                         await update.callback_query.answer()
                         await update.callback_query.edit_message_text(msg)
@@ -594,8 +596,8 @@ class ResellerBotInstance:
                         await update.message.reply_text(msg)
                     return
 
-                brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
-                text = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
+                def_header = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
+                text = db.get_menu_text("reseller", "plans", "header", default=def_header, brand=brand)
 
                 sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
                 sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
@@ -2521,6 +2523,19 @@ class ResellerBotInstance:
                 f"• متن کانفیگ بالا را لمس کرده تا کپی شود، سپس در نرم‌افزار VPN وارد نمایید."
             )
 
+            # ارسال عکس بارکد QR کانفیگ تکی
+            qr_bytes = generate_qr_code_bytes(single_link)
+            if qr_bytes:
+                try:
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=qr_bytes,
+                        caption=f"📱 <b>بارکد QR کانفیگ تکی:</b> <code>{safe_name}</code>",
+                        parse_mode="HTML"
+                    )
+                except Exception as e_qr:
+                    logger.warning(f"Error sending single link QR in reseller bot: {e_qr}")
+
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=msg_text,
@@ -2686,11 +2701,13 @@ class ResellerBotInstance:
                 logger.error(f"Error getting subscriptions for reseller bot user {user.id}: {e}")
                 subs = []
 
+            brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
             if not subs:
-                no_sub_msg = (
+                def_no_sub = (
                     "ℹ️ <b>شما در حال حاضر هیچ اشتراک فعالی در این فروشگاه ندارید.</b>\n\n"
                     "جهت مشاهده تعرفه‌ها و خرید سرویس پرسرعت، روی دکمه «🛍️ خرید اشتراک» بزنید."
                 )
+                no_sub_msg = db.get_menu_text("reseller", "my_subscriptions", "empty", default=def_no_sub, brand=brand)
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🛍️ خرید اشتراک جدید", callback_data="r_back_plans")]
                 ])
@@ -2703,7 +2720,9 @@ class ResellerBotInstance:
 
             status_msg = None
             if update.message:
-                status_msg = await update.message.reply_text("⏳ در حال استعلام آخرین وضعیت و مصرف از سرور...")
+                def_query = "⏳ در حال استعلام آخرین وضعیت و مصرف از سرور..."
+                query_txt = db.get_menu_text("reseller", "my_subscriptions", "querying", default=def_query)
+                status_msg = await update.message.reply_text(query_txt)
 
             vip_info = db.get_user_vip_info(user.id)
             vip_header = ""
@@ -2729,6 +2748,9 @@ class ResellerBotInstance:
                 troubleshoot_url = f"{tutorial_url.split('?')[0].rstrip('/')}/troubleshoot"
 
             r_client = get_reseller_hidify_client(r_id)
+
+            sub_cfg = db.get_sub_menu_config("reseller", "my_subscriptions", is_reseller=True, reseller_id=r_id)
+            sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
 
             for i, sub in enumerate(subs, 1):
                 uuid_val = sub.get("hidify_uuid")
@@ -2821,25 +2843,36 @@ class ResellerBotInstance:
                         q_limit_str = f"{q_limit} گیگابایت" if q_limit > 0 else "نامحدود"
                         sub_card += f"  • <b>نوبت {idx_q}:</b> {q_pname} ({q_limit_str} | {q_days} روز)\n"
 
-                qr_style = db.get_sub_menu_item_style("reseller", "my_subscriptions", "sub_qr", default="primary", is_reseller=True, reseller_id=r_id)
-                qr_kw = {"style": qr_style} if qr_style in ("primary", "success", "danger") else {}
-                qr_title = db.format_styled_button_text("📱 دریافت بارکد QR", qr_style)
+                qr_cfg = sub_dict.get("sub_qr", {})
+                renew_cfg = sub_dict.get("sub_renew", {})
+                single_cfg = sub_dict.get("sub_single_config", {})
+                tut_cfg = sub_dict.get("sub_tutorial", {})
+                tb_cfg = sub_dict.get("sub_troubleshoot", {})
 
-                renew_style = db.get_sub_menu_item_style("reseller", "my_subscriptions", "sub_renew", default="success", is_reseller=True, reseller_id=r_id)
-                renew_kw = {"style": renew_style} if renew_style in ("primary", "success", "danger") else {}
-                renew_title = db.format_styled_button_text("🔄 تمدید اشتراک", renew_style)
+                sub_buttons = []
+                row1 = []
+                if qr_cfg.get("enabled", True):
+                    qr_st = qr_cfg.get("style", "primary")
+                    qr_kw = {"style": qr_st} if qr_st in ("primary", "success", "danger") else {}
+                    qr_title = db.format_styled_button_text(qr_cfg.get("title") or "📱 دریافت بارکد QR", qr_st)
+                    row1.append(InlineKeyboardButton(qr_title, callback_data=f"r_sub_qr_{sub_db_id}", **qr_kw))
 
-                sub_buttons = [
-                    [
-                        InlineKeyboardButton(qr_title, callback_data=f"r_sub_qr_{sub_db_id}", **qr_kw),
-                        InlineKeyboardButton(renew_title, callback_data=f"r_renew_{sub_db_id}", **renew_kw)
-                    ]
-                ]
+                if renew_cfg.get("enabled", True):
+                    renew_st = renew_cfg.get("style", "success")
+                    renew_kw = {"style": renew_st} if renew_st in ("primary", "success", "danger") else {}
+                    renew_title = db.format_styled_button_text(renew_cfg.get("title") or "🔄 تمدید اشتراک", renew_st)
+                    row1.append(InlineKeyboardButton(renew_title, callback_data=f"r_renew_{sub_db_id}", **renew_kw))
+
+                if row1:
+                    sub_buttons.append(row1)
 
                 # دکمه دریافت کانفیگ تکی در زیر هر اشتراک
-                if uuid_val:
+                if uuid_val and single_cfg.get("enabled", True):
+                    single_st = single_cfg.get("style", "primary")
+                    single_kw = {"style": single_st} if single_st in ("primary", "success", "danger") else {}
+                    single_title = db.format_styled_button_text(single_cfg.get("title") or "📥 دریافت کانفیگ تکی", single_st)
                     sub_buttons.append([
-                        InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_db_id}")
+                        InlineKeyboardButton(single_title, callback_data=f"r_single_link_{uuid_val}_{sub_db_id}", **single_kw)
                     ])
 
                 # دکمه فعال‌سازی آنی برای هر بسته در صف تمدید
@@ -2855,12 +2888,19 @@ class ResellerBotInstance:
                             InlineKeyboardButton("🔀 تغییر اولویت و ترتیب صف", callback_data=f"r_qman_{sub_db_id}")
                         ])
 
-                tut_title = db.format_styled_button_text("📖 راهنمای اتصال", "primary")
-                tb_title = db.format_styled_button_text("🛠️ عیب‌یابی", "danger")
-                sub_buttons.append([
-                    InlineKeyboardButton(tut_title, url=tutorial_url, style="primary"),
-                    InlineKeyboardButton(tb_title, url=troubleshoot_url, style="danger")
-                ])
+                row_help = []
+                if tut_cfg.get("enabled", True):
+                    tut_st = tut_cfg.get("style", "primary")
+                    tut_title = db.format_styled_button_text(tut_cfg.get("title") or "📖 راهنمای اتصال", tut_st)
+                    row_help.append(InlineKeyboardButton(tut_title, url=tutorial_url, style=tut_st if tut_st in ("primary", "success", "danger") else None))
+
+                if tb_cfg.get("enabled", True):
+                    tb_st = tb_cfg.get("style", "danger")
+                    tb_title = db.format_styled_button_text(tb_cfg.get("title") or "🛠️ عیب‌یابی", tb_st)
+                    row_help.append(InlineKeyboardButton(tb_title, url=troubleshoot_url, style=tb_st if tb_st in ("primary", "success", "danger") else None))
+
+                if row_help:
+                    sub_buttons.append(row_help)
 
                 if update.message:
                     await update.message.reply_text(sub_card, reply_markup=InlineKeyboardMarkup(sub_buttons), parse_mode="HTML")
@@ -3349,32 +3389,63 @@ class ResellerBotInstance:
             """ارسال پیام پشتیبانی و دکمه‌های تیکت سریع با پیام‌های پراستفاده و کارآمد"""
             sup_user = self.reseller_data.get("support_username") or ""
             brand = self.reseller_data.get("brand_name") or "پشتیبانی"
-            tkt_style = db.get_sub_menu_item_style("reseller", "support", "ticket_new", default="primary", is_reseller=True, reseller_id=r_id)
-            dir_style = db.get_sub_menu_item_style("reseller", "support", "direct_support", default="success", is_reseller=True, reseller_id=r_id)
-            tkt_title = db.get_sub_menu_item_styled_title("reseller", "support", "ticket_new", default="✍️ ارسال پیام دلخواه به پشتیبانی", is_reseller=True, reseller_id=r_id)
-            buttons = [
-                [
-                    InlineKeyboardButton("🔴 قطعی و عدم اتصال سرویس", callback_data="r_quick_tkt_disconnect", style="danger"),
-                    InlineKeyboardButton("📉 کندی شدید سرعت اینترنت", callback_data="r_quick_tkt_speed", style="primary")
-                ],
-                [
-                    InlineKeyboardButton("🔄 درخواست سرور یا کانفیگ جدید", callback_data="r_quick_tkt_server", style="primary"),
-                    InlineKeyboardButton("💳 سوال درباره تمدید یا واریزی", callback_data="r_quick_tkt_billing", style="primary")
-                ],
-                [
-                    InlineKeyboardButton(tkt_title, callback_data="r_quick_tkt_custom", style=tkt_style)
-                ]
-            ]
-            if sup_user:
-                sup_clean = sup_user.replace("@", "")
-                dir_title = db.get_sub_menu_item_styled_title("reseller", "support", "direct_support", default="💬 ارتباط مستقیم با پشتیبان در تلگرام", is_reseller=True, reseller_id=r_id)
-                buttons.append([InlineKeyboardButton(dir_title, url=f"https://t.me/{sup_clean}", style=dir_style)])
+            sub_cfg = db.get_sub_menu_config("reseller", "support", is_reseller=True, reseller_id=r_id)
+            sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
 
-            msg = (
+            def def_btn(bid, d_title, d_st):
+                cfg = sub_dict.get(bid, {})
+                enabled = cfg.get("enabled", True)
+                st = cfg.get("style") or d_st
+                st_kw = st if st in ("primary", "success", "danger") else None
+                title = db.format_styled_button_text(cfg.get("title") or d_title, st)
+                return enabled, title, st_kw
+
+            buttons = []
+            row_topics1 = []
+            en_disc, t_disc, st_disc = def_btn("topic_disconnect", "🔴 قطعی و عدم اتصال سرویس", "danger")
+            if en_disc:
+                kw = {"style": st_disc} if st_disc else {}
+                row_topics1.append(InlineKeyboardButton(t_disc, callback_data="r_quick_tkt_disconnect", **kw))
+
+            en_spd, t_spd, st_spd = def_btn("topic_speed", "📉 کندی شدید سرعت اینترنت", "primary")
+            if en_spd:
+                kw = {"style": st_spd} if st_spd else {}
+                row_topics1.append(InlineKeyboardButton(t_spd, callback_data="r_quick_tkt_speed", **kw))
+
+            if row_topics1:
+                buttons.append(row_topics1)
+
+            row_topics2 = []
+            en_srv, t_srv, st_srv = def_btn("topic_server", "🔄 درخواست سرور یا کانفیگ جدید", "primary")
+            if en_srv:
+                kw = {"style": st_srv} if st_srv else {}
+                row_topics2.append(InlineKeyboardButton(t_srv, callback_data="r_quick_tkt_server", **kw))
+
+            en_bill, t_bill, st_bill = def_btn("topic_billing", "💳 سوال درباره تمدید یا واریزی", "primary")
+            if en_bill:
+                kw = {"style": st_bill} if st_bill else {}
+                row_topics2.append(InlineKeyboardButton(t_bill, callback_data="r_quick_tkt_billing", **kw))
+
+            if row_topics2:
+                buttons.append(row_topics2)
+
+            en_tkt, t_tkt, st_tkt = def_btn("ticket_new", "✍️ ارسال پیام دلخواه به پشتیبانی", "primary")
+            if en_tkt:
+                kw = {"style": st_tkt} if st_tkt else {}
+                buttons.append([InlineKeyboardButton(t_tkt, callback_data="r_quick_tkt_custom", **kw)])
+
+            en_dir, t_dir, st_dir = def_btn("direct_support", "💬 ارتباط مستقیم با پشتیبان در تلگرام", "success")
+            if en_dir and sup_user:
+                sup_clean = sup_user.replace("@", "")
+                kw = {"style": st_dir} if st_dir else {}
+                buttons.append([InlineKeyboardButton(t_dir, url=f"https://t.me/{sup_clean}", **kw)])
+
+            def_msg = (
                 f"🎧 <b>واحد پشتیبانی و خدمات مشتریان {brand}</b>\n\n"
                 f"برای ارسال سریع پیام، می‌توانید یکی از موضوعات آماده زیر را انتخاب فرمایید\n"
                 f"یا روی «✍️ ارسال پیام دلخواه» بزنید تا پیام شما مستقیماً ثبت و بررسی گردد:\n"
             )
+            msg = db.get_menu_text("reseller", "support", "header", default=def_msg, brand=brand)
             kb = InlineKeyboardMarkup(buttons)
             if update.callback_query:
                 await update.callback_query.answer()
@@ -3410,11 +3481,13 @@ class ResellerBotInstance:
 
             if data == "r_quick_tkt_custom":
                 context.user_data["waiting_customer_ticket"] = True
-                prompt_msg = (
+                brand = self.reseller_data.get("brand_name") or "پشتیبانی"
+                def_prompt = (
                     "✍️ <b>ارسال پیام به پشتیبانی:</b>\n\n"
                     "لطفاً متن پیام یا مشکل خود را تایپ و ارسال فرمایید تا برای تیم پشتیبانی ارسال گردد.\n"
                     "(پاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد)"
                 )
+                prompt_msg = db.get_menu_text("reseller", "support", "prompt", default=def_prompt, brand=brand)
                 cancel_kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("◀️ انصراف", callback_data="r_quick_tkt_cancel")]
                 ])

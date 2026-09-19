@@ -4726,14 +4726,22 @@ def bot_menu_settings():
                     "enabled": enabled
                 })
             db.save_sub_menu_config(sub_bot_type, menu_key, updated_items)
-            flash("چیدمان و استایل زیرمنو با موفقیت ذخیره شد.", "success")
+
+            # ذخیره تمامی متون پیام‌ها و سربرگ‌های این زیرمنو
+            for k, val in request.form.items():
+                if k.startswith("menu_text_"):
+                    text_key = k.replace("menu_text_", "", 1)
+                    db.set_menu_text(sub_bot_type, menu_key, text_key, val)
+
+            flash("متن‌ها، چیدمان و استایل زیرمنو با موفقیت ذخیره شد.", "success")
             return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
 
         elif action == "reset_sub_menu":
             sub_bot_type = request.form.get("sub_bot_type", "admin").strip()
             menu_key = request.form.get("menu_key", "payment").strip()
             db.reset_sub_menu_config(sub_bot_type, menu_key)
-            flash("چیدمان زیرمنو به حالت پیش‌فرض بازنشانی گردید.", "info")
+            db.reset_menu_texts(sub_bot_type, menu_key)
+            flash("متن‌ها و چیدمان زیرمنو به حالت پیش‌فرض اولیه بازنشانی گردید.", "info")
             return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
 
         elif bot_type in ("bundle", "bundle_bot"):
@@ -4874,6 +4882,9 @@ def bot_menu_settings():
         "my_subscriptions",
         "support",
         "tutorials",
+        "test_sub",
+        "referral",
+        "payments",
     ]
     admin_sub_menus = {k: db.get_sub_menu_config("admin", k) for k in admin_sub_menu_keys}
 
@@ -4889,6 +4900,9 @@ def bot_menu_settings():
         "my_subscriptions",
         "support",
         "tutorials",
+        "test_sub",
+        "referral",
+        "payments",
     ]
     reseller_sub_menus = {k: db.get_sub_menu_config("reseller", k) for k in reseller_sub_menu_keys}
 
@@ -4900,6 +4914,8 @@ def bot_menu_settings():
     ]
     bundle_sub_menus = {k: db.get_sub_menu_config("bundle", k) for k in bundle_sub_menu_keys}
 
+    admin_menu_texts = db.get_all_menu_texts("admin")
+    reseller_menu_texts = db.get_all_menu_texts("reseller")
 
     return render_template(
         "bot_menu_settings.html",
@@ -4921,7 +4937,9 @@ def bot_menu_settings():
         bundle_is_running=bundle_is_running,
         admin_sub_menus=admin_sub_menus,
         reseller_sub_menus=reseller_sub_menus,
-        bundle_sub_menus=bundle_sub_menus
+        bundle_sub_menus=bundle_sub_menus,
+        admin_menu_texts=admin_menu_texts,
+        reseller_menu_texts=reseller_menu_texts
     )
 
 

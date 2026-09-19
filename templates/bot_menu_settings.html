@@ -1245,7 +1245,10 @@
                         'renew': 'تمدید اشتراک فعلی (پلن، کیف پول، تغییر سرویس)',
                         'my_subscriptions': 'اشتراک‌های من و مشاهده وضعیت سرویس‌ها',
                         'support': 'پشتیبانی، تیکت و ارتباط',
-                        'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها'
+                        'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها',
+                        'test_sub': 'دریافت اکانت تست رایگان',
+                        'referral': 'سیستم دعوت از دوستان و پورسانت',
+                        'payments': 'سوابق و لیست پرداخت‌ها'
                     } %}
                     {% set sub_icons = {
                         'plans': 'fas fa-boxes-stacked text-primary',
@@ -1258,7 +1261,10 @@
                         'renew': 'fas fa-arrows-rotate text-success',
                         'my_subscriptions': 'fas fa-layer-group text-primary',
                         'support': 'fas fa-headset text-info',
-                        'tutorials': 'fas fa-book-open text-primary'
+                        'tutorials': 'fas fa-book-open text-primary',
+                        'test_sub': 'fas fa-bolt text-warning',
+                        'referral': 'fas fa-gift text-danger',
+                        'payments': 'fas fa-receipt text-info'
                     } %}
                     
                     <!-- زیرمنوهای ربات مدیریت -->
@@ -1287,6 +1293,82 @@
                                         <input type="hidden" name="menu_key" value="{{ m_key }}">
                                         
                                         <div class="card-body p-0">
+                                            <!-- ویرایش پیام اختصاصی و سربرگ زیرمنو -->
+                                            {% set cur_texts = admin_menu_texts.get(m_key, {}) if admin_menu_texts else {} %}
+                                            <div class="p-3 border-bottom bg-light bg-opacity-75">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <label class="form-label fw-bold small text-dark mb-0">
+                                                        <i class="fas fa-comment-dots text-primary me-1"></i>متن پیام بالای این بخش:
+                                                    </label>
+                                                    {% if m_key == 'plans' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{brand}</code></span>
+                                                    {% elif m_key == 'account_naming' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{plan_name}</code></span>
+                                                    {% elif m_key == 'confirm_subscription' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیرها: <code>{plan_name}</code>, <code>{duration}</code>, <code>{data_limit}</code>, <code>{price}</code></span>
+                                                    {% elif m_key == 'renew' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیرها: <code>{account_name}</code>, <code>{plan_name}</code></span>
+                                                    {% elif m_key == 'support' or m_key == 'my_subscriptions' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{brand}</code></span>
+                                                    {% elif m_key == 'wallet' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{balance}</code></span>
+                                                    {% endif %}
+                                                </div>
+                                                <textarea name="menu_text_header" class="form-control form-control-sm mb-2" rows="3" style="font-size: 0.85rem; direction: rtl; text-align: right;" placeholder="متن پیام بالای این بخش را اینجا وارد نمایید...">{{ cur_texts.get('header', '') }}</textarea>
+
+                                                {% if m_key == 'plans' and 'empty' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود پلن فعال:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'renew' %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراکی ندارد:</label>
+                                                    <textarea name="menu_text_no_sub" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('no_sub', '') }}</textarea>
+                                                    {% if 'choose_plan' in cur_texts %}
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب پلن تمدیدی:</label>
+                                                    <textarea name="menu_text_choose_plan" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('choose_plan', '') }}</textarea>
+                                                    {% endif %}
+                                                </div>
+                                                {% elif m_key == 'my_subscriptions' %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراک فعالی ندارد:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-spinner text-info me-1"></i>پیام استعلام زنده مصرف از سرور:</label>
+                                                    <textarea name="menu_text_querying" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('querying', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'support' and 'prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-pencil text-info me-1"></i>پیام درخواست شرح تیکت یا ارسال مشکل:</label>
+                                                    <textarea name="menu_text_prompt" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'wallet' and 'charge_prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-money-bill-wave text-success me-1"></i>پیام درخواست مبلغ شارژ کیف پول:</label>
+                                                    <textarea name="menu_text_charge_prompt" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('charge_prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'account_naming' and 'custom_prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-font text-info me-1"></i>پیام درخواست ورود نام دلخواه:</label>
+                                                    <textarea name="menu_text_custom_prompt" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('custom_prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'test_sub' and 'already_received' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-triangle-exclamation text-danger me-1"></i>پیام استفاده قبلی از اکانت تست:</label>
+                                                    <textarea name="menu_text_already_received" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('already_received', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'payments' and 'empty' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-receipt text-secondary me-1"></i>پیام در صورت خالی بودن سوابق:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+
+                                            <div class="px-3 py-2 bg-white d-flex justify-content-between align-items-center border-bottom">
+                                                <span class="fw-bold small text-muted"><i class="fas fa-table-cells me-1 text-secondary"></i>دکمه‌های این زیرمنو (عنوان، رنگ و چیدمان):</span>
+                                            </div>
+
                                             <div class="table-responsive">
                                                 <table class="table table-sm table-hover align-middle mb-0">
                                                     <thead class="table-light small">
@@ -1377,6 +1459,82 @@
                                         <input type="hidden" name="menu_key" value="{{ m_key }}">
                                         
                                         <div class="card-body p-0">
+                                            <!-- ویرایش پیام اختصاصی و سربرگ زیرمنو (نمایندگان) -->
+                                            {% set cur_texts = reseller_menu_texts.get(m_key, {}) if reseller_menu_texts else {} %}
+                                            <div class="p-3 border-bottom bg-light bg-opacity-75">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <label class="form-label fw-bold small text-dark mb-0">
+                                                        <i class="fas fa-comment-dots text-success me-1"></i>متن پیام بالای این بخش:
+                                                    </label>
+                                                    {% if m_key == 'plans' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{brand}</code></span>
+                                                    {% elif m_key == 'account_naming' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{plan_name}</code></span>
+                                                    {% elif m_key == 'confirm_subscription' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیرها: <code>{plan_name}</code>, <code>{duration}</code>, <code>{data_limit}</code>, <code>{price}</code></span>
+                                                    {% elif m_key == 'renew' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیرها: <code>{account_name}</code>, <code>{plan_name}</code></span>
+                                                    {% elif m_key == 'support' or m_key == 'my_subscriptions' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{brand}</code></span>
+                                                    {% elif m_key == 'wallet' %}
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.72rem;">متغیر مجاز: <code>{balance}</code></span>
+                                                    {% endif %}
+                                                </div>
+                                                <textarea name="menu_text_header" class="form-control form-control-sm mb-2" rows="3" style="font-size: 0.85rem; direction: rtl; text-align: right;" placeholder="متن پیام بالای این بخش را اینجا وارد نمایید...">{{ cur_texts.get('header', '') }}</textarea>
+
+                                                {% if m_key == 'plans' and 'empty' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود پلن فعال:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'renew' %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراکی ندارد:</label>
+                                                    <textarea name="menu_text_no_sub" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('no_sub', '') }}</textarea>
+                                                    {% if 'choose_plan' in cur_texts %}
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب پلن تمدیدی:</label>
+                                                    <textarea name="menu_text_choose_plan" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('choose_plan', '') }}</textarea>
+                                                    {% endif %}
+                                                </div>
+                                                {% elif m_key == 'my_subscriptions' %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراک فعالی ندارد:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-spinner text-info me-1"></i>پیام استعلام زنده مصرف از سرور:</label>
+                                                    <textarea name="menu_text_querying" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('querying', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'support' and 'prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-pencil text-info me-1"></i>پیام درخواست شرح تیکت یا ارسال مشکل:</label>
+                                                    <textarea name="menu_text_prompt" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'wallet' and 'charge_prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-money-bill-wave text-success me-1"></i>پیام درخواست مبلغ شارژ کیف پول:</label>
+                                                    <textarea name="menu_text_charge_prompt" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('charge_prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'account_naming' and 'custom_prompt' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-font text-info me-1"></i>پیام درخواست ورود نام دلخواه:</label>
+                                                    <textarea name="menu_text_custom_prompt" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('custom_prompt', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'test_sub' and 'already_received' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-triangle-exclamation text-danger me-1"></i>پیام استفاده قبلی از اکانت تست:</label>
+                                                    <textarea name="menu_text_already_received" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('already_received', '') }}</textarea>
+                                                </div>
+                                                {% elif m_key == 'payments' and 'empty' in cur_texts %}
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-receipt text-secondary me-1"></i>پیام در صورت خالی بودن سوابق:</label>
+                                                    <textarea name="menu_text_empty" class="form-control form-control-sm" rows="1" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+
+                                            <div class="px-3 py-2 bg-white d-flex justify-content-between align-items-center border-bottom">
+                                                <span class="fw-bold small text-muted"><i class="fas fa-table-cells me-1 text-secondary"></i>دکمه‌های این زیرمنو (عنوان، رنگ و چیدمان):</span>
+                                            </div>
+
                                             <div class="table-responsive">
                                                 <table class="table table-sm table-hover align-middle mb-0">
                                                     <thead class="table-light small">

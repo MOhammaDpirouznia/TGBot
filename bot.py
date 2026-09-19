@@ -1491,11 +1491,11 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     plans = get_plans()
     
+    brand = db.get_setting("admin_brand_name") or db.get_setting("brand_name") or ""
     if not plans:
-        await update.message.reply_text(
-            "❌ هیچ پلن فعالی وجود ندارد!\n\n"
-            "لطفاً با پشتیبانی تماس بگیرید."
-        )
+        def_empty = "❌ هیچ پلن فعالی وجود ندارد!\n\nلطفاً با پشتیبانی تماس بگیرید."
+        msg_empty = db.get_menu_text("admin", "plans", "empty", default=def_empty, brand=brand)
+        await update.message.reply_text(msg_empty)
         return CHOOSING
 
     sub_cfg = db.get_sub_menu_config("admin", "plans")
@@ -1559,7 +1559,8 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")]]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = "🛒 **پلن‌های اشتراک:**\n\nلطفاً یکی از پلن‌های زیر را انتخاب کنید:"
+    def_header = "🛒 **پلن‌های اشتراک:**\n\nلطفاً یکی از پلن‌های زیر را انتخاب کنید:"
+    text = db.get_menu_text("admin", "plans", "header", default=def_header, brand=brand)
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
@@ -2933,22 +2934,28 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg_obj.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
         return CHOOSING
 
+    brand = db.get_setting("admin_brand_name") or db.get_setting("brand_name") or ""
     if not subscriptions:
         if msg_obj:
-            await msg_obj.reply_text(
+            def_no_sub = (
                 "❌ شما هنوز اشتراکی ندارید!\n\n"
                 "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
             )
+            msg = db.get_menu_text("admin", "my_subscriptions", "empty", default=def_no_sub, brand=brand)
+            await msg_obj.reply_text(msg)
         return CHOOSING
 
-    status_msg = await msg_obj.reply_text("⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور...") if msg_obj else None
+    def_querying = "⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور..."
+    querying_txt = db.get_menu_text("admin", "my_subscriptions", "querying", default=def_querying)
+    status_msg = await msg_obj.reply_text(querying_txt) if msg_obj else None
 
     vip_info = db.get_user_vip_info(user.id)
+    my_sub_hdr = db.get_menu_text("admin", "my_subscriptions", "header", default="📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>", brand=brand)
     if vip_info.get("is_vip"):
         cb_val = vip_info.get("cashback_percent", 10)
-        text = f"👑 <b>سطح حساب شما: کاربر طلایی (⭐️ VIP)</b>\n🎁 <b>پاداش فعال:</b> {cb_val}٪ کش‌بک در هر خرید\n\n📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>\n\n"
+        text = f"👑 <b>سطح حساب شما: کاربر طلایی (⭐️ VIP)</b>\n🎁 <b>پاداش فعال:</b> {cb_val}٪ کش‌بک در هر خرید\n\n{my_sub_hdr}\n\n"
     else:
-        text = "📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>\n\n"
+        text = f"{my_sub_hdr}\n\n"
 
     for i, sub in enumerate(subscriptions, 1):
         uuid = sub.get("hidify_uuid")
@@ -3116,11 +3123,15 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
 
     status_sub_cfg = db.get_sub_menu_config("admin", "my_subscriptions")
+    first_uuid = subscriptions[0].get("hidify_uuid") if subscriptions else None
     sub_cb_map = {
         "sub_refresh": "usr_refresh_status",
         "sub_renew": "start_renew",
         "sub_test_traffic": "wiz_tb_start",
         "sub_tutorial": "wiz_conn_start",
+        "sub_troubleshoot": "wiz_tb_start",
+        "sub_single_config": f"single_link_{first_uuid}" if (first_uuid and len(subscriptions) == 1) else "wiz_conn_start",
+        "sub_qr": f"single_link_{first_uuid}" if (first_uuid and len(subscriptions) == 1) else "wiz_conn_start",
         "sub_support": "ticket_new",
         "back_to_menu": "back_to_menu",
     }
@@ -3652,10 +3663,11 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # بررسی اطلاعات قدیمی
         user_data = get_user_data(user.id)
         if not user_data or not user_data.get("hidify_uuid"):
-            msg = (
+            def_no_sub = (
                 "❌ شما هنوز اشتراکی ندارید!\n\n"
                 "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
             )
+            msg = db.get_menu_text("admin", "renew", "no_sub", default=def_no_sub)
             if query:
                 await query.message.reply_text(msg)
             else:
@@ -3665,10 +3677,11 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         target_sub = {"id": 0, "account_name": user_data.get("account_name") or f"tg_{user.id}", "plan_id": None}
         context.user_data["renew_subscription_id"] = 0
         keyboard = get_renew_inline_buttons(target_sub)
-        text = (
+        def_text = (
             "🔄 <b>تمدید اشتراک فعلی:</b>\n\n"
             "لطفاً یکی از گزینه‌های زیر را انتخاب نمایید:"
         )
+        text = db.get_menu_text("admin", "renew", "header", default=def_text, account_name=target_sub.get("account_name"))
         if query:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         else:
@@ -3681,10 +3694,11 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         s_name = target_sub.get("account_name") or f"tg_{user.id}"
         p_name = target_sub.get("plan_name") or "پلن اختصاصی"
         keyboard = get_renew_inline_buttons(target_sub)
-        text = (
+        def_text = (
             f"🔄 <b>تمدید اشتراک «{s_name}»</b> ({p_name}):\n\n"
             f"لطفاً نحوه تمدید مورد نظر خود را انتخاب نمایید:"
         )
+        text = db.get_menu_text("admin", "renew", "header", default=def_text, account_name=s_name, plan_name=p_name)
         if query:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         else:
@@ -4462,10 +4476,12 @@ async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await ensure_user_verified(update, context):
         return CHOOSING
 
-    text = (
+    brand = db.get_setting("admin_brand_name") or db.get_setting("brand_name") or ""
+    def_support_hdr = (
         "💬 <b>مرکز پشتیبانی و ارتباط با مدیریت</b>\n\n"
         "در صورتی که سوال، مشکل در اتصال، نیاز به کانفیگ اختصاصی یا راهنمایی دارید، می‌توانید تیکت ثبت کنید یا مستقیماً با مدیریت در ارتباط باشید:"
     )
+    text = db.get_menu_text("admin", "support", "header", default=def_support_hdr, brand=brand)
     s_cfg = db.get_sub_menu_dict("admin", "support")
     cfg_tn = s_cfg.get("ticket_new", {})
     cfg_tl = s_cfg.get("ticket_list", {})
@@ -4508,11 +4524,13 @@ async def ticket_new_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["is_waiting_ticket"] = True
-    text = (
+    brand = db.get_setting("admin_brand_name") or db.get_setting("brand_name") or ""
+    def_prompt = (
         "📝 **ارسال پیام به پشتیبانی**\n\n"
         "لطفاً پیام، سوال یا عکس مشکل خود را ارسال کنید:\n"
         "(پیام شما مستقیماً برای تیم پشتیبانی ارسال خواهد شد)"
     )
+    text = db.get_menu_text("admin", "support", "prompt", default=def_prompt, brand=brand)
     keyboard = [[InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     return ENTERING_TICKET_MESSAGE
