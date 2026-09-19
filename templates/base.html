@@ -97,10 +97,105 @@
             transition: background-color 0.25s ease, color 0.25s ease;
         }
 
-        @media (min-width: 992px) {
-            body {
-                zoom: 0.8;
-            }
+        /* ─── چیدمان بهینه و فشرده حرفه‌ای پنل (High-Density Native Compact Mode) ─── */
+        body {
+            font-size: 0.875rem; /* فونت پایه بهینه و شارپ ۱۴ پیکسل */
+        }
+
+        .main-content {
+            padding: 16px 20px;
+        }
+
+        /* سطرهای متراکم و فشرده جداول (بیش از دو برابر ردیف در یک نگاه بدون اسکرول) */
+        .table th,
+        .table td {
+            padding: 6px 9px !important;
+            vertical-align: middle;
+            font-size: 0.835rem;
+        }
+
+        .table th {
+            font-size: 0.775rem;
+            font-weight: 700;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            white-space: nowrap;
+        }
+
+        /* آواتارهای فشرده داخل جداول جهت جلوگیری از کشیدگی بی‌مورد سطرها */
+        .table img.rounded-circle {
+            width: 32px !important;
+            height: 32px !important;
+        }
+
+        /* دکمه‌های عملیات داخل جداول: تمیز، جمع‌وجور و شارپ */
+        .table .btn-sm {
+            padding: 2.5px 7px !important;
+            font-size: 0.75rem !important;
+            border-radius: 6px !important;
+            line-height: 1.35 !important;
+        }
+
+        .table .btn-sm i {
+            font-size: 0.72rem !important;
+        }
+
+        /* بج‌های فشرده و تمیز در جداول */
+        .table .badge {
+            font-size: 0.72rem !important;
+            padding: 2.5px 6px !important;
+            font-weight: 600;
+            border-radius: 5px !important;
+        }
+
+        /* نوار پیشرفت مصرف حجم در جدول (شارپ، زیبا و متناسب با سطر فشرده) */
+        .custom-usage-progress {
+            height: 14px !important;
+            border-radius: 999px !important;
+            background-color: rgba(148, 163, 184, 0.2) !important;
+            border: 1px solid rgba(148, 163, 184, 0.3) !important;
+            overflow: hidden !important;
+        }
+
+        [data-bs-theme="light"] .custom-usage-progress {
+            background-color: rgba(226, 232, 240, 0.9) !important;
+            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+        }
+
+        .custom-usage-progress span {
+            font-size: 9.5px !important;
+            line-height: 12px !important;
+            top: 1px !important;
+        }
+
+        /* فشرده‌سازی سرفصل‌ها و کارت‌های پنل */
+        .page-header {
+            margin-bottom: 0.85rem !important;
+        }
+
+        .page-title {
+            font-size: 1.25rem !important;
+        }
+
+        .card-header {
+            padding: 10px 16px !important;
+        }
+
+        .card-body {
+            padding: 14px 16px !important;
+        }
+
+        /* کارت‌های آمار بالای داشبورد */
+        .stat-card {
+            padding: 14px 18px !important;
+            min-height: 88px !important;
+            border-radius: 12px !important;
+        }
+
+        .stat-card h3 {
+            font-size: 1.4rem !important;
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
         }
 
         /* ─── هاله‌های نوری شناور پس‌زمینه (Aura Mesh Glowing Blobs) ─── */
