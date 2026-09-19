@@ -21,7 +21,7 @@ import threading
 import concurrent.futures
 import random
 from typing import Optional, Dict, List, Any, Tuple, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 from pathlib import Path
 from flask import (
@@ -20995,7 +20995,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     safe_sub.pop("internal_note", None)
 
     portal_clock_check_enabled = str(db.get_setting("portal_clock_check_enabled", "1")).lower() in ("1", "true")
-    server_time_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    server_time_ms = int(time.time() * 1000)
 
     return render_template(
         "customer_portal.html",
