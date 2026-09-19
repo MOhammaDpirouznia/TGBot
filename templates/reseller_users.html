@@ -2897,8 +2897,8 @@ function renderAdminTrafficChart(range) {
         barsContainer.appendChild(col);
     });
 
-    // رندر جدول جزئیات: برای ۲۴ ساعته، سطر اول ساعت «اکنون» در بالا
-    const tableItems = (range === '24h') ? items.slice().reverse() : items;
+    // رندر جدول جزئیات: برای ۲۴ ساعته و ۳۰ روزه، سطر اول زمان فعلی/امروز در بالا
+    const tableItems = (range === '24h' || range === '30d') ? items.slice().reverse() : items;
     tableItems.forEach(item => {
         const tr = document.createElement('tr');
         const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);

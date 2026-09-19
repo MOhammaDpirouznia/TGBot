@@ -5483,9 +5483,9 @@ window.tgHaptic = function(type = 'light') {
             barsContainer.appendChild(col);
         });
 
-        // ۲. رندر ردیف‌های جدول جزئیات (برای ۲۴ ساعته: سطر اول ساعت «اکنون» در بالا و بدون نیاز به اسکرول)
+        // ۲. رندر ردیف‌های جدول جزئیات (برای ۲۴ ساعته و ۳۰ روزه: سطر اول زمان فعلی/امروز در بالا و بدون نیاز به اسکرول)
         if (tableBody) {
-            const tableItems = (range === '24h') ? items.slice().reverse() : items;
+            const tableItems = (range === '24h' || range === '30d') ? items.slice().reverse() : items;
             tableItems.forEach(item => {
                 const tr = document.createElement('tr');
                 const mbVal = (item.usage_mb !== undefined) ? item.usage_mb : ((item.usage_gb || 0) * 1024);
