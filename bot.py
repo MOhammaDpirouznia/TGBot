@@ -721,9 +721,29 @@ async def change_language_prompt(update: Update, context: ContextTypes.DEFAULT_T
     return CHOOSING
 
 
-def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optional[int] = None) -> Tuple[str, InlineKeyboardMarkup]:
-    """تولید پیام و کیبورد استاندارد انتخاب روش پرداخت با چیدمان و اولویت داینامیک"""
-    price = plan.get("price", 0)
+def get_payment_selection_payload(
+    user_id: int, 
+    plan: dict, 
+    reseller_id: Optional[int] = None,
+    plan_id: Optional[str] = None,
+    discount_code: Optional[str] = None,
+    discount_amount: int = 0
+) -> Tuple[str, InlineKeyboardMarkup]:
+    """تولید پیام و کیبورد استاندارد انتخاب روش پرداخت با چیدمان و اولویت داینامیک همراه با پشتیبانی کد تخفیف"""
+    base_price = plan.get("price", 0)
+    disc_amount = 0
+    clean_code = None
+
+    if discount_code:
+        if reseller_id:
+            val_res = db.validate_reseller_discount_code(reseller_id, discount_code, base_price, plan_id=plan_id)
+        else:
+            val_res = db.validate_admin_discount_code(discount_code, base_price, plan_id=plan_id)
+        if val_res.get("valid"):
+            clean_code = val_res.get("discount_code") or str(discount_code).strip().upper()
+            disc_amount = val_res.get("discount_amount", 0)
+
+    price = max(0, base_price - disc_amount)
     price_formatted = f"{price:,}".replace(",", "،")
     user_wallet = db.get_user_wallet_balance(user_id)
     usdt_price = CryptoPaymentGateway.toman_to_usdt(price, db)
@@ -734,17 +754,35 @@ def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optiona
     else:
         gw_cfg = db.get_admin_gateway()
 
+    plan_name = html.escape(str(plan.get('name', 'نامشخص')))
+    if clean_code and disc_amount > 0:
+        base_formatted = f"{base_price:,}".replace(",", "،")
+        disc_formatted = f"{disc_amount:,}".replace(",", "،")
+        amount_details = f"💰 مبلغ بسته: <s>{base_formatted} تومان</s>\n🎁 تخفیف اعمال شده ({clean_code}): <b>{disc_formatted} تومان</b>\n💳 مبلغ نهایی قابل پرداخت: <b>{price_formatted} تومان</b> (~ {usdt_price} USDT)"
+    else:
+        amount_details = f"💰 مبلغ قابل پرداخت: <b>{price_formatted} تومان</b> (~ {usdt_price} USDT)"
+
     text = f"""
 💳 <b>انتخاب روش پرداخت</b>
 
-📋 پلن انتخابی: <b>{plan.get('name', 'نامشخص')}</b>
-💰 مبلغ قابل پرداخت: <b>{price_formatted} تومان</b> (~ {usdt_price} USDT)
+📋 بسته انتخابی: <b>{plan_name}</b>
+{amount_details}
 💳 موجودی کیف پول شما: <b>{user_wallet:,} تومان</b>
 
 لطفاً نحوه پرداخت را انتخاب کنید:
 """
     keyboard = []
-    
+
+    # افزودن دکمه ثبت یا لغو کد تخفیف
+    if clean_code and disc_amount > 0:
+        keyboard.append([
+            InlineKeyboardButton(f"❌ لغو کد تخفیف: {clean_code} (-{disc_amount:,} ت)", callback_data="cancel_discount", style="danger")
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton("🎟️ ثبت کد تخفیف", callback_data="apply_discount")
+        ])
+
     # دریافت ترتیب، استایل رنگی و وضعیت فعال بودن روش‌های پرداخت به صورت پویا از دیتابیس
     bot_kind = "reseller" if reseller_id else "admin"
     sub_p_cfg = db.get_sub_menu_dict(bot_kind, "payment", is_reseller=bool(reseller_id), reseller_id=reseller_id)
@@ -814,7 +852,9 @@ async def back_to_select_payment(update: Update, context: ContextTypes.DEFAULT_T
     
     plan = plans[plan_id]
     user_id = query.from_user.id
-    text, reply_markup = get_payment_selection_payload(user_id, plan)
+    disc_code = context.user_data.get("discount_code")
+    disc_amt = context.user_data.get("discount_amount", 0)
+    text, reply_markup = get_payment_selection_payload(user_id, plan, plan_id=plan_id, discount_code=disc_code, discount_amount=disc_amt)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return SELECTING_PAYMENT
 
@@ -868,7 +908,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def back_to_select_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بازگشت به لیست پلن‌ها"""
+    """بازگشت به لیست بسته‌ها"""
     query = update.callback_query
     await query.answer()
     return await show_plans(update, context)
@@ -888,13 +928,13 @@ async def back_to_confirm_purchase(update: Update, context: ContextTypes.DEFAULT
     price_formatted = f"{plan['price']:,}".replace(",", "،")
     emoji = get_plan_telegram_emoji(plan, plan_id)
     text = f"""
-{emoji} **انتخاب پلن:** {plan['name']}
+{emoji} **انتخاب بسته:** {plan['name']}
 
 • حجم: {plan['data_limit'] if plan['data_limit'] > 0 else 'نامحدود'} گیگابایت
 • مدت: {plan['duration']} روز
 • قیمت: {price_formatted} تومان
 
-آیا مایل به خرید این پلن هستید؟
+آیا مایل به خرید این بسته هستید؟
 """
     conf_cfg = db.get_sub_menu_dict("admin", "confirm_subscription")
     conf_title = conf_cfg.get("confirm_pay", {}).get("title") or conf_cfg.get("confirm_purchase", {}).get("title") or "✅ تایید خرید"
@@ -917,37 +957,6 @@ async def back_to_confirm_purchase(update: Update, context: ContextTypes.DEFAULT
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     return CONFIRMING_PURCHASE
-
-
-async def back_to_select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بازگشت به انتخاب روش پرداخت"""
-    query = update.callback_query
-    await query.answer()
-    
-    plan_id = context.user_data.get("selected_plan")
-    plans = get_plans()
-    if not plan_id or plan_id not in plans:
-        return await back_to_menu(update, context)
-    
-    plan = plans[plan_id]
-    price_formatted = f"{plan['price']:,}".replace(",", "،")
-    emoji = get_plan_telegram_emoji(plan, plan_id)
-    text = f"""
-💳 **انتخاب روش پرداخت**
-
-{emoji} پلن: {plan['name']}
-💰 مبلغ: {price_formatted} تومان
-
-لطفاً روش پرداخت را انتخاب کنید:
-"""
-    keyboard = [
-        [InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon")],
-        [InlineKeyboardButton("💵 کارت به کارت", callback_data="pay_card")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
-    return SELECTING_PAYMENT
 
 
 async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1613,7 +1622,7 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         real_cap = plan.get("campaign_real_capacity", 0)
         sold = plan.get("campaign_sold_count", 0)
         if real_cap > 0 and sold >= real_cap:
-            await query.edit_message_text("❌ ظرفیت فروش این پلن (کمپین) به اتمام رسیده است!")
+            await query.edit_message_text("❌ ظرفیت فروش این بسته (کمپین) به اتمام رسیده است!")
             return CHOOSING
         end_time = plan.get("campaign_end_time", "").strip()
         if end_time:
@@ -1621,17 +1630,29 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 dt_end = datetime.strptime(end_time, "%Y-%m-%d %H:%M")
                 if datetime.now() > dt_end:
-                    await query.edit_message_text("❌ مهلت خرید این پلن (کمپین) به پایان رسیده است!")
+                    await query.edit_message_text("❌ مهلت خرید این بسته (کمپین) به پایان رسیده است!")
                     return CHOOSING
             except Exception:
                 pass
 
     context.user_data["selected_plan"] = plan_id
 
+    # اعتبارسنجی مجدد کد تخفیف برای بسته جدید انتخاب شده
+    disc_code = context.user_data.get("discount_code")
+    if disc_code:
+        val_res = db.validate_admin_discount_code(disc_code, plan.get("price", 0), plan_id=plan_id)
+        if val_res.get("valid"):
+            context.user_data["discount_amount"] = val_res.get("discount_amount", 0)
+            context.user_data["final_price"] = val_res.get("final_amount", plan.get("price", 0))
+        else:
+            context.user_data.pop("discount_code", None)
+            context.user_data.pop("discount_amount", None)
+            context.user_data.pop("final_price", None)
+
     price_formatted = f"{plan['price']:,}".replace(",", "،")
     emoji = get_plan_telegram_emoji(plan, plan_id)
     text = (
-        f"{emoji} پلن انتخاب شده: {plan['name']}\n\n"
+        f"{emoji} بسته انتخاب شده: {plan['name']}\n\n"
         f"• حجم: {plan['data_limit'] if plan['data_limit'] > 0 else 'نامحدود'} گیگابایت\n"
         f"• مدت: {plan['duration']} روز\n"
         f"• قیمت: {price_formatted} تومان\n\n"
@@ -1865,12 +1886,29 @@ async def select_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     plan_id = context.user_data.get("selected_plan")
     plans = get_plans()
     if not plan_id or plan_id not in plans:
-        await query.edit_message_text("❌ خطا در انتخاب پلن!")
+        await query.edit_message_text("❌ خطا در انتخاب بسته!")
         return CHOOSING
 
     plan = plans[plan_id]
     user_id = query.from_user.id
-    text, reply_markup = get_payment_selection_payload(user_id, plan)
+    disc_code = context.user_data.get("discount_code")
+    disc_amt = context.user_data.get("discount_amount", 0)
+
+    # اعتبارسنجی بلادرنگ مجاز بودن کد تخفیف برای بسته فعلی
+    if disc_code:
+        val_res = db.validate_admin_discount_code(disc_code, plan.get("price", 0), plan_id=plan_id)
+        if val_res.get("valid"):
+            disc_amt = val_res.get("discount_amount", 0)
+            context.user_data["discount_amount"] = disc_amt
+            context.user_data["final_price"] = val_res.get("final_amount", plan.get("price", 0))
+        else:
+            context.user_data.pop("discount_code", None)
+            context.user_data.pop("discount_amount", None)
+            context.user_data.pop("final_price", None)
+            disc_code = None
+            disc_amt = 0
+
+    text, reply_markup = get_payment_selection_payload(user_id, plan, plan_id=plan_id, discount_code=disc_code, discount_amount=disc_amt)
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return SELECTING_PAYMENT
 
@@ -1952,6 +1990,9 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         return await back_to_confirm_purchase(update, context)
 
     if query.data == "cancel":
+        context.user_data.pop("discount_code", None)
+        context.user_data.pop("discount_amount", None)
+        context.user_data.pop("final_price", None)
         try:
             await query.answer()
             await query.edit_message_text("❌ عملیات لغو شد.")
@@ -1959,12 +2000,8 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             pass
         return CHOOSING
 
-    if query.data in ("coming_soon_gateway", "coming_soon"):
-        try:
-            await query.answer("💳 درگاه پرداخت آنلاین شاپرک به زودی فعال خواهد شد. لطفاً از کارت به کارت یا کیف پول استفاده فرمایید.", show_alert=True)
-        except Exception:
-            pass
-        return SELECTING_PAYMENT
+    if query.data == "apply_discount":
+        return await apply_discount_prompt(update, context)
 
     plan_id = context.user_data.get("selected_plan")
     plans = get_plans()
@@ -1976,13 +2013,50 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 plan = v
                 break
 
-    price = plan.get("price", 0)
+    if query.data == "cancel_discount":
+        context.user_data.pop("discount_code", None)
+        context.user_data.pop("discount_amount", None)
+        context.user_data.pop("final_price", None)
+        try:
+            await query.answer("❌ کد تخفیف با موفقیت لغو شد.", show_alert=True)
+        except Exception:
+            pass
+        text, reply_markup = get_payment_selection_payload(user.id, plan, plan_id=plan_id)
+        try:
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Error updating payment selection after cancel discount: {e}")
+        return SELECTING_PAYMENT
+
+    if query.data in ("coming_soon_gateway", "coming_soon"):
+        try:
+            await query.answer("💳 درگاه پرداخت آنلاین شاپرک به زودی فعال خواهد شد. لطفاً از کارت به کارت یا کیف پول استفاده فرمایید.", show_alert=True)
+        except Exception:
+            pass
+        return SELECTING_PAYMENT
+
+    base_price = plan.get("price", 0)
+    disc_code = context.user_data.get("discount_code")
+    disc_amount = 0
+    if disc_code:
+        val_res = db.validate_admin_discount_code(disc_code, base_price, plan_id=plan_id)
+        if val_res.get("valid"):
+            disc_amount = val_res.get("discount_amount", 0)
+            context.user_data["discount_amount"] = disc_amount
+            context.user_data["final_price"] = max(0, base_price - disc_amount)
+        else:
+            context.user_data.pop("discount_code", None)
+            context.user_data.pop("discount_amount", None)
+            context.user_data.pop("final_price", None)
+            disc_code = None
+
+    price = max(0, base_price - disc_amount)
     price_formatted = f"{price:,}".replace(",", "،")
 
     if query.data == "back_to_select_payment":
         try:
             await query.answer()
-            text, reply_markup = get_payment_selection_payload(user.id, plan)
+            text, reply_markup = get_payment_selection_payload(user.id, plan, plan_id=plan_id, discount_code=disc_code, discount_amount=disc_amount)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
         except Exception as e:
             logger.warning(f"Error returning to payment selection: {e}")
@@ -1991,7 +2065,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data == "pay_wallet_insufficient":
         try:
             user_wallet = db.get_user_wallet_balance(user.id)
-            await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
+            await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این بسته کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
         except Exception:
             pass
         return SELECTING_PAYMENT
@@ -2177,6 +2251,11 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                             title="🎉 <b>اشتراک شما با موفقیت فعال شد!</b>",
                             details=details
                         )
+                        if disc_code:
+                            db.use_discount_code(disc_code, plan_id=plan_id)
+                            context.user_data.pop("discount_code", None)
+                            context.user_data.pop("discount_amount", None)
+                            context.user_data.pop("final_price", None)
                         return CHOOSING
             finally:
                 RenewalGuard.release_lock(ren_sub_id)
@@ -2237,6 +2316,11 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 title="🎉 <b>اشتراک شما با موفقیت فعال شد!</b>",
                 details=details
             )
+            if disc_code:
+                db.use_discount_code(disc_code, plan_id=plan_id)
+                context.user_data.pop("discount_code", None)
+                context.user_data.pop("discount_amount", None)
+                context.user_data.pop("final_price", None)
             return CHOOSING
 
         except Exception as e:
@@ -2404,7 +2488,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 
         try:
             # دریافت هوشمند کارت فعال مستقیماً از تنظیمات دیتابیس پنل مدیریت بر اساس سقف روزانه و اولویت
-            active_card = get_active_card(incoming_amount=plan.get('price', 0)) or {}
+            active_card = get_active_card(incoming_amount=price) or {}
             raw_card = active_card.get("card_number") or ""
             card_holder = html.escape(str(active_card.get("card_holder") or ""))
             bank_name = html.escape(str(active_card.get("bank_name") or ""))
@@ -2440,10 +2524,12 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data["pending_order_id"] = invoice["order_id"]
             context.user_data["smart_final_amount"] = final_amount_toman
 
+            disc_row = f"\n🎁 <b>تخفیف اعمال شده ({disc_code}):</b> {disc_amount:,} تومان" if disc_code and disc_amount > 0 else ""
+
             text = f"""
 💳 <b>پرداخت خودکار کارت به کارت</b>
 
-📋 پلن انتخابی: <b>{pname}</b>
+📋 بسته انتخابی: <b>{pname}</b>{disc_row}
 
 💰 <b>مبلغ دقیق قابل واریز (به ریال):</b>
 <code>{rial_amount}</code> ریال (<b>{rial_fmt} ریال</b>)
@@ -2604,9 +2690,9 @@ async def apply_discount_prompt(update: Update, context: ContextTypes.DEFAULT_TY
     text = (
         "🎟️ **ثبت کد تخفیف**\n\n"
         "لطفاً کد تخفیف خود را ارسال کنید:\n"
-        "(برای بازگشت بدون تخفیف، روی دکمه زیر کلیک کنید)"
+        "(برای بازگشت بدون اعمال تخفیف، روی دکمه زیر کلیک کنید)"
     )
-    keyboard = [[InlineKeyboardButton("◀️ بازگشت به فاکتور", callback_data="back_to_confirm_purchase")]]
+    keyboard = [[InlineKeyboardButton("◀️ بازگشت به روش پرداخت", callback_data="back_to_select_payment")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     return ENTERING_DISCOUNT_CODE
 
@@ -2616,28 +2702,29 @@ async def enter_discount_code(update: Update, context: ContextTypes.DEFAULT_TYPE
     code = update.message.text.strip().upper()
     plan_id = context.user_data.get("selected_plan")
     plans = get_plans()
-    plan = plans.get(plan_id, {})
+    plan = plans.get(str(plan_id), {}) if plans else {}
+    if not plan and plans:
+        for k, v in plans.items():
+            if str(k) == str(plan_id):
+                plan = v
+                break
     original_price = plan.get("price", 0)
 
-    res = db.use_discount_code(code, plan_id=plan_id)
-    if not res.get("success"):
+    res = db.validate_admin_discount_code(code, original_price, plan_id=plan_id)
+    if not res.get("valid"):
         err_msg = res.get("error") or "کد تخفیف نامعتبر، منقضی شده یا ظرفیت استفاده از آن به اتمام رسیده است!"
+        keyboard = [[InlineKeyboardButton("◀️ بازگشت به روش پرداخت", callback_data="back_to_select_payment")]]
         await update.message.reply_text(
-            f"❌ {err_msg}\n"
-            "لطفاً کد دیگری وارد کنید یا برای انصراف /cancel را بزنید:"
+            f"❌ {err_msg}\n\nلطفاً کد دیگری وارد کنید یا از دکمه زیر برای بازگشت استفاده نمایید:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return ENTERING_DISCOUNT_CODE
 
-    discount_percent = res.get("discount_percent", 0)
-    discount_amount = res.get("discount_amount", 0)
+    clean_code = res.get("discount_code", code)
+    calculated_discount = res.get("discount_amount", 0)
+    final_price = res.get("final_amount", max(0, original_price - calculated_discount))
 
-    if discount_percent > 0:
-        calculated_discount = int((original_price * discount_percent) / 100)
-    else:
-        calculated_discount = discount_amount
-
-    final_price = max(0, original_price - calculated_discount)
-    context.user_data["discount_code"] = code
+    context.user_data["discount_code"] = clean_code
     context.user_data["discount_amount"] = calculated_discount
     context.user_data["final_price"] = final_price
 
@@ -2648,23 +2735,23 @@ async def enter_discount_code(update: Update, context: ContextTypes.DEFAULT_TYPE
     title_prefix = "🔄 تمدید اشتراک" if is_renewal else "🛒 خرید اشتراک"
 
     text = f"""
-✅ **کد تخفیف `{code}` با موفقیت اعمال شد!**
+✅ <b>کد تخفیف <code>{clean_code}</code> با موفقیت اعمال شد!</b>
 
-📋 **اطلاعات فاکتور ({title_prefix}):**
-• پلن: **{plan.get('name', 'نامشخص')}**
+📋 <b>اطلاعات فاکتور ({title_prefix}):</b>
+• بسته: <b>{html.escape(str(plan.get('name', 'نامشخص')))}</b>
 • قیمت اصلی: {original_price:,} تومان
 • 🎁 تخفیف: {discount_formatted} تومان
-• 💰 **مبلغ قابل پرداخت نهایی: {price_formatted} تومان**
+• 💰 <b>مبلغ قابل پرداخت نهایی: {price_formatted} تومان</b>
 
-آیا مایل به ادامه فرآیند پرداخت هستید؟
+جهت ادامه و انتخاب روش پرداخت روی دکمه زیر بزنید:
 """
     keyboard = [
-        [InlineKeyboardButton("💳 ادامه و پرداخت", callback_data="confirm_purchase")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+        [InlineKeyboardButton("💳 ادامه و انتخاب روش پرداخت", callback_data="back_to_select_payment")],
+        [InlineKeyboardButton("❌ لغو کد تخفیف", callback_data="cancel_discount"), InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
-    return CONFIRMING_PURCHASE
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    return SELECTING_PAYMENT
 
 
 async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2832,11 +2919,14 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.warning("ADMIN_ID not set, skipping admin notification")
 
     # پاسخ به کاربر
+    context.user_data.pop("discount_code", None)
+    context.user_data.pop("discount_amount", None)
+    context.user_data.pop("final_price", None)
     try:
         await query.edit_message_text(
             f"✅ **رسید پرداخت شما با موفقیت ثبت شد!**\n\n"
             f"🧾 **شماره سفارش:** `{order_id}`\n"
-            f"📋 **پلن:** {plan.get('name', 'نامشخص')}\n"
+            f"📋 **بسته:** {plan.get('name', 'نامشخص')}\n"
             f"💰 **مبلغ:** {price_formatted} تومان\n"
             f"🔢 **شماره پیگیری / فیش:** `{tracking_code}`\n\n"
             f"⏳ فیش شما برای ادمین ارسال گردید و در حال بررسی است.\n"
@@ -6405,11 +6495,15 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
         # بروزرسانی وضعیت تراکنش به approved
         if target_tx and target_tx.get("order_id"):
             db.update_transaction(target_tx["order_id"], "approved")
+            if target_tx.get("discount_code"):
+                db.use_discount_code(target_tx["discount_code"], plan_id=target_tx.get("plan_id") or plan_id)
         else:
             pending = db.get_pending_transactions()
             for trans in pending:
                 if trans.get("user_id") == user_id:
                     db.update_transaction(trans["order_id"], "approved")
+                    if trans.get("discount_code"):
+                        db.use_discount_code(trans["discount_code"], plan_id=trans.get("plan_id") or plan_id)
                     break
     except Exception as e:
         logger.error(f"Error saving user/sub in DB: {e}")
@@ -6681,11 +6775,15 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         if target_tx and target_tx.get("order_id"):
             db.update_transaction(target_tx["order_id"], "approved")
+            if target_tx.get("discount_code"):
+                db.use_discount_code(target_tx["discount_code"], plan_id=target_tx.get("plan_id") or plan_id)
         else:
             pending = db.get_pending_transactions()
             for trans in pending:
                 if trans.get("user_id") == user_id:
                     db.update_transaction(trans["order_id"], "approved")
+                    if trans.get("discount_code"):
+                        db.use_discount_code(trans["discount_code"], plan_id=trans.get("plan_id") or plan_id)
                     break
     except Exception as e:
         logger.error(f"Error updating transaction: {e}")
@@ -10012,12 +10110,14 @@ def main():
             ] + main_menu_handlers,
             ENTERING_DISCOUNT_CODE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, enter_discount_code),
+                CallbackQueryHandler(back_to_select_payment, pattern="^back_to_select_payment$"),
                 CallbackQueryHandler(back_to_confirm_purchase, pattern="^back_to_confirm_purchase$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
             ] + main_menu_handlers,
             SELECTING_PAYMENT: [
-                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_rial_.*|copy_amount_.*|back_to_confirm_purchase|back_to_select_payment|cancel)$"),
+                CallbackQueryHandler(apply_discount_prompt, pattern="^apply_discount$"),
+                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_rial_.*|copy_amount_.*|back_to_confirm_purchase|back_to_select_payment|cancel_discount|cancel)$"),
                 CallbackQueryHandler(back_to_confirm_purchase, pattern="^back_to_confirm_purchase$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),

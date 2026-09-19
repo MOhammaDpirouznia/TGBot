@@ -6233,6 +6233,29 @@ class Database:
         finally:
             conn.close()
 
+    @staticmethod
+    def is_plan_allowed_for_discount(plan_id: str, raw_allowed: str) -> bool:
+        """بررسی هوشمند مجاز بودن بسته برای کد تخفیف با تطبیق بدون حساسیت به حروف و پیشوند"""
+        if not raw_allowed or not str(raw_allowed).strip():
+            return True
+        allowed_list = [p.strip() for p in str(raw_allowed).split(",") if p.strip()]
+        if not allowed_list:
+            return True
+        if not plan_id:
+            return False
+
+        p_str = str(plan_id).strip().lower()
+        allowed_clean = [str(x).strip().lower() for x in allowed_list]
+
+        if p_str in allowed_clean:
+            return True
+
+        alt_p = p_str.removeprefix("plan_") if p_str.startswith("plan_") else f"plan_{p_str}"
+        if alt_p in allowed_clean:
+            return True
+
+        return False
+
     def use_discount_code(self, code, plan_id: str = None):
         """استفاده از کد تخفیف"""
         conn = self.get_connection()
@@ -6246,13 +6269,11 @@ class Database:
             
             discount = dict(row)
             
-            # بررسی پلن‌های مجاز
+            # بررسی بسته‌های مجاز
             raw_allowed = (discount.get("allowed_plans") or "").strip()
             if raw_allowed:
-                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
-                if allowed_list:
-                    if not plan_id or str(plan_id).strip() not in allowed_list:
-                        return {"success": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+                if not self.is_plan_allowed_for_discount(plan_id, raw_allowed):
+                    return {"success": False, "error": "این کد تخفیف برای بسته انتخاب شده قابل استفاده نیست."}
 
             # بررسی تاریخ اعتبار
             if discount["valid_until"]:
@@ -6291,13 +6312,11 @@ class Database:
             
             d = dict(row)
             
-            # بررسی پلن‌های مجاز
+            # بررسی بسته‌های مجاز
             raw_allowed = (d.get("allowed_plans") or "").strip()
             if raw_allowed:
-                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
-                if allowed_list:
-                    if not plan_id or str(plan_id).strip() not in allowed_list:
-                        return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+                if not self.is_plan_allowed_for_discount(plan_id, raw_allowed):
+                    return {"valid": False, "error": "این کد تخفیف برای بسته انتخاب شده قابل استفاده نیست."}
 
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
@@ -15280,13 +15299,11 @@ class Database:
 
             d = dict(row)
             
-            # بررسی پلن‌های مجاز
+            # بررسی بسته‌های مجاز
             raw_allowed = (d.get("allowed_plans") or "").strip()
             if raw_allowed:
-                allowed_list = [p.strip() for p in raw_allowed.split(",") if p.strip()]
-                if allowed_list:
-                    if not plan_id or str(plan_id).strip() not in allowed_list:
-                        return {"valid": False, "error": "این کد تخفیف برای پلن انتخاب شده قابل استفاده نیست."}
+                if not self.is_plan_allowed_for_discount(plan_id, raw_allowed):
+                    return {"valid": False, "error": "این کد تخفیف برای بسته انتخاب شده قابل استفاده نیست."}
 
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
                 return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}

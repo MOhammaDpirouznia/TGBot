@@ -874,7 +874,18 @@ class ResellerBotInstance:
                 account_name = context.user_data.get("buying_account_name") or f"tg_{update.effective_user.id}"
 
                 applied_code = context.user_data.get("applied_discount_code")
-                disc_amount = context.user_data.get("applied_discount_amount", 0) if applied_code else 0
+                disc_amount = 0
+                if applied_code:
+                    val_res = db.validate_reseller_discount_code(r_id, applied_code, base_price, plan_id=plan_id)
+                    if val_res.get("valid"):
+                        disc_amount = val_res.get("discount_amount", 0)
+                        context.user_data["applied_discount_amount"] = disc_amount
+                    else:
+                        context.user_data.pop("applied_discount_code", None)
+                        context.user_data.pop("applied_discount_amount", None)
+                        context.user_data.pop("applied_discount_plan_id", None)
+                        applied_code = None
+                        disc_amount = 0
                 price = max(0, base_price - disc_amount)
 
                 user = update.effective_user
@@ -911,11 +922,11 @@ class ResellerBotInstance:
                 ordered_methods = db.get_payment_methods(reseller_id=r_id)
                 buttons = []
 
-                # دکمه اعمال کد تخفیف
+                # دکمه اعمال یا لغو کد تخفیف
                 if not applied_code:
                     buttons.append([InlineKeyboardButton("🎟️ اعمال کد تخفیف", callback_data=f"r_apply_disc_{plan_id}")])
                 else:
-                    buttons.append([InlineKeyboardButton(f"✅ کد تخفیف اعمال شد: {applied_code} (-{disc_amount:,} ت)", callback_data="noop")])
+                    buttons.append([InlineKeyboardButton(f"❌ لغو کد تخفیف: {applied_code} (-{disc_amount:,} ت)", callback_data=f"r_remove_disc_{plan_id}")])
 
                 wal_style = db.get_sub_menu_item_style("reseller", "payment", "wallet", default="success", is_reseller=True, reseller_id=r_id)
                 gw_style = db.get_sub_menu_item_style("reseller", "payment", "online_gateway", default="success", is_reseller=True, reseller_id=r_id)
@@ -976,6 +987,19 @@ class ResellerBotInstance:
             ])
             await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
 
+        async def remove_discount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """لغو و حذف کد تخفیف اعمال شده توسط کاربر"""
+            query = update.callback_query
+            plan_id = query.data.replace("r_remove_disc_", "")
+            context.user_data.pop("applied_discount_code", None)
+            context.user_data.pop("applied_discount_amount", None)
+            context.user_data.pop("applied_discount_plan_id", None)
+            try:
+                await query.answer("❌ کد تخفیف با موفقیت لغو شد.", show_alert=True)
+            except Exception:
+                pass
+            return await buy_plan_confirm_callback(update, context, injected_plan_id=plan_id)
+
         async def pay_card_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش اطلاعات کارت بانکی فعال نماینده با اتصال به تنظیمات پیامک بانک و دکمه‌های کپی هوشمند"""
             query = update.callback_query
@@ -999,7 +1023,15 @@ class ResellerBotInstance:
                 account_name = context.user_data.get("buying_account_name") or f"tg_{update.effective_user.id}"
 
                 applied_code = context.user_data.get("applied_discount_code")
-                disc_amount = context.user_data.get("applied_discount_amount", 0) if applied_code else 0
+                disc_amount = 0
+                if applied_code:
+                    val_res = db.validate_reseller_discount_code(r_id, applied_code, base_price, plan_id=plan_id)
+                    if val_res.get("valid"):
+                        disc_amount = val_res.get("discount_amount", 0)
+                    else:
+                        context.user_data.pop("applied_discount_code", None)
+                        context.user_data.pop("applied_discount_amount", None)
+                        context.user_data.pop("applied_discount_plan_id", None)
                 price = max(0, base_price - disc_amount)
 
                 active_card = db.get_active_reseller_card(r_id, incoming_amount=price)
@@ -1224,6 +1256,9 @@ class ResellerBotInstance:
                     context.user_data.pop("buying_account_name", None)
                     context.user_data.pop("waiting_for_card_receipt", None)
                     context.user_data.pop("pending_card_invoice", None)
+                    context.user_data.pop("applied_discount_code", None)
+                    context.user_data.pop("applied_discount_amount", None)
+                    context.user_data.pop("applied_discount_plan_id", None)
                     await query.answer()
                     await query.edit_message_text("❌ عملیات خرید یا تمدید لغو شد.")
             except Exception as e:
@@ -1240,8 +1275,20 @@ class ResellerBotInstance:
                 await query.edit_message_text("❌ بسته یافت نشد.")
                 return
 
-            price = plan.get("display_price", 0)
-            wholesale_cost = plan.get("wholesale_price", price)
+            base_price = plan.get("display_price", 0)
+            applied_code = context.user_data.get("applied_discount_code")
+            disc_amount = 0
+            if applied_code:
+                val_res = db.validate_reseller_discount_code(r_id, applied_code, base_price, plan_id=plan_id)
+                if val_res.get("valid"):
+                    disc_amount = val_res.get("discount_amount", 0)
+                else:
+                    context.user_data.pop("applied_discount_code", None)
+                    context.user_data.pop("applied_discount_amount", None)
+                    context.user_data.pop("applied_discount_plan_id", None)
+                    applied_code = None
+            price = max(0, base_price - disc_amount)
+            wholesale_cost = plan.get("wholesale_price", base_price)
             user = update.effective_user
             user_wallet = db.get_user_wallet_balance(user.id)
 
@@ -1365,6 +1412,11 @@ class ResellerBotInstance:
                         if uuid_val:
                             kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{renew_sub_id}")])
                         await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
+                    if applied_code:
+                        db.apply_customer_discount({"reseller_id": r_id}, applied_code)
+                        context.user_data.pop("applied_discount_code", None)
+                        context.user_data.pop("applied_discount_amount", None)
+                        context.user_data.pop("applied_discount_plan_id", None)
                     return
                 finally:
                     RenewalGuard.release_lock(renew_sub_id)
@@ -1420,6 +1472,11 @@ class ResellerBotInstance:
             if uuid_val:
                 kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_id or 0}")])
             await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
+            if applied_code:
+                db.apply_customer_discount({"reseller_id": r_id}, applied_code)
+                context.user_data.pop("applied_discount_code", None)
+                context.user_data.pop("applied_discount_amount", None)
+                context.user_data.pop("applied_discount_plan_id", None)
 
         async def pay_online_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """هدایت به درگاه پرداخت آنلاین اختصاصی نماینده"""
@@ -1432,7 +1489,18 @@ class ResellerBotInstance:
                 await query.edit_message_text("❌ بسته یافت نشد.")
                 return
 
-            price = plan.get("display_price", 0)
+            base_price = plan.get("display_price", 0)
+            applied_code = context.user_data.get("applied_discount_code")
+            disc_amount = 0
+            if applied_code:
+                val_res = db.validate_reseller_discount_code(r_id, applied_code, base_price, plan_id=plan_id)
+                if val_res.get("valid"):
+                    disc_amount = val_res.get("discount_amount", 0)
+                else:
+                    context.user_data.pop("applied_discount_code", None)
+                    context.user_data.pop("applied_discount_amount", None)
+                    context.user_data.pop("applied_discount_plan_id", None)
+            price = max(0, base_price - disc_amount)
             pname = plan.get("display_name") or plan.get("master_name", "بسته")
             account_name = context.user_data.get("buying_account_name") or f"tg_{update.effective_user.id}"
             user = update.effective_user
@@ -5859,6 +5927,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(name_choice_callback, pattern="^r_name_"))
         app.add_handler(CallbackQueryHandler(buy_plan_confirm_callback, pattern="^r_conf_"))
         app.add_handler(CallbackQueryHandler(apply_discount_callback, pattern="^r_apply_disc_"))
+        app.add_handler(CallbackQueryHandler(remove_discount_callback, pattern="^r_remove_disc_"))
         app.add_handler(CallbackQueryHandler(pay_card_callback, pattern="^r_pcard_"))
         app.add_handler(CallbackQueryHandler(pay_wallet_callback, pattern="^r_pwal_"))
         app.add_handler(CallbackQueryHandler(pay_online_callback, pattern="^r_ponl_"))
