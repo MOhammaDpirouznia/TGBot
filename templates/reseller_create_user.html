@@ -5,7 +5,7 @@
 <div class="page-header">
     <div>
         <h1 class="page-title"><i class="fas fa-user-plus text-primary"></i> ساخت اشتراک برای مشتری</h1>
-        <p class="text-muted mb-0">انتخاب پلن، محاسبه خودکار تخفیف عمده‌فروشی و صدور آنی لینک اتصال</p>
+        <p class="text-muted mb-0">انتخاب بسته، محاسبه خودکار تخفیف عمده‌فروشی و صدور آنی لینک اتصال</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <div class="badge bg-primary fs-6 py-2 px-3">
@@ -97,7 +97,7 @@
                             <div class="col-md-6" id="resellerDebtAmountBox" style="display: none;">
                                 <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری (تومان):</label>
                                 <input type="number" step="1000" name="debt_amount" id="resellerDebtAmountInput" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی دلخواه...">
-                                <small class="text-muted">پیش‌فرض: قیمت نهایی پلن (قابل تغییر دستی)</small>
+                                <small class="text-muted">پیش‌فرض: قیمت نهایی بسته (قابل تغییر دستی)</small>
                             </div>
                             <div class="col-12" id="resellerDebtNoteBox" style="display: none;">
                                 <label class="form-label small fw-bold text-danger"><i class="fas fa-file-invoice-dollar me-1"></i>شرایط یا مهلت تسویه بدهی (قابل مشاهده توسط مشتری در پورتال و ربات):</label>
@@ -125,13 +125,13 @@
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label fw-bold">انتخاب پلن مورد نظر:</label>
+                        <label class="form-label fw-bold">انتخاب بسته مورد نظر:</label>
                         <div class="row g-3">
                             {% for p_key, p in plans.items() %}
                             {% if p.get('is_active', True) and p.get('master_is_active', True) %}
                             {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
                             {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
-                            {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                            {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'بسته' %}
                             {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
                             {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                             <div class="col-md-6">
@@ -147,7 +147,7 @@
                                                 <span class="fw-bold">{{ p_name }}</span>
                                                 {% if not p.get('show_in_reseller_bot', True) %}
                                                 <span class="badge bg-warning-subtle text-dark border border-warning px-2 py-1" style="font-size: 0.7rem;" title="این پلن در ربات تلگرام نمایش داده نمی‌شود و فقط مخصوص صدور دستی در پنل وب شماست">
-                                                    <i class="fas fa-gem text-warning me-1"></i>پلن اختصاصی دستی
+                                                    <i class="fas fa-gem text-warning me-1"></i>بسته اختصاصی دستی
                                                 </span>
                                                 {% endif %}
                                             </div>
@@ -274,7 +274,7 @@
                                     </label>
                                     <div class="p-2 bg-white border border-success rounded text-center shadow-sm">
                                         <div class="fs-5 fw-bold text-success font-monospace" id="displayResellerCustomerPayable">۰ تومان</div>
-                                        <div class="text-muted small" style="font-size: 0.7rem;" id="displayResellerDiscountBreakdown">قیمت مصوب پلن: ۰ ت (بدون تخفیف)</div>
+                                        <div class="text-muted small" style="font-size: 0.7rem;" id="displayResellerDiscountBreakdown">قیمت مصوب بسته: ۰ ت (بدون تخفیف)</div>
                                     </div>
                                 </div>
                             </div>
@@ -284,7 +284,7 @@
                     <!-- خلاصه فاکتور و پرداخت -->
                     <div class="p-3 bg-light rounded-3 mb-4">
                         <div class="d-flex justify-content-between mb-2">
-                            <span>قیمت مصوب پلن:</span>
+                            <span>قیمت مصوب بسته:</span>
                             <span id="origPriceText">0 تومان</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2 text-primary">
@@ -365,7 +365,7 @@
 
         if (!notice) return;
 
-        // بررسی موجودی برای پلن انتخاب شده
+        // بررسی موجودی برای بسته انتخاب شده
         if (currentFinalPrice > 0) {
             const totalPower = userBalance + userAvailableCredit;
             if (totalPower < currentFinalPrice) {
@@ -438,7 +438,7 @@
             if (discVal > 0) {
                 custBreakdownEl.innerText = `قیمت مصوب: ${retail.toLocaleString('fa-IR')} ت - تخفیف: ${discVal.toLocaleString('fa-IR')} ت`;
             } else {
-                custBreakdownEl.innerText = `قیمت مصوب پلن: ${retail.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
+                custBreakdownEl.innerText = `قیمت مصوب بسته: ${retail.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
             }
         }
 
@@ -459,7 +459,7 @@
         
         updateCustomerDiscount();
 
-        // هایلایت پلن فعال
+        // هایلایت بسته فعال
         document.querySelectorAll('.plan-option').forEach(card => {
             const radio = card.querySelector('input[type="radio"]');
             if (radio && radio.checked) {

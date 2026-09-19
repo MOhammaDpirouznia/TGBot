@@ -821,7 +821,7 @@
                                 {% endif %}
                             </div>
 
-                            <!-- خط دوم: شماره سفارش، نام مشتری و پلن (Point 6) -->
+                            <!-- خط دوم: شماره سفارش، نام مشتری و بسته (Point 6) -->
                             <div class="d-flex align-items-center gap-3 justify-content-end text-muted small flex-wrap">
                                 <span class="font-monospace text-info"><i class="fas fa-hashtag me-1"></i>{{ tx.order_id }}</span>
                                 <span><i class="fas fa-user me-1"></i>{{ tx.customer_name }}</span>
@@ -897,7 +897,7 @@
                                 <span class="fw-bold text-white" id="txModalCustomer">---</span>
                             </div>
                             <div class="d-flex justify-content-between py-1 border-bottom border-secondary border-opacity-25">
-                                <span class="text-muted">پلن / اشتراک:</span>
+                                <span class="text-muted">بسته / اشتراک:</span>
                                 <span class="fw-bold text-white" id="txModalPlan">---</span>
                             </div>
                             <div class="d-flex justify-content-between py-1 border-bottom border-secondary border-opacity-25">
@@ -1111,7 +1111,7 @@
                         <!-- بخش هوشمند مشتری، پلن و تخفیف (تسک‌های ۶، ۷ و ۸) -->
                         <div id="customerPlanSection" class="col-12 p-3 rounded-3 border border-secondary border-opacity-50" style="background: rgba(30, 41, 59, 0.55);">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="fw-bold text-info small"><i class="fas fa-cart-shopping me-1"></i> انتخاب مشتری، پلن و تخفیف (ویژه فروش و تمدید)</span>
+                                <span class="fw-bold text-info small"><i class="fas fa-cart-shopping me-1"></i> انتخاب مشتری، بسته و تخفیف (ویژه فروش و تمدید)</span>
                                 <span class="badge bg-info bg-opacity-20 text-info">تکمیل خودکار مبلغ</span>
                             </div>
                             <div class="row g-2">
@@ -1125,9 +1125,9 @@
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label small text-white-50">انتخاب پلن اشتراک</label>
+                                    <label class="form-label small text-white-50">انتخاب بسته اشتراک</label>
                                     <select name="plan_name" id="recordPlanSelect" class="form-select form-select-sm bg-dark text-white border-secondary" onchange="onPlanSelectChange()">
-                                        <option value="" data-price="0">-- انتخاب پلن (اختیاری) --</option>
+                                        <option value="" data-price="0">-- انتخاب بسته (اختیاری) --</option>
                                         {% if plans %}
                                         {% for pkey, pval in plans.items() %}
                                         <option value="{{ pval.name or pkey }}" data-price="{{ pval.price or 0 }}">{{ pval.name or pkey }} - {{ "{:,}".format(pval.price or 0) }} تومان ({{ pval.data_limit or 0 }} گیگ)</option>
@@ -1141,7 +1141,7 @@
                                 </div>
                                 <div class="col-md-6 d-flex align-items-center">
                                     <div class="small text-muted pt-3" id="planPricingHint">
-                                        با انتخاب پلن، مبلغ به طور خودکار با کسر تخفیف محاسبه می‌شود.
+                                        با انتخاب بسته، مبلغ به طور خودکار با کسر تخفیف محاسبه می‌شود.
                                     </div>
                                 </div>
                             </div>
@@ -1496,7 +1496,7 @@ function onPlanSelectChange() {
         const titleInput = document.getElementById('recordTitleInput');
         if(!titleInput.value || titleInput.value.includes('پلن') || titleInput.value.includes('فروش') || titleInput.value.includes('تمدید')) {
             const custPart = custName ? ` به ${custName}` : '';
-            titleInput.value = `فروش پلن ${planName}${custPart}`;
+            titleInput.value = `فروش بسته ${planName}${custPart}`;
         }
     }
 
@@ -1510,7 +1510,7 @@ function onCustomerSelectChange() {
     const titleInput = document.getElementById('recordTitleInput');
 
     if(custName && (!titleInput.value || titleInput.value.includes('پلن') || titleInput.value.includes('فروش') || titleInput.value.includes('تمدید'))) {
-        const planPart = planName ? `پلن ${planName}` : 'اشتراک';
+        const planPart = planName ? `بسته ${planName}` : 'اشتراک';
         titleInput.value = `فروش ${planPart} به ${custName}`;
     }
 }
@@ -1531,9 +1531,9 @@ function recalcRecordAmount() {
         const finalAmt = Math.max(0, base - (discount > 0 ? discount : 0));
         document.getElementById('recordAmountInput').value = finalAmt;
         if(discount > 0) {
-            hint.innerHTML = `<span class="text-warning fw-semibold">مبلغ پلن: ${base.toLocaleString()} ت - تخفیف: ${discount.toLocaleString()} ت = خالص: ${finalAmt.toLocaleString()} تومان</span>`;
+            hint.innerHTML = `<span class="text-warning fw-semibold">مبلغ بسته: ${base.toLocaleString()} ت - تخفیف: ${discount.toLocaleString()} ت = خالص: ${finalAmt.toLocaleString()} تومان</span>`;
         } else {
-            hint.innerHTML = `<span class="text-success fw-semibold">مبلغ پلن: ${base.toLocaleString()} تومان اعمال شد.</span>`;
+            hint.innerHTML = `<span class="text-success fw-semibold">مبلغ بسته: ${base.toLocaleString()} تومان اعمال شد.</span>`;
         }
     }
 }

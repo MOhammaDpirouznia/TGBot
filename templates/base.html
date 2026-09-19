@@ -1656,7 +1656,7 @@
                 <div class="collapse submenu-collapse {% if is_settings_active %}show{% endif %}" id="resellerSettingsCollapse">
                     <div class="submenu-inner">
                         <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
-                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها و پلن‌ها
+                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
                             <i class="fas fa-robot text-primary"></i> ربات تلگرام
@@ -1779,7 +1779,7 @@
                     <div class="submenu-inner">
                         {% if has_permission('plans') %}
                         <a class="submenu-item {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
-                            <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
+                            <i class="fas fa-layer-group text-info"></i> بسته‌های فروش
                         </a>
                         {% endif %}
                         {% if has_permission('discounts') %}

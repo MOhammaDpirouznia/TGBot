@@ -130,7 +130,7 @@ def get_reseller_stats_text(reseller_id: int) -> str:
 🌐 **کاربران آنلاین:** {online_subs} نفر
 📊 **مصرف ترافیک:** {total_used_gb} GB از {total_limit_gb} GB
 
-📦 **پلن‌های فعال شما:** {active_plans_count} پلن
+📦 **بسته‌های فعال شما:** {active_plans_count} بسته
 💳 **کارت‌های بانکی فعال:** {active_cards_count} کارت
 ⚡ **تایید خودکار کارت به کارت:** {sms_status}
 
@@ -540,7 +540,7 @@ def get_reseller_create_user_plans_payload(reseller_id: int) -> Tuple[str, Inlin
     
     plans = db.get_reseller_plans(reseller_id)
     if not plans:
-        return "⚠️ پلن فعالی در پنل شما یافت نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]])
+        return "⚠️ بسته فعالی در پنل شما یافت نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]])
         
     text = f"""👤 **ساخت و صدور آنی اشتراک مشتری**
 
@@ -548,12 +548,12 @@ def get_reseller_create_user_plans_payload(reseller_id: int) -> Tuple[str, Inlin
 📊 توان خرید با اعتبار: **{power:,} تومان**
 🎁 نرخ تخفیف شما: **{discount}٪**
 
-جهت ساخت اکانت، لطفاً یکی از پلن‌های زیر را انتخاب فرمایید (مبلغ عمده از کیف پول شما کسر خواهد شد):
+جهت ساخت اکانت، لطفاً یکی از بسته‌های زیر را انتخاب فرمایید (مبلغ عمده از کیف پول شما کسر خواهد شد):
 """
     buttons = []
     for p in plans:
         pid = p["plan_id"]
-        pname = p.get("display_name") or p.get("master_name", "پلن")
+        pname = p.get("display_name") or p.get("master_name", "بسته")
         vol = p.get("data_limit", 30)
         days = p.get("duration", 30)
         w_price = p.get("wholesale_price", 0)

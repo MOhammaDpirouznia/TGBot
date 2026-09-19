@@ -210,7 +210,7 @@ class NotificationScheduler:
                     text = f"""
 ⚠️ <b>هشدار انقضای اشتراک ({days_left} روز باقیمانده)</b>
 
-📋 نام پلن: <b>{plan_name}</b>
+📋 نام بسته: <b>{plan_name}</b>
 📅 تاریخ انقضا: <b>{expire_shamsi}</b>
 ⏰ مهلت باقیمانده: <b>{days_left} روز</b>
 
@@ -267,11 +267,11 @@ class NotificationScheduler:
                     text = f"""
 🔴 <b>اشتراک شما منقضی شد!</b>
 
-📋 پلن: <b>{plan_name}</b>
+📋 بسته: <b>{plan_name}</b>
 📅 تاریخ انقضا: <b>امروز</b>
 
 ⚠️ سرویس اتصال شما موقتاً قطع شده است.
-🔄 با تمدید یا خرید اشتراک جدید، اتصال شما بلافاصله برقرار خواهد شد.
+🔄 با تمدید یا خرید اشتراک، اتصال شما بلافاصله برقرار خواهد شد.
 """
                     exp_buttons = [
                         [InlineKeyboardButton("🔄 تمدید آنی در ربات", callback_data=f"renew_{sub_id}")],
@@ -333,7 +333,7 @@ class NotificationScheduler:
                     text = f"""
 🚨 <b>هشدار اضطراری: حجم اشتراک رو به اتمام است!</b>
 
-📋 پلن: <b>{plan_name}</b>
+📋 بسته: <b>{plan_name}</b>
 📊 مصرف: <b>{data_used:.1f} از {data_limit:.1f} گیگابایت</b> ({usage_percent:.1f}%)
 💾 ترافیک باقیمانده: <b>{remaining:.1f} گیگابایت</b>
 
@@ -376,7 +376,7 @@ class NotificationScheduler:
                     text = f"""
 📊 <b>هشدار مصرف حجم (۸۰٪ مصرف شده)</b>
 
-📋 پلن: <b>{plan_name}</b>
+📋 بسته: <b>{plan_name}</b>
 📊 مصرف: <b>{data_used:.1f} از {data_limit:.1f} گیگابایت</b> ({usage_percent:.1f}%)
 💾 حجم باقیمانده: <b>{remaining:.1f} گیگابایت</b>
 

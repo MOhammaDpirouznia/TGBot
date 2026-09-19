@@ -973,7 +973,7 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
     text = f"""
 💵 <b>پرداخت کارت به کارت</b>
 
-📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
+📋 بسته: <b>{plan.get('name', 'نامشخص')}</b>
 
 💰 <b>مبلغ قابل واریز:</b>
 • به ریال (جهت همراه بانک / عابربانک):
@@ -1205,7 +1205,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         device = data.replace("wiz_tb_sub_empty_", "")
         text = (
             "🔄 <b>اتمام اعتبار اشتراک VPN</b>\n\n"
-            "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه <b>«تمدید اشتراک»</b> یا خرید اشتراک جدید را انتخاب کنید تا سرویس شما فوراً متصل گردد."
+            "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه <b>«تمدید اشتراک»</b> یا خرید اشتراک را انتخاب کنید تا سرویس شما فوراً متصل گردد."
         )
         buttons = [
             [InlineKeyboardButton("اشتراک را تمدید کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_sub_ok_{device}", style="primary")],
@@ -2104,7 +2104,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                         try:
                             await context.bot.send_message(
                                 chat_id=ADMIN_ID,
-                                text=f"⚡ <b>رزرو تمدید در صف از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 پلن: <b>{plan.get('name')}</b>\n🔢 نوبت در صف: <b>نوبت {queued_order}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>",
+                                text=f"⚡ <b>رزرو تمدید در صف از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 بسته: <b>{plan.get('name')}</b>\n🔢 نوبت در صف: <b>نوبت {queued_order}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>",
                                 parse_mode="HTML"
                             )
                         except Exception:
@@ -2165,7 +2165,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                         subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
                         details = (
                             f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک منقضی مجدداً فعال شد!\n\n"
-                            f"📋 پلن: <b>{plan.get('name')}</b>\n"
+                            f"📋 بسته: <b>{plan.get('name')}</b>\n"
                             f"📊 حجم: <b>{plan.get('data_limit', 'نامحدود')} گیگابایت</b>\n"
                             f"⏰ مدت اعتبار: <b>{plan.get('duration', 30)} روز</b>\n"
                             f"💳 مانده موجودی: <b>{deduct_res.get('new_balance'):,} تومان</b>"
@@ -2212,7 +2212,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
-                    text=f"⚡ <b>خرید آنی از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 پلن: <b>{plan.get('name')}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>\n💳 موجودی پس از کسر: <b>{deduct_res.get('new_balance'):,} تومان</b>",
+                    text=f"⚡ <b>خرید آنی از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 بسته: <b>{plan.get('name')}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>\n💳 موجودی پس از کسر: <b>{deduct_res.get('new_balance'):,} تومان</b>",
                     parse_mode="HTML"
                 )
             except Exception:
@@ -2225,7 +2225,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 
             details = (
                 f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک فوراً فعال شد!\n\n"
-                f"📋 پلن: <b>{plan.get('name')}</b>\n"
+                f"📋 بسته: <b>{plan.get('name')}</b>\n"
                 f"📊 حجم: <b>{plan.get('data_limit', 'نامحدود')} گیگابایت</b>\n"
                 f"⏰ مدت اعتبار: <b>{plan.get('duration', 30)} روز</b>\n"
                 f"💳 مانده موجودی کیف پول: <b>{deduct_res.get('new_balance'):,} تومان</b>"
@@ -2327,7 +2327,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             text = f"""
 💳 <b>{gw_title}</b>
 
-📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
+📋 بسته: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
 🔢 شناسه سفارش: <code>{order_id}</code>
 
@@ -2365,7 +2365,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 text = f"""
 💎 <b>پرداخت ارزی با کریپتو (تتر / رمزارز)</b>
 
-📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
+📋 بسته: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 معادل تتر: <b>{usdt_amt} USDT</b>
 
 لطفاً روی دکمه زیر کلیک کرده و پرداخت خود را انجام دهید. اشتراک شما پس از واریز به صورت خودکار فعال خواهد شد.
@@ -2374,7 +2374,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 text = f"""
 💎 <b>پرداخت مستقیم با تتر (USDT TRC20 / TON)</b>
 
-📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
+📋 بسته: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 مبلغ قابل انتقال: <b><code>{usdt_amt}</code> USDT</b>
 
 📌 <b>آدرس ولت دریافت:</b>
@@ -2512,7 +2512,7 @@ async def enter_tracking_code(update: Update, context: ContextTypes.DEFAULT_TYPE
     # تایید اطلاعات
     text = (
         f"✅ تایید پرداخت کارت به کارت\n\n"
-        f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+        f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
         f"💰 مبلغ: {price_formatted} تومان\n"
         f"🔢 شماره پیگیری: {tracking_code}\n\n"
         f"آیا اطلاعات صحیح است?"
@@ -2545,7 +2545,7 @@ async def enter_tracking_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     # تایید اطلاعات
     text = (
         f"✅ تایید پرداخت کارت به کارت\n\n"
-        f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+        f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
         f"💰 مبلغ: {price_formatted} تومان\n"
         f"📷 رسید: اسکرین‌شات ارسال شد\n\n"
         f"آیا اطلاعات صحیح است?"
@@ -2583,7 +2583,7 @@ async def enter_tracking_document(update: Update, context: ContextTypes.DEFAULT_
     # تایید اطلاعات
     text = (
         f"✅ **تایید پرداخت کارت به کارت**\n\n"
-        f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
+        f"📋 بسته: **{plan.get('name', 'نامشخص')}**\n"
         f"💰 مبلغ: **{price_formatted}** تومان\n"
         f"📁 رسید: `{file_name}` دریافت شد\n\n"
         f"آیا اطلاعات برای بررسی ادمین ارسال شود؟"
@@ -2771,14 +2771,14 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
     admin_sent = False
     if ADMIN_ID and ADMIN_ID != 0:
         try:
-            type_title = "🔄 رسید تمدید اشتراک" if is_renewal else "🛒 رسید خرید اشتراک جدید"
+            type_title = "🔄 رسید تمدید اشتراک" if is_renewal else "🛒 رسید خرید اشتراک"
             discount_info = f"\n🎟️ کد تخفیف: `{discount_code}` (-{discount_amount:,} تومان)" if discount_code else ""
             admin_text = (
                 f"🔔 <b>{type_title}</b>\n\n"
                 f"👤 کاربر: {user.first_name}\n"
                 f"🆔 آیدی عددی: <code>{user.id}</code>\n"
                 f"💬 یوزرنیم: @{user.username or 'ندارد'}\n\n"
-                f"📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>\n"
+                f"📋 بسته: <b>{plan.get('name', 'نامشخص')}</b>\n"
                 f"💰 مبلغ پرداختی: <b>{price_formatted} تومان</b>{discount_info}\n"
                 f"🔢 شماره پیگیری / فیش: <code>{tracking_code}</code>\n"
                 f"📝 نام اکانت هیدیفای: <code>{account_name}</code>\n\n"
@@ -2909,7 +2909,7 @@ async def confirm_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(
         f"💳 **درخواست پرداخت ساخته شد!**\n\n"
-        f"📋 پلن: {plan['name']}\n"
+        f"📋 بسته: {plan['name']}\n"
         f"💰 مبلغ: {price_formatted} تومان\n\n"
         f"روی دکمه «💳 پرداخت» کلیک کنید و پرداخت رو انجام بدید.\n"
         f"بعد از پرداخت، روی «✅ پرداخت کردم» کلیک کنید.",
@@ -3078,7 +3078,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     q = queued_items[0]
                     queue_text = (
                         f"   ⏳ **بسته رزرو (در صف فعال‌سازی خودکار):**\n"
-                        f"      📦 پلن: {q.get('plan_name')} ({q.get('data_limit')} گیگ - {q.get('duration')} روز)\n"
+                        f"      📦 بسته: {q.get('plan_name')} ({q.get('data_limit')} گیگ - {q.get('duration')} روز)\n"
                         f"      🔄 زمان فعال‌سازی خودکار: پس از مصرف ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی اشتراک فعلی\n"
                     )
                 else:
@@ -3240,7 +3240,7 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
             await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
             succ_text = (
                 f"🎉 **بسته رزرو با موفقیت به صورت آنی فعال شد!**\n\n"
-                f"📦 پلن: **{res.get('plan_name')}**\n"
+                f"📦 بسته: **{res.get('plan_name')}**\n"
                 f"👤 اکانت: `{res.get('account_name')}`\n\n"
                 f"سرویس شما با حجم و مدت زمان جدید در سرور بروزرسانی شد."
             )
@@ -3456,7 +3456,7 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subscription_url = f"{panel_url.rstrip('/')}/{proxy.strip('/')}/{uuid}/"
         status_icon = "🟢 فعال" if status == "active" else "🔴 منقضی"
 
-        details = f"📋 پلن: **{plan_name}**\n📝 اکانت: `{account_name}`\n📊 وضعیت: {status_icon}"
+        details = f"📋 بسته: **{plan_name}**\n📝 اکانت: `{account_name}`\n📊 وضعیت: {status_icon}"
         await send_subscription_card(
             context.bot,
             chat_id=user.id,
@@ -3678,7 +3678,7 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["renew_subscription_id"] = 0
         keyboard = get_renew_inline_buttons(target_sub)
         def_text = (
-            "🔄 <b>تمدید اشتراک فعلی:</b>\n\n"
+            "🔄 <b>تمدید اشتراک:</b>\n\n"
             "لطفاً یکی از گزینه‌های زیر را انتخاب نمایید:"
         )
         text = db.get_menu_text("admin", "renew", "header", default=def_text, account_name=target_sub.get("account_name"))
@@ -4112,7 +4112,7 @@ async def verify_payment_callback(update: Update, context: ContextTypes.DEFAULT_
     data_text = str(plan['data_limit']) if plan['data_limit'] > 0 else 'نامحدود'
     success_text = (
         f"✅ پرداخت موفق! اشتراک فعال شد!\n\n"
-        f"📋 پلن: {plan['name']}\n"
+        f"📋 بسته: {plan['name']}\n"
         f"📊 حجم: {data_text} گیگابایت\n"
         f"⏰ مدت: {plan['duration']} روز\n"
         f"💰 قیمت: {price_formatted} تومان\n\n"
@@ -4153,7 +4153,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
                     chat_id=user.id,
                     sub_url=existing_link,
                     title="⚠️ **شما قبلاً اشتراک تست دریافت کرده‌اید!**",
-                    details="📋 پلن: **اشتراک تست رایگان**\n💡 برای خرید اشتراک دائمی، از منوی اصلی دکمه «🛒 خرید اشتراک» را لمس کنید."
+                    details="📋 بسته: **اشتراک تست رایگان**\n💡 برای خرید اشتراک دائمی، از منوی اصلی دکمه «🛒 خرید اشتراک» را لمس کنید."
                 )
             else:
                 await update.message.reply_text(
@@ -4239,7 +4239,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
     p_url = tcfg["panel_url"].rstrip("/")
     u_path = tcfg["user_proxy_path"].strip("/")
     test_link = f"{p_url}/{u_path}/{user_uuid}/"
-    details = f"📋 پلن: **اشتراک تست رایگان**\n📊 حجم: **{test_traffic} گیگابایت**\n⏰ مدت: **{test_days} روز**"
+    details = f"📋 بسته: **اشتراک تست رایگان**\n📊 حجم: **{test_traffic} گیگابایت**\n⏰ مدت: **{test_days} روز**"
     await send_subscription_card(
         context.bot,
         chat_id=user.id,
@@ -5245,7 +5245,7 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
             target_uid = int(user_id)
             c_title = "🎉 **پرداخت شما تایید شد و اشتراک فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
             c_details = (
-                f"📦 پلن: **{plan_name}**\n"
+                f"📦 بسته: **{plan_name}**\n"
                 f"👤 نام اکانت: `{account_name}`\n"
                 f"📊 حجم: **{data_limit} گیگابایت** | ⏳ مدت: **{duration} روز**\n"
                 f"🔖 کد سفارش: `{order_id}`{cashback_note}"
@@ -5818,7 +5818,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plans = get_all_plans()
             plan = next((p for p in plans if str(p.get("id", "")) == str(plan_id) or str(p.get("plan_id", "")) == str(plan_id)), None)
             if not plan:
-                await update.message.reply_text("❌ پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="adm_adv_create_user")]]))
+                await update.message.reply_text("❌ بسته یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="adm_adv_create_user")]]))
                 return ADMIN_MENU
 
             pname = plan.get("name") or plan.get("title", "اشتراک")
@@ -5859,7 +5859,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success_caption = (
                 f"🎉 **اشتراک جدید مشتری با موفقیت صادر شد!**\n\n"
                 f"👤 نام اکانت: `{clean_name}`\n"
-                f"📦 پلن: **{pname}**\n"
+                f"📦 بسته: **{pname}**\n"
                 f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
                 f"💰 مبلغ پلن: **{price:,} تومان**\n\n"
                 f"🔗 **لینک اتصال مشتری (جهت کپی لمس کنید):**\n"
@@ -6015,7 +6015,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disc_msg = (
                 f"👤 نام اکانت: `{clean_name}`\n"
                 f"📱 شماره تماس: `{phone_display}`\n"
-                f"📦 پلن انتخابی: **{pname}** ({selling_price:,} تومان)\n\n"
+                f"📦 بسته انتخابی: **{pname}** ({selling_price:,} تومان)\n\n"
                 f"🎁 **ساخت مشتری جدید (گام ۳ از ۴: مبلغ تخفیف به مشتری)**\n"
                 f"لطفاً مبلغ تخفیف مورد نظر برای این مشتری را به **تومان** ارسال فرمایید (مثال: `10000` یا `20000`).\n"
                 f"در صورتی که تخفیفی در نظر ندارید، دکمه **«بدون تخفیف»** را لمس کرده یا عدد `0` را ارسال فرمایید:"
@@ -6041,7 +6041,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id)
             if not plan:
-                await update.message.reply_text("❌ پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                await update.message.reply_text("❌ بسته یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                 return ADMIN_MENU
 
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -6061,9 +6061,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)**\n\n"
                 f"👤 نام اکانت: `{clean_name}`\n"
                 f"📱 شماره تماس: `{phone_display}`\n"
-                f"📦 پلن انتخابی: **{pname}**\n"
+                f"📦 بسته انتخابی: **{pname}**\n"
                 f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"💵 مبلغ اصلی بسته: **{selling_price:,} تومان**\n"
                 f"🎁 مبلغ تخفیف: **{discount_amount:,} تومان**\n"
                 f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
@@ -6118,8 +6118,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_text = (
                 f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)**\n\n"
                 f"🎯 شیوه تمدید: **{mode_label}**\n"
-                f"📦 پلن: **{pname}** ({vol_str} - {days} روز)\n"
-                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"📦 بسته: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ اصلی بسته: **{selling_price:,} تومان**\n"
                 f"🎁 مبلغ تخفیف: **{discount_amount:,} تومان**\n"
                 f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
@@ -6327,7 +6327,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not plan:
         logger.error(f"admin_approve_payment: Plan '{plan_id}' not found for user {user_id}")
-        await edit_admin_message_safe(query, f"❌ خطا: پلن با شناسه «{plan_id}» یافت نشد!\nلطفاً پلن‌ها را در پنل مدیریت بررسی کنید.")
+        await edit_admin_message_safe(query, f"❌ خطا: بسته با شناسه «{plan_id}» یافت نشد!\nلطفاً پلن‌ها را در پنل مدیریت بررسی کنید.")
         return
 
     if target_tx and target_tx.get("order_id"):
@@ -6342,7 +6342,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
         admin_done_text = (
             f"✅ **این اشتراک قبلاً تایید و فعال شده است.**\n\n"
             f"👤 کاربر: `{user_id}`\n"
-            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
             f"💰 مبلغ: {price_fmt} تومان"
         )
         await edit_admin_message_safe(query, admin_done_text)
@@ -6436,7 +6436,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     admin_success_text = (
         f"✅ **اشتراک جدید با موفقیت تایید و فعال شد!**\n\n"
         f"👤 کاربر: `{user_id}`\n"
-        f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+        f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
         f"📊 حجم: {vol_display}\n"
         f"💰 مبلغ: {price_formatted} تومان\n"
         f"⏰ مدت: {plan_duration} روز"
@@ -6451,7 +6451,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     details = (
         f"✅ پرداخت شما تایید شد و اشتراک با موفقیت فعال گردید!\n\n"
-        f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
+        f"📋 بسته: **{plan.get('name', 'نامشخص')}**\n"
         f"📊 حجم: **{data_text} گیگابایت**\n"
         f"⏰ مدت: **{plan_duration} روز**"
     )
@@ -6525,7 +6525,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
                 plan = next((p for p in plans.values() if p.get("name") == target_tx.get("plan_name")), {})
 
     if not plan:
-        await edit_admin_message_safe(query, f"❌ پلن مورد نظر یافت نشد (شناسه: {plan_id})!")
+        await edit_admin_message_safe(query, f"❌ بسته مورد نظر یافت نشد (شناسه: {plan_id})!")
         return
 
     if target_tx and target_tx.get("order_id"):
@@ -6539,7 +6539,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         admin_done_text = (
             f"✅ **این تمدید قبلاً تایید و اعمال شده است.**\n\n"
             f"👤 کاربر: `{user_id}`\n"
-            f"📋 پلن: {plan.get('name', 'نامشخص')}"
+            f"📋 بسته: {plan.get('name', 'نامشخص')}"
         )
         await edit_admin_message_safe(query, admin_done_text)
         return
@@ -6712,7 +6712,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         admin_success_text = (
             f"✅ **تمدید تایید شد و به صف رزرو اضافه گردید!**\n\n"
             f"👤 کاربر: `{user_id}`\n"
-            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
             f"💰 مبلغ: {price_formatted} تومان\n"
             f"🔢 نوبت در صف: **نوبت {queued_order}**\n"
             f"🔄 زمان فعال‌سازی: پس از مصرف ۹۹.۵٪ یا ساعت ۲۳:۵۵ روز پایانی"
@@ -6721,7 +6721,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         admin_success_text = (
             f"✅ **تمدید اشتراک با موفقیت تایید شد!**\n\n"
             f"👤 کاربر: `{user_id}`\n"
-            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"📋 بسته: {plan.get('name', 'نامشخص')}\n"
             f"💰 مبلغ: {price_formatted} تومان\n"
             f"🔄 نوع تمدید: ریست حجم و فعال‌سازی فوری"
         )
@@ -6732,7 +6732,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_q_msg = (
             f"🎉 <b>تمدید اشتراک شما با موفقیت تایید و در صف تمدید رزرو شد!</b>\n\n"
             f"🔢 <b>نوبت فعال‌سازی:</b> نوبت {queued_order}\n"
-            f"📦 پلن: <b>{plan.get('name', 'نامشخص')}</b>\n"
+            f"📦 بسته: <b>{plan.get('name', 'نامشخص')}</b>\n"
             f"📊 حجم: <b>{plan.get('data_limit', 0)} گیگابایت</b> | ⏳ مدت: <b>{plan.get('duration', 30)} روز</b>\n\n"
             f"🔄 <b>زمان فعال‌سازی خودکار:</b> پس از مصرف ۹۹.۵٪ حجم بسته فعلی یا در ساعت ۲۳:۵۵ روز پایانی\n"
             f"⚡ در صورت تمایل می‌توانید در بخش «وضعیت اشتراک» این بسته را به صورت آنی فعال فرمایید."
@@ -6747,7 +6747,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
         details = (
             f"✅ اشتراک شما با موفقیت تمدید شد!\n\n"
-            f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
+            f"📋 بسته: **{plan.get('name', 'نامشخص')}**\n"
             f"📊 حجم جدید: **{new_data_limit if new_data_limit else 'نامحدود'} گیگابایت**\n"
             f"⏰ مدت کل: **{new_duration} روز**"
         )
@@ -7038,7 +7038,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             tx = dict(tx_row)
             p_text = f"🧾 **جزئیات پرداخت سفارش #{tx.get('id')}**\n\n"
             p_text += f"👤 مشتری: `{tx.get('user_id')}` (@{tx.get('username') or 'ندارد'})\n"
-            p_text += f"📦 پلن: **{tx.get('plan_name')}**\n"
+            p_text += f"📦 بسته: **{tx.get('plan_name')}**\n"
             p_text += f"💰 مبلغ: **{tx.get('amount', 0):,} تومان**\n"
             p_text += f"🔢 کد پیگیری/فیش: `{tx.get('tracking_code') or 'ثبت فیش'}`\n"
             p_text += f"📅 تاریخ: {tx.get('created_at', '')[:16].replace('T', ' ')}\n"
@@ -7195,9 +7195,9 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return ADMIN_MENU
             plans = get_all_plans()
             if not plans:
-                await query.answer("❌ هیچ پلنی تعریف نشده است.", show_alert=True)
+                await query.answer("❌ هیچ بسته‌ای تعریف نشده است.", show_alert=True)
                 return ADMIN_MENU
-            p_text = "👤 **ساخت اشتراک مشتری جدید**\n\nلطفاً پلن مورد نظر را انتخاب فرمایید:"
+            p_text = "👤 **ساخت اشتراک مشتری جدید**\n\nلطفاً بسته مورد نظر را انتخاب فرمایید:"
             btns = []
             for p in plans:
                 pid = p.get("id") or p.get("plan_id")
@@ -7255,7 +7255,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
                     btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
                 p_text += "\n"
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p.get("id") or p.get("plan_id")
                 pname = p.get("name") or p.get("title") or pid
@@ -7296,7 +7296,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
                     btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
                 p_text += "\n"
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p.get("id") or p.get("plan_id")
                 pname = p.get("name") or p.get("title") or pid
@@ -7314,7 +7314,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans = get_all_plans()
             plan = next((p for p in plans if str(p.get("id", "")) == str(plan_id) or str(p.get("plan_id", "")) == str(plan_id)), None)
             if not sub or not plan:
-                await query.answer("❌ اشتراک یا پلن نامعتبر است.", show_alert=True)
+                await query.answer("❌ اشتراک یا بسته نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
 
             vol = plan.get("data_limit", 30)
@@ -7343,20 +7343,20 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 buttons = [
                     [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (پیشنهادی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
                     [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
-                    [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                    [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
                 ]
             else:
                 status_desc = "🛡️ **وضعیت اشتراک:** دارای حجم و روزهای فعال است.\n💡 **پیشنهاد سیستم:** جهت جلوگیری از سوختن روزها و حجم باقیمانده، **قرارگیری در صف تمدید** توصیه می‌شود تا در پایان دوره فعلی خودکار فعال گردد."
                 buttons = [
                     [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
                     [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (ریست دوره فعلی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
-                    [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                    [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
                 ]
 
             prompt_text = (
                 f"🔄 **انتخاب نحوه اعمال تمدید «{acct_name}»**\n\n"
-                f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
-                f"💵 مبلغ پلن: **{price:,} تومان**\n\n"
+                f"📦 بسته انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ بسته: **{price:,} تومان**\n\n"
                 f"{status_desc}\n\n"
                 f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
                 f"⚡ **فعال‌سازی فوری و آنی:**\n"
@@ -7381,7 +7381,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans = get_all_plans()
             plan = next((p for p in plans if str(p.get("id", "")) == str(plan_id) or str(p.get("plan_id", "")) == str(plan_id)), None)
             if not sub or not plan:
-                await query.answer("❌ اشتراک یا پلن نامعتبر است.", show_alert=True)
+                await query.answer("❌ اشتراک یا بسته نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
 
             # بررسی کول‌داون ضد تمدید تکراری
@@ -7433,7 +7433,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         try:
                             cust_msg = (
                                 f"⏳ **بسته تمدیدی شما در صف رزرو قرار گرفت!**\n\n"
-                                f"📦 پلن: **{pname}**\n"
+                                f"📦 بسته: **{pname}**\n"
                                 f"📊 حجم بسته: **{vol} گیگابایت**\n"
                                 f"⏰ مدت اعتبار: **{days} روز**\n"
                                 f"🔹 نوبت در صف: **نوبت {q_order}**\n\n"
@@ -7446,7 +7446,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await query.edit_message_text(
                         f"✅ **بسته تمدیدی با موفقیت در صف رزرو قرار گرفت!**\n\n"
                         f"👤 اشتراک: **{acct_name}**\n"
-                        f"📦 پلن رزرو شده: **{pname}** ({vol}GB - {days} روز)\n"
+                        f"📦 بسته رزرو شده: **{pname}** ({vol}GB - {days} روز)\n"
                         f"⏳ نوبت در صف: **نوبت {q_order}**\n"
                         f"💵 مبلغ: **{price:,} تومان**\n\n"
                         f"ℹ️ ترافیک مصرفی و زمان فعلی دست‌نخورده باقی ماند و بسته در زمان مقتضی فعال خواهد شد.",
@@ -7491,7 +7491,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         try:
                             cust_msg = (
                                 f"🎉 **اشتراک شما با موفقیت تمدید شد!**\n\n"
-                                f"📦 پلن جدید: **{pname}**\n"
+                                f"📦 بسته جدید: **{pname}**\n"
                                 f"📊 حجم تمدید شده: **{vol} گیگابایت**\n"
                                 f"⏰ اعتبار زمانی: **{days} روز**\n\n"
                                 f"اتصال شما مجدداً فعال گردید. سپاس از همراهی شما! 🌹"
@@ -7503,7 +7503,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await query.edit_message_text(
                         f"✅ **اشتراک «{acct_name}» با موفقیت تمدید شد!**\n\n"
                         f"⚡ نوع تمدید: **فعال‌سازی فوری و آنی**\n"
-                        f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
+                        f"📦 بسته: **{pname}** ({vol}GB - {days} روز)\n"
                         f"🔄 ترافیک مصرفی ریست شد و اعتبار جدید اعمال گردید.",
                         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]]),
                         parse_mode="Markdown"
@@ -7668,7 +7668,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             tx = dict(tx_row)
             p_text = f"🧾 **جزئیات پرداخت سفارش #{tx.get('id')}**\n\n"
             p_text += f"👤 مشتری: `{tx.get('user_id')}` (@{tx.get('username') or 'ندارد'})\n"
-            p_text += f"📦 پلن: **{tx.get('plan_name')}**\n"
+            p_text += f"📦 بسته: **{tx.get('plan_name')}**\n"
             p_text += f"💰 مبلغ: **{tx.get('amount', 0):,} تومان**\n"
             p_text += f"🔢 کد پیگیری/فیش: `{tx.get('tracking_code') or 'ثبت فیش'}`\n"
             p_text += f"📅 تاریخ: {tx.get('created_at', '')[:16].replace('T', ' ')}\n"
@@ -7722,7 +7722,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(pid) if plans_dict else None
             if not plan:
-                await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                await query.edit_message_text("❌ بسته مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                 return ADMIN_MENU
 
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -7740,9 +7740,9 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)**\n\n"
                 f"👤 نام اکانت: `{desired_name}`\n"
                 f"📱 شماره تماس: `{phone_display}`\n"
-                f"📦 پلن انتخابی: **{pname}**\n"
+                f"📦 بسته انتخابی: **{pname}**\n"
                 f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"💵 مبلغ اصلی بسته: **{selling_price:,} تومان**\n"
                 f"🎁 مبلغ تخفیف: **۰ تومان** (بدون تخفیف)\n"
                 f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
@@ -7778,7 +7778,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             plan = db.get_reseller_plan(r_id, pid)
             if not plan:
-                await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                await query.edit_message_text("❌ بسته مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                 return ADMIN_MENU
 
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -7822,7 +7822,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await query.edit_message_text(
                     f"❌ **موجودی و اعتبار پنل شما کافی نیست!**\n\n"
                     f"موجودی/اعتبار: **{power:,} تومان**\n"
-                    f"هزینه پلن: **{w_price:,} تومان**",
+                    f"هزینه بسته: **{w_price:,} تومان**",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("💰 خرید شارژ پنل", callback_data="res_adm_bundles")],
                         [InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]
@@ -7869,7 +7869,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     amount=w_price,
                     plan_name=pname,
                     account_name=desired_name,
-                    description=f"ساخت دستی کاربر {desired_name} با پلن {pname} توسط {creator_user}",
+                    description=f"ساخت دستی کاربر {desired_name} با بسته {pname} توسط {creator_user}",
                     created_by=creator_user,
                     selling_price=reseller_selling,
                     profit_margin=profit_margin
@@ -7981,7 +7981,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 succ_txt = (
                     f"🎉 **اکانت جدید با موفقیت صادر شد:**\n\n"
                     f"👤 نام اکانت: `{desired_name}`{phone_txt}\n"
-                    f"📦 پلن: **{pname}**\n"
+                    f"📦 بسته: **{pname}**\n"
                     f"📊 حجم: **{vol if vol > 0 else 'نامحدود'} گیگابایت** | ⏳ مدت: **{days} روز**\n"
                     f"💳 وضعیت تسویه: **{pay_label}**\n"
                     f"✍️ صادرکننده: **{creator_user}**\n\n"
@@ -8099,7 +8099,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     buttons.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
                 p_text += "\n"
 
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p["plan_id"]
                 pname = p.get("display_name") or p.get("master_name", "پلن")
@@ -8144,7 +8144,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
                     buttons.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
                 p_text += "\n"
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p["plan_id"]
                 pname = p.get("display_name") or p.get("master_name", "پلن")
@@ -8170,7 +8170,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id)
             if not plan:
-                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                await query.answer("❌ بسته یافت نشد.", show_alert=True)
                 return ADMIN_MENU
 
             wholesale_cost = plan.get("wholesale_price", 0)
@@ -8218,7 +8218,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             p_text = (
                 f"🔄 **انتخاب نوع اعمال تمدید «{acct_name}» (گام ۲ از ۴)**\n\n"
-                f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
+                f"📦 بسته انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
                 f"💵 قیمت مصوب فروش: **{selling_price:,} تومان**\n"
                 f"💰 کسر از پنل: **{wholesale_cost:,} تومان**\n\n"
                 f"{status_desc}\n\n"
@@ -8249,7 +8249,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id)
             if not plan:
-                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                await query.answer("❌ بسته یافت نشد.", show_alert=True)
                 return ADMIN_MENU
 
             wholesale_cost = plan.get("wholesale_price", 0)
@@ -8270,7 +8270,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             p_text = (
                 f"🎁 **تخفیف به مشتری برای تمدید «{acct_name}» (گام ۳ از ۴)**\n\n"
                 f"🎯 شیوه تمدید: **{mode_label}**\n"
-                f"📦 پلن انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
+                f"📦 بسته انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
                 f"💵 قیمت مصوب فروش: **{selling_price:,} تومان**\n\n"
                 f"در صورت تمایل، **مبلغ تخفیف** را به **تومان** تایپ و ارسال فرمایید:\n"
                 f"یا جهت ادامه بدون تخفیف، دکمه **«بدون تخفیف»** را لمس نمایید:"
@@ -8294,7 +8294,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id)
             if not plan:
-                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                await query.answer("❌ بسته یافت نشد.", show_alert=True)
                 return ADMIN_MENU
 
             context.user_data["waiting_res_renew_discount"] = False
@@ -8319,8 +8319,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             p_text = (
                 f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)**\n\n"
                 f"🎯 شیوه تمدید: **{mode_label}**\n"
-                f"📦 پلن: **{pname}** ({vol_str} - {days} روز)\n"
-                f"💵 مبلغ اصلی پلن: **{selling_price:,} تومان**\n"
+                f"📦 بسته: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ اصلی بسته: **{selling_price:,} تومان**\n"
                 f"🎁 مبلغ تخفیف: **0 تومان**\n"
                 f"💳 مبلغ نهایی دریافتی از مشتری: **{final_price:,} تومان**\n"
                 f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
@@ -8377,7 +8377,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 plans_dict = db.get_reseller_plans_dict(r_id)
                 plan = plans_dict.get(plan_id)
                 if not plan:
-                    await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                    await query.answer("❌ بسته یافت نشد.", show_alert=True)
                     return ADMIN_MENU
     
                 wholesale_cost = plan.get("wholesale_price", 0)
@@ -8522,7 +8522,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         try:
                             cust_msg = (
                                 f"⏳ **بسته تمدیدی شما در صف رزرو قرار گرفت!**\n\n"
-                                f"📦 پلن: **{pname}**\n"
+                                f"📦 بسته: **{pname}**\n"
                                 f"📊 حجم بسته: **{vol} گیگابایت**\n"
                                 f"⏰ مدت اعتبار: **{days} روز**\n"
                                 f"🔹 نوبت در صف: **نوبت {q_order}**\n\n"
@@ -8535,7 +8535,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     disc_report = f"\n🎁 تخفیف: **{discount_amount:,} تومان**\n💵 دریافتی نهایی: **{final_price:,} تومان**" if discount_amount > 0 else ""
                     await query.edit_message_text(
                         f"✅ **بسته تمدیدی «{acct_name}» با موفقیت در صف رزرو ثبت شد!**\n\n"
-                        f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
+                        f"📦 بسته: **{pname}** ({vol}GB - {days} روز)\n"
                         f"⏳ نوبت در صف: **نوبت {q_order}**\n"
                         f"💰 کسر از پنل: **{wholesale_cost:,} تومان**"
                         f"{disc_report}\n"
@@ -8576,7 +8576,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                             status="active",
                             payment_status="debtor",
                             debt_amount=new_debt,
-                            debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                            debt_notes=f"بدهی تمدید بسته {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                             last_renewed_at=get_now_iso(),
                             last_lifecycle_event_at=get_now_iso()
                         )
@@ -8695,7 +8695,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         try:
                             cust_msg = (
                                 f"🎉 **اشتراک شما با موفقیت تمدید شد!**\n\n"
-                                f"📦 پلن جدید: **{pname}**\n"
+                                f"📦 بسته جدید: **{pname}**\n"
                                 f"📊 حجم تمدید شده: **{vol} گیگابایت**\n"
                                 f"⏰ اعتبار زمانی: **{days} روز**\n\n"
                                 f"اتصال شما مجدداً فعال گردید. سپاس از همراهی شما! 🌹"
@@ -8708,7 +8708,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await query.edit_message_text(
                         f"✅ **اشتراک «{acct_name}» با موفقیت تمدید شد!**\n\n"
                         f"⚡ نوع تمدید: **فعال‌سازی فوری و آنی**\n"
-                        f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
+                        f"📦 بسته: **{pname}** ({vol}GB - {days} روز)\n"
                         f"💰 کسر از پنل: **{wholesale_cost:,} تومان**"
                         f"{disc_report}\n"
                         f"💳 وضعیت تسویه: **{pay_label}**\n"
@@ -8778,7 +8778,7 @@ async def cards_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 """
         keyboard = [
             [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-            [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
+            [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
             [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
         ]
@@ -8920,9 +8920,9 @@ async def show_plans_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plans = get_all_plans()
 
     if not plans:
-        text = "📦 **مدیریت پلن‌ها**\n\n⚠️ هنوز پلنی اضافه نشده است.\n\nپلن جدید اضافه کنید:"
+        text = "📦 **مدیریت بسته‌ها**\n\n⚠️ هنوز پلنی اضافه نشده است.\n\nپلن جدید اضافه کنید:"
     else:
-        text = "📦 **مدیریت پلن‌ها**\n\n"
+        text = "📦 **مدیریت بسته‌ها**\n\n"
         for plan_id, plan in plans.items():
             emoji = get_plan_telegram_emoji(plan, plan_id)
             status = "🟢" if plan.get("is_active") else "🔴"
@@ -8933,7 +8933,7 @@ async def show_plans_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"  📊 {plan.get('description', '')}\n\n"
 
     keyboard = [
-        [InlineKeyboardButton("➕ افزودن پلن", callback_data="add_plan")],
+        [InlineKeyboardButton("➕ افزودن بسته", callback_data="add_plan")],
     ]
 
     # اضافه کردن دکمه‌های مدیریت برای هر پلن
@@ -8964,7 +8964,7 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 """
         keyboard = [
             [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-            [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
+            [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
             [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
         ]
@@ -8974,8 +8974,8 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if query.data == "add_plan":
         await query.edit_message_text(
-            "📦 **افزودن پلن جدید**\n\n"
-            "نام پلن را وارد کنید:\n"
+            "📦 **افزودن بسته جدید**\n\n"
+            "نام بسته را وارد کنید:\n"
             "مثال: ` Platinum `، ` VIP `، ` ویژه `"
         )
         return ADMIN_ADD_PLAN_NAME
@@ -8989,9 +8989,9 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
             data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
             text = (
-                f"⚙️ **مدیریت و ویرایش پلن:**\n\n"
+                f"⚙️ **مدیریت و ویرایش بسته:**\n\n"
                 f"🆔 شناسه: `{plan_id}`\n"
-                f"📋 نام پلن: **{plan['name']}**\n"
+                f"📋 نام بسته: **{plan['name']}**\n"
                 f"💰 قیمت: **{price_formatted}** تومان\n"
                 f"📊 حجم: **{data_text}**\n"
                 f"⏰ مدت: **{plan.get('duration', 30)}** روز\n"
@@ -9012,7 +9012,7 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
                 ],
                 [
-                    InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                    InlineKeyboardButton("🗑️ حذف بسته", callback_data=f"del_plan_{plan_id}"),
                     InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
                 ],
             ]
@@ -9029,18 +9029,18 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         plan_id = parts[1]
         plans = get_all_plans()
         if plan_id not in plans:
-            await query.answer("❌ پلن یافت نشد!", show_alert=True)
+            await query.answer("❌ بسته یافت نشد!", show_alert=True)
             return ADMIN_PLANS_MENU
 
         context.user_data["editing_plan_id"] = plan_id
         context.user_data["editing_plan_field"] = field_type
 
         prompts = {
-            "id": "🆔 **شناسه جدید پلن را وارد کنید (انگلیسی بدون فاصله):**\n\nمثال: `vip_100gb_1m` یا `plan_30days`",
-            "name": "✏️ **نام جدید پلن را وارد کنید:**\n\nمثال: `پلن ۱ ماهه ۱۰۰ گیگ VIP`",
-            "price": "💰 **قیمت جدید پلن (به تومان) را وارد کنید:**\n\nمثال: `150000` (برای رایگان عدد `0` وارد کنید)",
-            "data": "📊 **حجم جدید پلن (به گیگابایت) را وارد کنید:**\n\nمثال: `50` (برای نامحدود عدد `0` وارد کنید)",
-            "duration": "⏰ **مدت زمان جدید پلن (تعداد روز) را وارد کنید:**\n\nمثال: `30` یا `60` یا `365`",
+            "id": "🆔 **شناسه جدید بسته را وارد کنید (انگلیسی بدون فاصله):**\n\nمثال: `vip_100gb_1m` یا `plan_30days`",
+            "name": "✏️ **نام جدید بسته را وارد کنید:**\n\nمثال: `پلن ۱ ماهه ۱۰۰ گیگ VIP`",
+            "price": "💰 **قیمت جدید بسته (به تومان) را وارد کنید:**\n\nمثال: `150000` (برای رایگان عدد `0` وارد کنید)",
+            "data": "📊 **حجم جدید بسته (به گیگابایت) را وارد کنید:**\n\nمثال: `50` (برای نامحدود عدد `0` وارد کنید)",
+            "duration": "⏰ **مدت زمان جدید بسته (تعداد روز) را وارد کنید:**\n\nمثال: `30` یا `60` یا `365`",
         }
         prompt_text = prompts.get(field_type, "لطفاً مقدار جدید را وارد کنید:")
         keyboard = [[InlineKeyboardButton("◀️ انصراف و بازگشت", callback_data=f"edit_plan_{plan_id}")]]
@@ -9063,7 +9063,7 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         plan_id = query.data.replace("del_plan_", "")
         result = delete_plan(plan_id)
         if result.get("success"):
-            await query.answer("پلن با موفقیت حذف شد! 🗑️", show_alert=True)
+            await query.answer("بسته با موفقیت حذف شد! 🗑️", show_alert=True)
         else:
             await query.answer(f"خطا: {result.get('error')}", show_alert=True)
         return await show_plans_menu(update, context)
@@ -9080,9 +9080,9 @@ async def plans_menu_handler_show_card(query, plan_id: str):
         status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
         data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
         text = (
-            f"⚙️ **مدیریت و ویرایش پلن:**\n\n"
+            f"⚙️ **مدیریت و ویرایش بسته:**\n\n"
             f"🆔 شناسه: `{plan_id}`\n"
-            f"📋 نام پلن: **{plan['name']}**\n"
+            f"📋 نام بسته: **{plan['name']}**\n"
             f"💰 قیمت: **{price_formatted}** تومان\n"
             f"📊 حجم: **{data_text}**\n"
             f"⏰ مدت: **{plan.get('duration', 30)}** روز\n"
@@ -9103,7 +9103,7 @@ async def plans_menu_handler_show_card(query, plan_id: str):
                 InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
             ],
             [
-                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                InlineKeyboardButton("🗑️ حذف بسته", callback_data=f"del_plan_{plan_id}"),
                 InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
             ],
         ]
@@ -9123,7 +9123,7 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
 
     plans = get_all_plans()
     if plan_id not in plans:
-        await update.message.reply_text("❌ پلن مورد نظر یافت نشد.")
+        await update.message.reply_text("❌ بسته مورد نظر یافت نشد.")
         return ADMIN_MENU
 
     update_kwargs = {}
@@ -9134,13 +9134,13 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text("❌ شناسه باید فقط شامل حروف انگلیسی، اعداد و خط فاصله/آندرلاین باشد. دوباره وارد کنید:")
             return ADMIN_EDIT_PLAN_VALUE
         if new_id != plan_id and new_id in plans:
-            await update.message.reply_text("❌ این شناسه پلن قبلاً ثبت شده است! شناسه دیگری وارد کنید:")
+            await update.message.reply_text("❌ این شناسه بسته قبلاً ثبت شده است! شناسه دیگری وارد کنید:")
             return ADMIN_EDIT_PLAN_VALUE
         update_kwargs["new_plan_id"] = new_id
 
     elif field == "name":
         if len(text_val) < 2:
-            await update.message.reply_text("❌ نام پلن باید حداقل ۲ حرف باشد. لطفاً دوباره ارسال کنید:")
+            await update.message.reply_text("❌ نام بسته باید حداقل ۲ حرف باشد. لطفاً دوباره ارسال کنید:")
             return ADMIN_EDIT_PLAN_VALUE
         update_kwargs["name"] = text_val
 
@@ -9184,7 +9184,7 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
         data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
 
         msg_text = (
-            f"✅ **پلن با موفقیت بروزرسانی شد!**\n\n"
+            f"✅ **بسته با موفقیت بروزرسانی شد!**\n\n"
             f"🆔 شناسه: `{current_plan_id}`\n"
             f"📋 نام: **{plan['name']}**\n"
             f"💰 قیمت: **{price_formatted}** تومان\n"
@@ -9206,14 +9206,14 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
                 InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{current_plan_id}"),
             ],
             [
-                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{current_plan_id}"),
+                InlineKeyboardButton("🗑️ حذف بسته", callback_data=f"del_plan_{current_plan_id}"),
                 InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
             ],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(msg_text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(f"❌ خطا در بروزرسانی پلن: {res.get('error')}")
+        await update.message.reply_text(f"❌ خطا در بروزرسانی بسته: {res.get('error')}")
 
     context.user_data.pop("editing_plan_id", None)
     context.user_data.pop("editing_plan_field", None)
@@ -9226,16 +9226,16 @@ async def add_plan_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(plan_name) < 2:
         await update.message.reply_text(
-            "❌ نام پلن نامعتبر است!\n\n"
-            "لطفاً نام پلن را وارد کنید:"
+            "❌ نام بسته نامعتبر است!\n\n"
+            "لطفاً نام بسته را وارد کنید:"
         )
         return ADMIN_ADD_PLAN_NAME
 
     context.user_data["new_plan_name"] = plan_name
     await update.message.reply_text(
-        "💰 **قیمت پلن (به تومان) را وارد کنید:**\n\n"
+        "💰 **قیمت بسته (به تومان) را وارد کنید:**\n\n"
         "مثال: `50000`\n"
-        "برای پلن رایگان، عدد `0` وارد کنید."
+        "برای بسته رایگان، عدد `0` وارد کنید."
     )
     return ADMIN_ADD_PLAN_PRICE
 
@@ -9257,9 +9257,9 @@ async def add_plan_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["new_plan_price"] = price
     await update.message.reply_text(
-        "📊 **حجم پلن (به گیگابایت) را وارد کنید:**\n\n"
+        "📊 **حجم بسته (به گیگابایت) را وارد کنید:**\n\n"
         "مثال: `30`\n"
-        "برای پلن نامحدود، عدد `0` وارد کنید."
+        "برای بسته نامحدود، عدد `0` وارد کنید."
     )
     return ADMIN_ADD_PLAN_DATA
 
@@ -9281,7 +9281,7 @@ async def add_plan_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["new_plan_data"] = data_limit
     await update.message.reply_text(
-        "⏰ **مدت پلن (به روز) را وارد کنید:**\n\n"
+        "⏰ **مدت بسته (به روز) را وارد کنید:**\n\n"
         "مثال: `30` (برای یک ماه)\n"
         "یا: `365` (برای یک سال)"
     )
@@ -9314,17 +9314,17 @@ async def add_plan_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price_formatted = f"{price:,}".replace(",", "،")
         data_text = f"{data_limit} گیگ" if data_limit > 0 else "نامحدود"
         await update.message.reply_text(
-            f"✅ **پلن با موفقیت اضافه شد!**\n\n"
+            f"✅ **بسته با موفقیت اضافه شد!**\n\n"
             f"📋 نام: {plan_name}\n"
             f"💰 قیمت: {price_formatted} تومان\n"
             f"📊 حجم: {data_text}\n"
             f"⏰ مدت: {duration} روز\n\n"
-            f"برای مدیریت پلن‌ها، از دستور /admin_panel استفاده کنید.",
+            f"برای مدیریت بسته‌ها، از دستور /admin_panel استفاده کنید.",
             parse_mode="Markdown",
         )
     else:
         await update.message.reply_text(
-            f"❌ خطا در افزودن پلن:\n{result.get('error', 'نامشخص')}"
+            f"❌ خطا در افزودن بسته:\n{result.get('error', 'نامشخص')}"
         )
 
     # پاک کردن اطلاعات موقت
@@ -9398,7 +9398,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🌐 **کاربران سرور هیدیفای:** {hidify_users}
 🛡 **اشتراک‌های فعال:** {active_subs} (از کل {total_subs})
 
-📦 **پلن‌های فعال:** {active_plans} پلن
+📦 **بسته‌های فعال:** {active_plans} پلن
 💳 **کارت‌های بانکی فعال:** {active_cards} کارت
 
 💰 **وضعیت تراکنش‌ها:**
@@ -9452,7 +9452,7 @@ async def admin_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         # نمایش پنل مدیریت دوباره
         keyboard = [
             [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-            [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
+            [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
             [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
             [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
             [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
@@ -9557,7 +9557,7 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
     # بازگشت به پنل مدیریت
     keyboard = [
         [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-        [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
+        [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
         [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
         [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],

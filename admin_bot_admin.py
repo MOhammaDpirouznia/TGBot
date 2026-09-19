@@ -232,7 +232,7 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                 ],
                 [
                     InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards"),
-                    InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans"),
+                    InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans"),
                 ],
                 [
                     InlineKeyboardButton("🤖 استودیو هوش مصنوعی و محتوا", callback_data="adm_ai_menu"),

@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 
-{% block title %}مدیریت پلن‌های فروش - پنل مدیریت{% endblock %}
+{% block title %}مدیریت بسته‌های فروش - پنل مدیریت{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h4 class="mb-1 fw-bold"><i class="bi bi-box-seam me-2 text-primary"></i>مدیریت و پیکربندی پلن‌های فروش</h4>
-        <p class="text-muted mb-0">تعریف، تفکیک پلن‌های مدیریت و نمایندگان، قیمت‌گذاری و شخصی‌سازی اختصاصی برای هر نماینده</p>
+        <h4 class="mb-1 fw-bold"><i class="bi bi-box-seam me-2 text-primary"></i>مدیریت و پیکربندی بسته‌های فروش</h4>
+        <p class="text-muted mb-0">تعریف، تفکیک بسته‌های مدیریت و نمایندگان، قیمت‌گذاری و شخصی‌سازی اختصاصی برای هر نماینده</p>
     </div>
     {% if current_tab == 'admin' %}
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPlanModal">
-        <i class="bi bi-plus-lg me-1"></i> افزودن پلن
+        <i class="bi bi-plus-lg me-1"></i> افزودن بسته
     </button>
     {% endif %}
 </div>
 
-<!-- تب‌های ناوبری اصلی پلن‌ها -->
+<!-- تب‌های ناوبری اصلی بسته‌ها -->
 <ul class="nav nav-pills nav-fill bg-white p-2 rounded-3 shadow-sm border mb-4">
     <li class="nav-item">
         <a class="nav-link fw-bold py-2 {{ 'active' if current_tab == 'admin' else '' }}" href="{{ url_for('admin_plans_page', tab='admin') }}">
-            <i class="fas fa-crown me-2"></i> پلن‌های مستقیم مدیریت و ربات
+            <i class="fas fa-crown me-2"></i> بسته‌های مستقیم مدیریت و ربات
             <span class="badge bg-light text-dark ms-1">{{ plans|length }}</span>
         </a>
     </li>
     <li class="nav-item">
         <a class="nav-link fw-bold py-2 {{ 'active' if current_tab == 'resellers' else '' }}" href="{{ url_for('admin_plans_page', tab='resellers', reseller_id=selected_reseller_id or '') }}">
-            <i class="fas fa-handshake me-2"></i> پلن‌های نمایندگان و همکاران فروش
+            <i class="fas fa-handshake me-2"></i> بسته‌های نمایندگان و همکاران فروش
             <span class="badge {{ 'bg-white text-primary' if current_tab == 'resellers' else 'bg-secondary' }} ms-1">{{ resellers_list|length }} نماینده</span>
         </a>
     </li>
@@ -33,17 +33,17 @@
 
 {% if current_tab == 'admin' %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- تب ۱: پلن‌های مستقیم مدیریت و ربات -->
+<!-- تب ۱: بسته‌های مستقیم مدیریت و ربات -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-box-seam me-2"></i>لیست پلن‌های مستقیم ربات و پنل مدیریت</h5>
+            <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-box-seam me-2"></i>لیست بسته‌های مستقیم ربات و پنل مدیریت</h5>
             <span class="badge bg-secondary" data-table-count="plansTable">{{ plans|length }} مورد</span>
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="plansTable" placeholder="جستجو در پلن‌ها...">
+            <input type="text" class="form-control table-search-input" data-table="plansTable" placeholder="جستجو در بسته‌ها...">
             <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
         </div>
     </div>
@@ -52,8 +52,8 @@
             <table class="table table-hover align-middle mb-0 sortable-table" id="plansTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">شناسه پلن</th>
-                        <th class="sortable-th" data-column="1">نام پلن</th>
+                        <th class="ps-3 sortable-th" data-column="0">شناسه بسته</th>
+                        <th class="sortable-th" data-column="1">نام بسته</th>
                         <th class="sortable-th" data-column="2">قیمت (تومان)</th>
                         <th class="sortable-th" data-column="3">حجم (GB)</th>
                         <th class="sortable-th" data-column="4">مدت (روز)</th>
@@ -82,7 +82,7 @@
                                 <span class="badge bg-light text-secondary border ms-1" style="font-size: 0.72rem;"><i class="fas fa-globe me-1"></i>عمومی</span>
                             {% elif s_ap and not s_ab and not s_rb and not s_rp %}
                                 <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;" title="کاملاً مخفی از تمام ربات‌ها - فقط پنل مدیریت">
-                                    <i class="fas fa-crown me-1"></i>فقط پنل مدیریت
+                                     <i class="fas fa-crown me-1"></i>فقط پنل مدیریت
                                 </span>
                             {% elif s_ab and s_ap and not s_rb and not s_rp %}
                                 <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);" title="مخفی از تمام نمایندگان - فقط پنل و ربات مدیریت">
@@ -141,17 +141,23 @@
                             <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ pid }}">
                                 <i class="bi bi-pencil me-1"></i> ویرایش
                             </button>
-                            <a href="{{ url_for('admin_plan_toggle', plan_id=pid) }}" class="btn btn-sm btn-outline-secondary me-1" title="تغییر وضعیت">
-                                <i class="bi bi-power"></i>
+                            {% if p.is_active %}
+                            <a href="{{ url_for('admin_plan_toggle', plan_id=pid) }}" class="btn btn-sm btn-outline-warning me-1" title="غیرفعال‌سازی این بسته">
+                                <i class="fas fa-pause me-1"></i> غیرفعال
                             </a>
-                            <a href="{{ url_for('admin_plan_delete', plan_id=pid, tab='admin') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن مطمئن هستید؟');" title="حذف پلن">
-                                <i class="bi bi-trash"></i>
+                            {% else %}
+                            <a href="{{ url_for('admin_plan_toggle', plan_id=pid) }}" class="btn btn-sm btn-outline-success me-1" title="فعال‌سازی این بسته">
+                                <i class="fas fa-play me-1"></i> فعال
+                            </a>
+                            {% endif %}
+                            <a href="{{ url_for('admin_plan_delete', plan_id=pid, tab='admin') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این بسته مطمئن هستید؟');" title="حذف بسته">
+                                <i class="bi bi-trash me-1"></i> حذف
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">هیچ پلنی یافت نشد. روی «افزودن پلن» کلیک کنید.</td>
+                        <td colspan="7" class="text-center py-4 text-muted">هیچ بسته‌ای یافت نشد. روی «افزودن بسته» کلیک کنید.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -162,7 +168,7 @@
 
 {% else %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- تب ۲: پلن‌های نمایندگان و همکاران فروش -->
+<!-- تب ۲: بسته‌های نمایندگان و همکاران فروش -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 
 <!-- بخش انتخاب نماینده برای شخصی‌سازی اختصاصی -->
@@ -171,10 +177,10 @@
         <div class="row align-items-center g-3">
             <div class="col-md-5">
                 <label class="form-label fw-bold small text-primary mb-1">
-                    <i class="fas fa-user-gear me-1"></i> انتخاب نماینده جهت شخصی‌سازی و تنظیم پلن‌های اختصاصی:
+                    <i class="fas fa-user-gear me-1"></i> انتخاب نماینده جهت شخصی‌سازی و تنظیم بسته‌های اختصاصی:
                 </label>
                 <select class="form-select" onchange="location.href='{{ url_for('admin_plans_page', tab='resellers') }}&reseller_id=' + this.value;">
-                    <option value="">-- نمایش پلن‌های پیش‌فرض تمام نمایندگان --</option>
+                    <option value="">-- نمایش بسته‌های پیش‌فرض تمام نمایندگان --</option>
                     {% for r in resellers_list %}
                     <option value="{{ r['id'] }}" {% if selected_reseller_id == r['id'] %}selected{% endif %}>
                         {{ r['name'] }} (@{{ r['username'] }}) - تخفیف: {{ r['discount_percent'] }}%
@@ -193,13 +199,13 @@
                         {% endif %}
                     </div>
                     <a href="{{ url_for('admin_plans_page', tab='resellers') }}" class="btn btn-xs btn-outline-secondary py-1 px-2" style="font-size: 0.8rem;">
-                        <i class="fas fa-times me-1"></i> بازگشت به پلن‌های پیش‌فرض
+                        <i class="fas fa-times me-1"></i> بازگشت به بسته‌های پیش‌فرض
                     </a>
                 </div>
                 {% else %}
                 <div class="text-muted small">
                     <i class="fas fa-circle-info text-info me-1"></i>
-                    پلن‌های پیش‌فرض برای تمام نمایندگان اعمال می‌شود مگر اینکه با انتخاب یک نماینده از منوی مقابل، پلن‌های اختصاصی برای او تعریف فرمایید.
+                    بسته‌های پیش‌فرض برای تمام نمایندگان اعمال می‌شود مگر اینکه با انتخاب یک نماینده از منوی مقابل، بسته‌های اختصاصی برای او تعریف فرمایید.
                 </div>
                 {% endif %}
             </div>
@@ -208,17 +214,17 @@
 </div>
 
 {% if selected_reseller %}
-<!-- جدول پلن‌های اختصاصی نماینده انتخاب‌شده -->
+<!-- جدول بسته‌های اختصاصی نماینده انتخاب‌شده -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="mb-0 fw-bold text-success">
-            <i class="fas fa-sliders text-success me-2"></i>پلن‌های شخصی‌سازی شده برای: {{ selected_reseller['name'] }}
+            <i class="fas fa-sliders text-success me-2"></i>بسته‌های شخصی‌سازی شده برای: {{ selected_reseller['name'] }}
         </h5>
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-sm btn-success fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addDedicatedPlanModal">
-                <i class="fas fa-plus-circle me-1"></i> افزودن پلن اختصاصی برای {{ selected_reseller['name'] }}
+                <i class="fas fa-plus-circle me-1"></i> افزودن بسته اختصاصی برای {{ selected_reseller['name'] }}
             </button>
-            <span class="badge bg-success-subtle text-success border border-success">{{ selected_reseller_plans|length }} پلن فعال در ربات نماینده</span>
+            <span class="badge bg-success-subtle text-success border border-success">{{ selected_reseller_plans|length }} بسته فعال در ربات نماینده</span>
         </div>
     </div>
     <div class="card-body p-0">
@@ -226,7 +232,7 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">شناسه پلن</th>
+                        <th class="ps-3">شناسه بسته</th>
                         <th>نام در ربات نماینده</th>
                         <th>قیمت پایه مدیر</th>
                         <th>درصد تخفیف</th>
@@ -262,7 +268,7 @@
                         </td>
                         <td>
                             {% if p.has_custom_discount %}
-                                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace" title="درصد تخفیف اختصاصی این پلن">
+                                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace" title="درصد تخفیف اختصاصی این بسته">
                                     <i class="fas fa-tag me-1"></i>{{ p.discount_percent }}٪ (اختصاصی)
                                 </span>
                             {% else %}
@@ -304,15 +310,15 @@
                                 <i class="fas fa-pen me-1"></i> تنظیم اختصاصی
                             </button>
                             {% if p.is_dedicated %}
-                            <a href="{{ url_for('admin_plan_delete', plan_id=p.plan_id, tab='resellers', reseller_id=selected_reseller['id']) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف کامل این پلن اختصاصی اطمینان دارید؟ این پلن از ربات این نماینده حذف خواهد شد.');" title="حذف این پلن اختصاصی">
-                                <i class="fas fa-trash"></i>
+                            <a href="{{ url_for('admin_plan_delete', plan_id=p.plan_id, tab='resellers', reseller_id=selected_reseller['id']) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف کامل این بسته اختصاصی اطمینان دارید؟ این بسته از ربات این نماینده حذف خواهد شد.');" title="حذف این بسته اختصاصی">
+                                <i class="fas fa-trash me-1"></i> حذف
                             </a>
                             {% elif has_override %}
-                            <form action="{{ url_for('admin_reseller_plan_reset') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بازنشانی این پلن به تنظیمات پیش‌فرض اطمینان دارید؟');">
+                            <form action="{{ url_for('admin_reseller_plan_reset') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بازنشانی این بسته به تنظیمات پیش‌فرض اطمینان دارید؟');">
                                 <input type="hidden" name="reseller_id" value="{{ selected_reseller['id'] }}">
                                 <input type="hidden" name="plan_id" value="{{ p.plan_id }}">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="بازنشانی به پلن پیش‌فرض">
-                                    <i class="fas fa-rotate-left"></i>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="بازنشانی به بسته پیش‌فرض">
+                                    <i class="fas fa-rotate-left me-1"></i> بازنشانی
                                 </button>
                             </form>
                             {% endif %}
@@ -325,12 +331,12 @@
     </div>
 </div>
 
-<!-- مودال ایجاد پلن اختصاصی برای نماینده انتخاب‌شده -->
+<!-- مودال ایجاد بسته اختصاصی برای نماینده انتخاب‌شده -->
 <div class="modal fade text-start" id="addDedicatedPlanModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header text-white py-3" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
-                <h5 class="modal-title fw-bold"><i class="fas fa-gem me-2"></i>افزودن پلن اختصاصی جدید برای {{ selected_reseller['name'] }}</h5>
+                <h5 class="modal-title fw-bold"><i class="fas fa-gem me-2"></i>افزودن بسته اختصاصی جدید برای {{ selected_reseller['name'] }}</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="{{ url_for('admin_reseller_add_dedicated_plan') }}">
@@ -338,11 +344,11 @@
                 <div class="modal-body p-4">
                     <div class="alert alert-primary bg-opacity-10 border-primary border small mb-3">
                         <i class="fas fa-shield-halved text-primary me-1"></i>
-                        این پلن مستقیماً به <strong>{{ selected_reseller['name'] }}</strong> تخصیص می‌یابد و ربات اصلی و سایر نمایندگان سیستم آن را مشاهده نخواهند کرد.
+                        این بسته مستقیماً به <strong>{{ selected_reseller['name'] }}</strong> تخصیص می‌یابد و ربات اصلی و سایر نمایندگان سیستم آن را مشاهده نخواهند کرد.
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">نام پلن اختصاصی</label>
-                        <input type="text" name="name" class="form-control" placeholder="مثال: پلن اختصاصی ۶۰ روزه ۱۲۰ گیگابایت" required>
+                        <label class="form-label fw-semibold">نام بسته اختصاصی</label>
+                        <input type="text" name="name" class="form-control" placeholder="مثال: بسته اختصاصی ۶۰ روزه ۱۲۰ گیگابایت" required>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
@@ -381,19 +387,19 @@
                         </div>
                     </div>
 
-                    <!-- کادر تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی) برای پلن اختصاصی -->
+                    <!-- کادر تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی) برای بسته اختصاصی -->
                     <div class="p-3 rounded-3 border bg-light mt-3">
                         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
                             <span class="fw-bold text-primary small">
                                 <i class="fas fa-percent me-1"></i> تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی)
                             </span>
                             <span class="badge bg-secondary-subtle text-secondary small font-monospace" id="add_ded_price_badge">
-                                قیمت پلن: ۰ ت
+                                قیمت بسته: ۰ ت
                             </span>
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
+                                <label class="form-label small fw-semibold">درصد تخفیف اختصاصی بسته (٪):</label>
                                 <div class="input-group input-group-sm">
                                     <input type="number" 
                                            name="custom_discount_percent" 
@@ -453,7 +459,7 @@
                         </div>
                         <div class="form-text small mt-1 text-muted" style="font-size: 0.75rem;">
                             <i class="fas fa-info-circle text-primary me-1"></i>
-                            اگر تیک «ربات تلگرام نماینده» برداشته شود، این پلن فقط در پنل وب نماینده برای صدور دستی فعال خواهد بود و در ربات تلگرام مخفی می‌شود.
+                            اگر تیک «ربات تلگرام نماینده» برداشته شود، این بسته فقط در پنل وب نماینده برای صدور دستی فعال خواهد بود و در ربات تلگرام مخفی می‌شود.
                         </div>
                     </div>
 
@@ -481,7 +487,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-success px-4 fw-bold shadow-sm">
-                        <i class="fas fa-check me-1"></i> ایجاد و فعال‌سازی پلن اختصاصی
+                        <i class="fas fa-check me-1"></i> ایجاد و فعال‌سازی بسته اختصاصی
                     </button>
                 </div>
             </form>
@@ -489,13 +495,13 @@
     </div>
 </div>
 
-<!-- مودال‌های ویرایش پلن اختصاصی نماینده -->
+<!-- مودال‌های ویرایش بسته اختصاصی نماینده -->
 {% for p in selected_reseller_plans %}
 <div class="modal fade text-start" id="editResellerPlanModal{{ p.plan_id }}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-success text-white py-3">
-                <h5 class="modal-title fw-bold"><i class="fas fa-sliders me-2"></i>شخصی‌سازی پلن: {{ p.master_name }} برای {{ selected_reseller['name'] }}</h5>
+                <h5 class="modal-title fw-bold"><i class="fas fa-sliders me-2"></i>شخصی‌سازی بسته: {{ p.master_name }} برای {{ selected_reseller['name'] }}</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="{{ url_for('admin_reseller_plan_override') }}">
@@ -504,7 +510,7 @@
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">نام نمایشی اختصاصی در ربات این نماینده:</label>
-                        <input type="text" name="custom_name" class="form-control" value="{{ p.custom_name or p.master_name }}" placeholder="مثال: پلن ویژه {{ p.master_name }}">
+                        <input type="text" name="custom_name" class="form-control" value="{{ p.custom_name or p.master_name }}" placeholder="مثال: بسته ویژه {{ p.master_name }}">
                         <small class="text-muted">برای استفاده از نام پیش‌فرض خالی بگذارید.</small>
                     </div>
                     <div class="row g-2 mb-3">
@@ -541,7 +547,7 @@
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
+                                <label class="form-label small fw-semibold">درصد تخفیف اختصاصی بسته (٪):</label>
                                 <div class="input-group input-group-sm">
                                     <input type="number" 
                                            name="custom_discount_percent" 
@@ -598,11 +604,11 @@
 {% endfor %}
 
 {% else %}
-<!-- کارت لیست پلن‌های اختصاصی تعریف‌شده برای نمایندگان -->
+<!-- کارت لیست بسته‌های اختصاصی تعریف‌شده برای نمایندگان -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="mb-0 fw-bold" style="color: #6366f1;">
-            <i class="fas fa-user-lock me-2"></i>پلن‌های اختصاصی نمایندگان ({{ dedicated_reseller_plans|length }} پلن)
+            <i class="fas fa-user-lock me-2"></i>بسته‌های اختصاصی نمایندگان ({{ dedicated_reseller_plans|length }} بسته)
         </h5>
         <span class="badge text-white" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">ایزوله و محرمانه</span>
     </div>
@@ -611,8 +617,8 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">شناسه پلن</th>
-                        <th>نام پلن</th>
+                        <th class="ps-3">شناسه بسته</th>
+                        <th>نام بسته</th>
                         <th>قیمت (تومان)</th>
                         <th>حجم (GB)</th>
                         <th>مدت (روز)</th>
@@ -654,17 +660,17 @@
                         </td>
                         <td class="text-end pe-3">
                             <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ dp.plan_id }}" title="ویرایش">
-                                <i class="fas fa-pen"></i>
+                                <i class="fas fa-pen me-1"></i> ویرایش
                             </button>
-                            <a href="{{ url_for('admin_plan_delete', plan_id=dp.plan_id, tab='resellers') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن اختصاصی مطمئن هستید؟');" title="حذف">
-                                <i class="fas fa-trash"></i>
+                            <a href="{{ url_for('admin_plan_delete', plan_id=dp.plan_id, tab='resellers') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این بسته اختصاصی مطمئن هستید؟');" title="حذف بسته">
+                                <i class="fas fa-trash me-1"></i> حذف
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
                         <td colspan="8" class="text-center py-4 text-muted">
-                            <i class="fas fa-info-circle me-1"></i> هنوز هیچ پلن اختصاصی تعریف نشده است. با انتخاب یک نماینده از منوی بالا می‌توانید پلن اختصاصی تعریف فرمایید.
+                            <i class="fas fa-info-circle me-1"></i> هنوز هیچ بسته اختصاصی تعریف نشده است. با انتخاب یک نماینده از منوی بالا می‌توانید بسته اختصاصی تعریف فرمایید.
                         </td>
                     </tr>
                     {% endfor %}
@@ -674,21 +680,21 @@
     </div>
 </div>
 
-<!-- جدول پلن‌های پیش‌فرض نمایندگان (Default Reseller Plans) -->
+<!-- جدول بسته‌های پیش‌فرض نمایندگان (Default Reseller Plans) -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="mb-0 fw-bold text-primary">
-            <i class="fas fa-handshake text-primary me-2"></i>پلن‌های پیش‌فرض نمایندگان و همکاران
+            <i class="fas fa-handshake text-primary me-2"></i>بسته‌های پیش‌فرض نمایندگان و همکاران
         </h5>
-        <span class="badge bg-secondary">{{ default_reseller_plans|length }} پلن عمومی</span>
+        <span class="badge bg-secondary">{{ default_reseller_plans|length }} بسته عمومی</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">شناسه پلن</th>
-                        <th>نام پلن</th>
+                        <th class="ps-3">شناسه بسته</th>
+                        <th>نام بسته</th>
                         <th>قیمت پایه (تومان)</th>
                         <th>میانگین قیمت عمده (با ۲۰٪ تخفیف)</th>
                         <th>حجم (GB)</th>
@@ -733,24 +739,24 @@
 
 {% endif %}
 
-<!-- مودال‌های ویرایش پلن مدیریت -->
+<!-- مودال‌های ویرایش بسته مدیریت -->
 {% for pid, p in plans.items() %}
 <div class="modal fade text-start" id="editModal{{ pid }}" tabindex="-1" aria-labelledby="editModalLabel{{ pid }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-primary text-white py-3">
-                <h5 class="modal-title fw-bold" id="editModalLabel{{ pid }}"><i class="fas fa-pen-to-square me-2"></i>ویرایش پلن مستقیم: {{ p.name }}</h5>
+                <h5 class="modal-title fw-bold" id="editModalLabel{{ pid }}"><i class="fas fa-pen-to-square me-2"></i>ویرایش بسته مستقیم: {{ p.name }}</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="{{ url_for('admin_plan_edit', plan_id=pid) }}">
                 <div class="modal-body p-4">
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">شناسه پلن (انگلیسی / ID)</label>
+                        <label class="form-label fw-semibold">شناسه بسته (انگلیسی / ID)</label>
                         <input type="text" name="new_plan_id" class="form-control font-monospace" value="{{ pid }}" required pattern="^[a-zA-Z0-9_-]+$">
                         <small class="text-muted">فقط حروف انگلیسی، اعداد و خط فاصله/آندرلاین</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">نام پلن</label>
+                        <label class="form-label fw-semibold">نام بسته</label>
                         <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
                     </div>
                     <div class="mb-3">
@@ -767,7 +773,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-icons text-primary me-1"></i> آیکون دلخواه پلن:</span>
+                            <span><i class="fas fa-icons text-primary me-1"></i> آیکون دلخواه بسته:</span>
                             <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 fw-semibold" style="font-size: 0.76rem;" onclick="openGlobalIconPicker('edit_plan_icon_{{ pid }}', 'edit_plan_icon_preview_{{ pid }}')">
                                 <i class="fas fa-palette me-1"></i> انتخاب از پکیج آیکون‌ها
                             </button>
@@ -784,7 +790,7 @@
                                 <i class="fas fa-wand-magic-sparkles"></i>
                             </button>
                         </div>
-                        <small class="text-muted d-block mt-1">در صورت خالی بودن، آیکون هوشمند بر اساس نوع، سطح و نام فارسی پلن تخصیص داده می‌شود.</small>
+                        <small class="text-muted d-block mt-1">در صورت خالی بودن، آیکون هوشمند بر اساس نوع، سطح و نام فارسی بسته تخصیص داده می‌شود.</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">وضعیت فروش</label>
@@ -830,7 +836,7 @@
                     <div class="mb-3 p-3 border rounded-3 bg-light">
                         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                             <label class="form-label fw-bold text-dark mb-0">
-                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش پلن:
+                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش بسته:
                             </label>
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace" id="presetBadge_{{ pid }}">
                                 {% if p.show_in_admin_bot and p.show_in_admin_panel and p.show_in_reseller_bot and p.show_in_reseller_panel and p.reseller_scope == 'all' %}
@@ -912,7 +918,7 @@
                         {% set has_reseller = p.show_in_reseller_bot or p.show_in_reseller_panel %}
                         <div id="resellerTargetBox_{{ pid }}" class="mt-2 p-3 bg-white rounded-3 border" style="{% if not has_reseller %}display: none;{% endif %}">
                             <label class="form-label small fw-bold text-dark mb-2">
-                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این پلن:
+                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این بسته:
                             </label>
                             <div class="d-flex gap-3 mb-2 flex-wrap">
                                 <div class="form-check">
@@ -958,19 +964,19 @@
 </div>
 {% endfor %}
 
-<!-- مودال افزودن پلن مستقیم مدیریت -->
+<!-- مودال افزودن بسته مستقیم مدیریت -->
 <div class="modal fade text-start" id="addPlanModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-primary text-white py-3">
-                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2"></i>افزودن پلن فروش</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2"></i>افزودن بسته فروش</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="{{ url_for('admin_plans_page', tab='admin') }}">
                 <input type="hidden" name="action" value="add">
                 <div class="modal-body p-4">
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">نام پلن</label>
+                        <label class="form-label fw-semibold">نام بسته</label>
                         <input type="text" name="name" class="form-control" placeholder="مثال: ۱ ماهه ۵۰ گیگابایت پرو" required>
                     </div>
                     <div class="row g-2 mb-3">
@@ -1042,7 +1048,7 @@
                     <div class="mb-3 p-3 border rounded-3 bg-light">
                         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                             <label class="form-label fw-bold text-dark mb-0">
-                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش پلن:
+                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش بسته:
                             </label>
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace" id="presetBadge_add">عمومی (همه جا)</span>
                         </div>
@@ -1050,7 +1056,7 @@
                         <!-- دکمه‌های الگوهای سریع و آماده -->
                         <div class="d-flex flex-wrap gap-1 mb-3">
                             <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 preset-btn-add active" onclick="applyPlanPreset('add', 'all')">
-                                🌐 پلن عمومی
+                                🌐 بسته عمومی
                             </button>
                             <button type="button" class="btn btn-xs btn-outline-info rounded-pill px-2 py-1 preset-btn-add" onclick="applyPlanPreset('add', 'admin_bot')">
                                 🤖 پنل و ربات مدیریت
@@ -1109,7 +1115,7 @@
                         <!-- کادر انتخاب نمایندگان مجاز و درصد تخفیف / قیمت عمده -->
                         <div id="resellerTargetBox_add" class="mt-2 p-3 bg-white rounded-3 border" style="display: block;">
                             <label class="form-label small fw-bold text-dark mb-2">
-                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این پلن:
+                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این بسته:
                             </label>
                             <div class="d-flex gap-3 mb-2 flex-wrap">
                                 <div class="form-check">
@@ -1146,17 +1152,17 @@
                                             <i class="fas fa-percent me-1"></i> تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی)
                                         </span>
                                         <span class="badge bg-secondary-subtle text-secondary small font-monospace" id="add_plan_price_badge">
-                                            قیمت پلن: ۰ ت
+                                            قیمت بسته: ۰ ت
                                         </span>
                                     </div>
                                     <div class="row g-2">
                                         <div class="col-md-6">
-                                            <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
-                                            <div class="input-group input-group-sm">
+                                            <label class="form-label small fw-semibold">درصد تخفیف اختصاصی بسته (٪):</label>
+                                             <div class="input-group input-group-sm">
                                                 <input type="number" 
                                                        name="custom_discount_percent" 
                                                        class="form-control font-monospace" 
-                                                       id="add_plan_custom_discount"
+                                                       id="add_plan_custom_discount" 
                                                        placeholder="مثال: 25" 
                                                        step="0.1" min="0" max="100">
                                                 <span class="input-group-text">٪</span>
@@ -1169,7 +1175,7 @@
                                                 <input type="number" 
                                                        name="custom_wholesale_price" 
                                                        class="form-control font-monospace" 
-                                                       id="add_plan_custom_wholesale"
+                                                       id="add_plan_custom_wholesale" 
                                                        placeholder="مثال: 120000" 
                                                        step="1000" min="0">
                                                 <span class="input-group-text">ت</span>
@@ -1189,7 +1195,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت و ایجاد پلن</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت و ایجاد بسته</button>
                 </div>
             </form>
         </div>
@@ -1325,7 +1331,7 @@ function setupDynamicDiscountCalculator(priceInput, discInputId, whInputId, pric
     function updatePriceBadge() {
         const p = getPrice();
         if (priceBadge) {
-            priceBadge.textContent = 'قیمت پلن: ' + (p > 0 ? p.toLocaleString() : '۰') + ' ت';
+            priceBadge.textContent = 'قیمت بسته: ' + (p > 0 ? p.toLocaleString() : '۰') + ' ت';
         }
     }
 
@@ -1484,7 +1490,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         <i class="fas fa-palette fs-5"></i>
                     </span>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0" id="globalIconPickerModalLabel">پکیج آماده و کاتالوگ آیکون‌های پلن</h5>
+                        <h5 class="modal-title fw-bold mb-0" id="globalIconPickerModalLabel">پکیج آماده و کاتالوگ آیکون‌های بسته</h5>
                         <small class="text-white-50" style="font-size: 0.8rem;">با یک کلیک آیکون دلخواه را انتخاب کنید تا به صورت خودکار در فرم درج شود</small>
                     </div>
                 </div>

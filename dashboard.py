@@ -12487,26 +12487,37 @@ def admin_plan_edit(plan_id):
 @app.route("/plans/toggle/<plan_id>")
 @permission_required("plans_manage")
 def admin_plan_toggle(plan_id):
-    """فعال/غیرفعال کردن پلن"""
+    """فعال/غیرفعال کردن بسته"""
     plans = get_all_plans()
     if plan_id in plans:
         current = plans[plan_id].get("is_active", False)
         update_plan(plan_id, is_active=not current)
-        flash("وضعیت پلن تغییر یافت.", "info")
+        try:
+            from cache_manager import cache
+            cache.delete_prefix("plans:")
+        except Exception:
+            pass
+        status_txt = "فعال" if not current else "غیرفعال"
+        flash(f"وضعیت بسته به «{status_txt}» تغییر یافت.", "info")
     return redirect(url_for("admin_plans_page"))
 
 
 @app.route("/plans/delete/<plan_id>")
 @permission_required("plans_manage")
 def admin_plan_delete(plan_id):
-    """حذف پلن"""
+    """حذف بسته"""
     tab = request.args.get("tab", "admin")
     reseller_id = request.args.get("reseller_id", "")
     res = delete_plan(plan_id)
+    try:
+        from cache_manager import cache
+        cache.delete_prefix("plans:")
+    except Exception:
+        pass
     if res.get("success"):
-        flash("پلن حذف شد.", "warning")
+        flash("بسته با موفقیت حذف شد.", "warning")
     else:
-        flash(f"خطا در حذف پلن: {res.get('error')}", "danger")
+        flash(f"خطا در حذف بسته: {res.get('error')}", "danger")
     return redirect(url_for("admin_plans_page", tab=tab, reseller_id=reseller_id if reseller_id else None))
 
 
@@ -15869,6 +15880,12 @@ def reseller_plans():
             plan = db.get_reseller_plan(reseller_id, plan_id)
             wholesale_price = plan.get("wholesale_price", 0) if plan else 0
 
+            # بررسی قفل فعال‌سازی در صورت غیرفعال بودن بسته اصلی توسط مدیریت
+            if plan and not plan.get("master_is_active", True):
+                if is_active:
+                    flash("این بسته توسط مدیریت غیرفعال شده است و امکان فعال‌سازی آن وجود ندارد.", "warning")
+                is_active = False
+
             custom_price = None
             # اگر هم سود و هم قیمت فروش ارسال شده باشد یا فقط قیمت فروش
             if custom_price_str:
@@ -15899,14 +15916,14 @@ def reseller_plans():
                 is_reseller=True
             )
             if res.get("success"):
-                flash("تنظیمات پلن با موفقیت ذخیره شد.", "success")
+                flash("تنظیمات بسته با موفقیت ذخیره شد.", "success")
             else:
-                flash(f"خطا در ذخیره پلن: {res.get('error')}", "danger")
+                flash(f"خطا در ذخیره بسته: {res.get('error')}", "danger")
             return redirect(url_for("reseller_plans"))
 
         elif action == "reset_override" and plan_id:
             db.reset_reseller_plan_override(reseller_id, plan_id, by_reseller=True)
-            flash("پلن با موفقیت به تنظیمات تعیین‌شده توسط مدیریت بازگردانی شد.", "info")
+            flash("بسته با موفقیت به تنظیمات تعیین‌شده توسط مدیریت بازگردانی شد.", "info")
             return redirect(url_for("reseller_plans"))
 
     plans = db.get_reseller_plans(reseller_id)

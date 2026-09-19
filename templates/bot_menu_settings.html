@@ -770,7 +770,7 @@
 
                         <div class="mt-3 text-muted small">
                             <i class="fas fa-info-circle text-success me-1"></i>
-                            <strong>هماهنگی عملکردی:</strong> ربات نمایندگان همانند ربات مدیریت عمل کرده ولی کلیه محاسبات، پلن‌ها، کیف پول و تیکت‌ها دقیقاً به <strong>پنل همان نماینده</strong> متصل خواهد بود.
+                            <strong>هماهنگی عملکردی:</strong> ربات نمایندگان همانند ربات مدیریت عمل کرده ولی کلیه محاسبات، بسته‌ها، کیف پول و تیکت‌ها دقیقاً به <strong>پنل همان نماینده</strong> متصل خواهد بود.
                         </div>
                     </div>
                 </div>
@@ -1235,14 +1235,14 @@
 
                 <div class="tab-content" id="subMenusBotTabsContent">
                     {% set sub_titles = {
-                        'plans': 'تعرفه‌ها و انتخاب پلن‌های اشتراک (داینامیک)',
+                        'plans': 'تعرفه‌ها و انتخاب بسته‌های اشتراک (داینامیک)',
                         'account_naming': 'انتخاب نحوه نام‌گذاری اکانت',
                         'confirm_subscription': 'تایید مشخصات اشتراک و پیش‌فاکتور',
                         'payment': 'روش‌های پرداخت و تسویه حساب',
                         'card_payment': 'صفحه اطلاعات واریز کارت به کارت',
                         'language': 'انتخاب زبان ربات (چندزبانه)',
                         'wallet': 'کیف پول و مدیریت حساب کاربری',
-                        'renew': 'تمدید اشتراک فعلی (پلن، کیف پول، تغییر سرویس)',
+                        'renew': 'تمدید اشتراک (بسته، کیف پول، تغییر سرویس)',
                         'my_subscriptions': 'اشتراک‌های من و مشاهده وضعیت سرویس‌ها',
                         'support': 'پشتیبانی، تیکت و ارتباط',
                         'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها',
@@ -1318,7 +1318,7 @@
 
                                                 {% if m_key == 'plans' and 'empty' in cur_texts %}
                                                 <div class="mt-2 pt-2 border-top">
-                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود پلن فعال:</label>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود بسته فعال:</label>
                                                     <textarea name="menu_text_empty" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
                                                 </div>
                                                 {% elif m_key == 'renew' %}
@@ -1326,7 +1326,7 @@
                                                     <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراکی ندارد:</label>
                                                     <textarea name="menu_text_no_sub" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('no_sub', '') }}</textarea>
                                                     {% if 'choose_plan' in cur_texts %}
-                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب پلن تمدیدی:</label>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب بسته تمدیدی:</label>
                                                     <textarea name="menu_text_choose_plan" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('choose_plan', '') }}</textarea>
                                                     {% endif %}
                                                 </div>
@@ -1484,7 +1484,7 @@
 
                                                 {% if m_key == 'plans' and 'empty' in cur_texts %}
                                                 <div class="mt-2 pt-2 border-top">
-                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود پلن فعال:</label>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-danger me-1"></i>پیام در صورت نبود بسته فعال:</label>
                                                     <textarea name="menu_text_empty" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('empty', '') }}</textarea>
                                                 </div>
                                                 {% elif m_key == 'renew' %}
@@ -1492,7 +1492,7 @@
                                                     <label class="form-label small text-muted mb-1"><i class="fas fa-circle-exclamation text-warning me-1"></i>پیام وقتی کاربر هیچ اشتراکی ندارد:</label>
                                                     <textarea name="menu_text_no_sub" class="form-control form-control-sm mb-2" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('no_sub', '') }}</textarea>
                                                     {% if 'choose_plan' in cur_texts %}
-                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب پلن تمدیدی:</label>
+                                                    <label class="form-label small text-muted mb-1"><i class="fas fa-layer-group text-primary me-1"></i>پیام انتخاب بسته تمدیدی:</label>
                                                     <textarea name="menu_text_choose_plan" class="form-control form-control-sm" rows="2" style="font-size: 0.82rem; direction: rtl; text-align: right;">{{ cur_texts.get('choose_plan', '') }}</textarea>
                                                     {% endif %}
                                                 </div>

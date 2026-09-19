@@ -87,7 +87,7 @@
     <div class="col-xl-3 col-md-6">
         <div class="card stat-card">
             <div>
-                <span class="text-muted small fw-bold">محبوب‌ترین پلن</span>
+                <span class="text-muted small fw-bold">محبوب‌ترین بسته</span>
                 <h4 class="fw-bold my-1 text-warning" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     {{ popular_plans[0]['plan_name'] if popular_plans else 'بدون داده' }}
                 </h4>
@@ -100,7 +100,7 @@
     </div>
 </div>
 
-<!-- ردیف اول: روند درآمد ماهانه و محبوب‌ترین پلن‌ها -->
+<!-- ردیف اول: روند درآمد ماهانه و محبوب‌ترین بسته‌ها -->
 <div class="row g-4 mb-4">
     <div class="col-lg-6">
         <div class="card h-100">
@@ -141,7 +141,7 @@
     <div class="col-lg-6">
         <div class="card h-100">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 fw-bold"><i class="fas fa-fire text-danger me-2"></i> محبوب‌ترین و پرفروش‌ترین پلن‌ها</h5>
+                <h5 class="mb-0 fw-bold"><i class="fas fa-fire text-danger me-2"></i> محبوب‌ترین و پرفروش‌ترین بسته‌ها</h5>
                 <span class="badge bg-light text-dark">بر اساس حجم فروش</span>
             </div>
             <div class="card-body p-0">
@@ -149,7 +149,7 @@
                     <table class="table table-hover mb-0">
                         <thead>
                             <tr>
-                                <th>نام پلن</th>
+                                <th>نام بسته</th>
                                 <th>تعداد فروش</th>
                                 <th>درآمد ناخالص</th>
                             </tr>
@@ -164,7 +164,7 @@
                             {% endfor %}
                             {% if not popular_plans %}
                             <tr>
-                                <td colspan="3" class="text-center py-3 text-muted">پلنی یافت نشد.</td>
+                                <td colspan="3" class="text-center py-3 text-muted">بسته‌ای یافت نشد.</td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -302,7 +302,7 @@
                         <thead>
                             <tr>
                                 <th>اشتراک</th>
-                                <th>پلن</th>
+                                <th>بسته</th>
                                 <th>مصرف / سقف</th>
                             </tr>
                         </thead>
@@ -357,7 +357,7 @@
                             <tr>
                                 <th>نام اشتراک</th>
                                 <th>دوره و ترتیب</th>
-                                <th>پلن دوره قبل</th>
+                                <th>بسته دوره قبل</th>
                                 <th>مصرف دوره قبل</th>
                                 <th>نوع ثبت / تمدید</th>
                                 <th>تاریخ ثبت / تمدید</th>
@@ -429,7 +429,7 @@
                     <tr>
                         <th>نام اکانت</th>
                         <th>کاربر تلگرام</th>
-                        <th>پلن فعال</th>
+                        <th>بسته فعال</th>
                         <th>وضعیت</th>
                         <th>تاریخ عضویت</th>
                         <th>تاریخ خرید اولیه</th>
@@ -559,7 +559,7 @@
                             <tr>
                                 <th class="ps-3">نام اکانت</th>
                                 <th>تلگرام / تلفن</th>
-                                <th>پلن</th>
+                                <th>بسته</th>
                                 <th>مبلغ بدهی</th>
                                 <th>توضیحات</th>
                                 <th>تاریخ ایجاد</th>

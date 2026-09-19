@@ -587,7 +587,7 @@ class ResellerBotInstance:
                 plans = db.get_reseller_active_plans(r_id)
                 brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
                 if not plans:
-                    def_empty = "❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است."
+                    def_empty = "❌ در حال حاضر بسته فعالی در فروشگاه تعریف نشده است."
                     msg = db.get_menu_text("reseller", "plans", "empty", default=def_empty, brand=brand)
                     if update.callback_query:
                         await update.callback_query.answer()
@@ -596,7 +596,7 @@ class ResellerBotInstance:
                         await update.message.reply_text(msg)
                     return
 
-                def_header = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
+                def_header = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً بسته مورد نظر خود را انتخاب فرمایید:\n"
                 text = db.get_menu_text("reseller", "plans", "header", default=def_header, brand=brand)
 
                 sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
@@ -616,7 +616,7 @@ class ResellerBotInstance:
                     if cfg_it.get("title"):
                         btn_text = cfg_it["title"]
                     else:
-                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "بسته")))
                         price = p.get("display_price", 0)
                         vol = p.get("data_limit", 0)
                         days = p.get("duration", 30)
@@ -654,7 +654,7 @@ class ResellerBotInstance:
                 if not buttons:
                     for p in plans:
                         pid = p["plan_id"]
-                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "بسته")))
                         price = p.get("display_price", 0)
                         vol = p.get("data_limit", 0)
                         days = p.get("duration", 30)
@@ -684,11 +684,11 @@ class ResellerBotInstance:
                 plan_id = query.data.replace("r_buy_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
                 if not plan or not plan.get("show_in_reseller_bot", True):
-                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
+                    await query.edit_message_text("❌ بسته مورد نظر یافت نشد.")
                     return
 
                 price = plan.get("display_price", 0)
-                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "بسته")))
                 vol = plan.get("data_limit", 0)
                 days = plan.get("duration", 30)
                 vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
@@ -698,7 +698,7 @@ class ResellerBotInstance:
 
                 text = (
                     f"🛒 <b>انتخاب نحوه نام‌گذاری اکانت</b>\n\n"
-                    f"📦 پلن انتخابی: <b>{pname}</b>\n"
+                    f"📦 بسته انتخابی: <b>{pname}</b>\n"
                     f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
                     f"💰 مبلغ: <b>{price:,} تومان</b>\n\n"
                     f"لطفاً مشخص کنید تمایل دارید نام اشتراک شما چگونه ایجاد شود:"
@@ -743,7 +743,7 @@ class ResellerBotInstance:
                         [InlineKeyboardButton("🔄 انتخاب خودکار (آیدی تلگرام)", callback_data=f"r_name_tg_{plan_id}")],
                         [InlineKeyboardButton("🧠 نام هوشمند / تصادفی", callback_data=f"r_name_smart_{plan_id}")],
                         [InlineKeyboardButton("✏️ نام دلخواه", callback_data=f"r_name_custom_{plan_id}")],
-                        [InlineKeyboardButton("◀️ بازگشت به لیست پلن‌ها", callback_data="r_back_plans")]
+                        [InlineKeyboardButton("◀️ بازگشت به لیست بسته‌ها", callback_data="r_back_plans")]
                     ]
 
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
@@ -786,11 +786,11 @@ class ResellerBotInstance:
             """نمایش پیش‌فاکتور تایید نام و هدایت به روش‌های پرداخت"""
             plan = db.get_reseller_plan(r_id, plan_id)
             if not plan or not plan.get("show_in_reseller_bot", True):
-                await query.edit_message_text("❌ پلن یافت نشد.")
+                await query.edit_message_text("❌ بسته یافت نشد.")
                 return
 
             price = plan.get("display_price", 0)
-            pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+            pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "بسته")))
             vol = plan.get("data_limit", 0)
             days = plan.get("duration", 30)
             vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
@@ -801,7 +801,7 @@ class ResellerBotInstance:
 
             text = (
                 f"🧾 <b>تایید نهایی مشخصات اشتراک</b>\n\n"
-                f"📦 پلن: <b>{pname}</b>\n"
+                f"📦 بسته: <b>{pname}</b>\n"
                 f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
                 f"👤 نام اکانت انتخابی: <code>{html.escape(account_name)}</code>\n"
                 f"💰 مبلغ قابل پرداخت: <b>{price:,} تومان</b>\n\n"
@@ -863,11 +863,11 @@ class ResellerBotInstance:
                 plan_id = injected_plan_id if injected_plan_id else query.data.replace("r_conf_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
                 if not plan or not plan.get("show_in_reseller_bot", True):
-                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
+                    await query.edit_message_text("❌ بسته مورد نظر یافت نشد.")
                     return
 
                 base_price = plan.get("display_price", 0)
-                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "بسته")))
                 vol = plan.get("data_limit", 0)
                 days = plan.get("duration", 30)
                 vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
@@ -891,13 +891,13 @@ class ResellerBotInstance:
                 if is_renewal:
                     mode_lbl = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف تمدید (رزرو خودکار)"
                     msg = f"🔄 <b>پیش‌فاکتور تمدید اشتراک</b>\n\n"
-                    msg += f"📦 پلن: <b>{pname}</b>\n"
+                    msg += f"📦 بسته: <b>{pname}</b>\n"
                     msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
                     msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
                     msg += f"🔄 نحوه اعمال: <b>{mode_lbl}</b>\n"
                 else:
                     msg = f"🛒 <b>پیش‌فاکتور خرید اشتراک</b>\n\n"
-                    msg += f"📦 پلن: <b>{pname}</b>\n"
+                    msg += f"📦 بسته: <b>{pname}</b>\n"
                     msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
                     msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
 
@@ -951,7 +951,7 @@ class ResellerBotInstance:
                 # تغییر نام یا انصراف
                 can_t = db.format_styled_button_text("❌ انصراف", can_style)
                 if is_renewal and renew_sub_id:
-                    buttons.append([InlineKeyboardButton("◀️ تغییر نحوه تمدید / پلن", callback_data=f"r_renew_choose_{renew_sub_id}_{plan_id}"), InlineKeyboardButton(can_t, callback_data="r_cancel_buy", style=can_style)])
+                    buttons.append([InlineKeyboardButton("◀️ تغییر نحوه تمدید / بسته", callback_data=f"r_renew_choose_{renew_sub_id}_{plan_id}"), InlineKeyboardButton(can_t, callback_data="r_cancel_buy", style=can_style)])
                 else:
                     buttons.append([InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton(can_t, callback_data="r_cancel_buy", style=can_style)])
 
@@ -988,11 +988,11 @@ class ResellerBotInstance:
                 plan_id = query.data.replace("r_pcard_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
                 if not plan:
-                    await query.edit_message_text("❌ پلن یافت نشد.")
+                    await query.edit_message_text("❌ بسته یافت نشد.")
                     return
 
                 base_price = plan.get("display_price", 0)
-                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "بسته")))
                 vol = plan.get("data_limit", 0)
                 days = plan.get("duration", 30)
                 vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
@@ -1072,7 +1072,7 @@ class ResellerBotInstance:
 
                 title_p = "پرداخت تمدید اشتراک" if is_renewal else "پرداخت خودکار کارت به کارت"
                 msg = f"💳 <b>{title_p}</b>\n\n"
-                msg += f"📦 پلن: <b>{pname}</b>\n"
+                msg += f"📦 بسته: <b>{pname}</b>\n"
                 msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
                 msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
                 if is_renewal:
@@ -1212,7 +1212,7 @@ class ResellerBotInstance:
                 elif data == "r_pwal_insuf":
                     user = update.effective_user
                     user_wallet = db.get_user_wallet_balance(user.id)
-                    await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. لطفاً از کارت به کارت استفاده کنید.", show_alert=True)
+                    await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این بسته کافی نیست. لطفاً از کارت به کارت استفاده کنید.", show_alert=True)
                 elif data == "r_ponl_soon":
                     await query.answer("💳 درگاه پرداخت آنلاین به زودی فعال خواهد شد. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
                 elif data == "r_cancel_buy":
@@ -1237,7 +1237,7 @@ class ResellerBotInstance:
             plan_id = query.data.replace("r_pwal_", "")
             plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
-                await query.edit_message_text("❌ پلن یافت نشد.")
+                await query.edit_message_text("❌ بسته یافت نشد.")
                 return
 
             price = plan.get("display_price", 0)
@@ -1335,7 +1335,7 @@ class ResellerBotInstance:
                     if not instant_act:
                         cust_msg = (
                             f"🎉 <b>بسته تمدیدی با موفقیت از کیف پول خریداری شد!</b>\n\n"
-                            f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
+                            f"📦 بسته تمدیدی: <b>{html.escape(str(pname))}</b>\n"
                             f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                             f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
                             f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
@@ -1352,7 +1352,7 @@ class ResellerBotInstance:
                         sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if (uuid_val and HIDIFY_PANEL_URL) else ""
                         cust_msg = (
                             f"🎉 <b>اشتراک {brand} با موفقیت تمدید و فعال شد:</b>\n\n"
-                            f"📦 پلن: <b>{pname}</b>\n"
+                            f"📦 بسته: <b>{pname}</b>\n"
                             f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                             f"📊 حجم جدید: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
                             f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
@@ -1407,7 +1407,7 @@ class ResellerBotInstance:
 
             brand = self.reseller_data.get("brand_name") or "ما"
             cust_msg = f"🎉 <b>اشتراک {brand} با موفقیت فعال شد:</b>\n\n"
-            cust_msg += f"📦 پلن: <b>{pname}</b>\n"
+            cust_msg += f"📦 بسته: <b>{pname}</b>\n"
             cust_msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
             cust_msg += f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
             cust_msg += f"💰 مبلغ پرداختی: <b>{price:,} تومان</b>\n\n"
@@ -1429,11 +1429,11 @@ class ResellerBotInstance:
             plan_id = query.data.replace("r_ponl_", "")
             plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
-                await query.edit_message_text("❌ پلن یافت نشد.")
+                await query.edit_message_text("❌ بسته یافت نشد.")
                 return
 
             price = plan.get("display_price", 0)
-            pname = plan.get("display_name") or plan.get("master_name", "پلن")
+            pname = plan.get("display_name") or plan.get("master_name", "بسته")
             account_name = context.user_data.get("buying_account_name") or f"tg_{update.effective_user.id}"
             user = update.effective_user
             gw_cfg = db.get_reseller_gateway(r_id)
@@ -1497,7 +1497,7 @@ class ResellerBotInstance:
                 gw_title = "کارت به کارت هوشمند بلوپال" if gw_type == "blupal" else "درگاه پرداخت آنلاین شاپرک"
                 btn_title = "🌐 ورود به درگاه پرداخت هوشمند بلوپال" if gw_type == "blupal" else "🌐 ورود به درگاه پرداخت شاپرک"
                 msg = f"💳 <b>{gw_title}</b>\n\n"
-                msg += f"📦 پلن: <b>{pname}</b>\n"
+                msg += f"📦 بسته: <b>{pname}</b>\n"
                 msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
                 msg += f"💰 مبلغ: <b>`{price:,}` تومان</b>\n"
                 msg += f"🔢 شناسه سفارش: `{order_id}`\n\n"
@@ -1592,7 +1592,7 @@ class ResellerBotInstance:
             account_name = p_inv.get("account_name") or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
 
             if not plan_id:
-                await update.message.reply_text("⚠️ لطفاً ابتدا از بخش «🛍️ خرید اشتراک» یک پلن را انتخاب کرده و سپس فیش واریزی را ارسال کنید.")
+                await update.message.reply_text("⚠️ لطفاً ابتدا از بخش «🛍️ خرید اشتراک» یک بسته را انتخاب کرده و سپس فیش واریزی را ارسال کنید.")
                 return
 
             photo = update.message.photo[-1]
@@ -1611,11 +1611,11 @@ class ResellerBotInstance:
 
             r_plan = db.get_reseller_plan(r_id, plan_id)
             if r_plan:
-                pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "پلن انتخابی")
+                pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "بسته انتخابی")
             else:
                 plans = load_plans()
                 plan = plans.get(plan_id, {})
-                pname = plan.get("name", "پلن انتخابی")
+                pname = plan.get("name", "بسته انتخابی")
 
             now_iso = get_now_iso()
             is_renewal_val = 1 if (p_inv.get("is_renewal") or context.user_data.get("is_renewal")) else 0
@@ -1650,7 +1650,7 @@ class ResellerBotInstance:
 
             notif_text = f"🔔 <b>فیش واریزی جدید در ربات شما!</b>\n\n"
             notif_text += f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
-            notif_text += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+            notif_text += f"📦 بسته: <b>{html.escape(str(pname))}</b>\n"
             notif_text += f"👤 نام اکانت انتخابی: <code>{html.escape(str(account_name))}</code>\n"
             notif_text += f"💰 مبلغ: <b>{price:,} تومان</b>\n"
             notif_text += f"🔖 کد سفارش: <code>{order_id}</code>\n\n"
@@ -1944,7 +1944,7 @@ class ResellerBotInstance:
                         f"✅ <b>رسید پرداخت با موفقیت تایید شد.</b>\n\n"
                         f"👤 تاییدکننده: <b>{html.escape(caller_name)}</b>\n"
                         f"⏰ زمان: {get_now_shamsi()}\n"
-                        f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                        f"📦 بسته: <b>{html.escape(str(pname))}</b>\n"
                         f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>\n"
                         f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                         f"🔖 کد سفارش: <code>{order_id}</code>"
@@ -1969,7 +1969,7 @@ class ResellerBotInstance:
                         if is_renewal and not instant_act:
                             card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
                             card_details = (
-                                f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
+                                f"📦 بسته تمدیدی: <b>{html.escape(str(pname))}</b>\n"
                                 f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                 f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
                                 f"⏳ <b>این بسته با موفقیت در صف رزرو اشتراک شما قرار گرفت.</b>\n"
@@ -1992,7 +1992,7 @@ class ResellerBotInstance:
                         else:
                             card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
                             card_details = (
-                                f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                                f"📦 بسته: <b>{html.escape(str(pname))}</b>\n"
                                 f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                 f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>{cashback_note}"
                             )
@@ -2333,7 +2333,7 @@ class ResellerBotInstance:
                     done_adm_text = (
                         f"✅ <b>سفارش {order_id} با موفقیت تایید شد.</b>\n\n"
                         f"👤 بررسی شده توسط: <b>{html.escape(caller_name)}</b>\n"
-                        f"📦 پلن: <b>{html.escape(str(plan_name))}</b> | اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                        f"📦 بسته: <b>{html.escape(str(plan_name))}</b> | اکانت: <code>{html.escape(str(account_name))}</code>\n"
                         f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>"
                         + (f"\n🔄 حالت تمدید: <b>{mode_note}</b>" if mode_note else "")
                     )
@@ -2356,7 +2356,7 @@ class ResellerBotInstance:
                             if is_renewal and not instant_act:
                                 card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
                                 card_details = (
-                                    f"📦 پلن تمدیدی: <b>{html.escape(str(plan_name))}</b>\n"
+                                    f"📦 بسته تمدیدی: <b>{html.escape(str(plan_name))}</b>\n"
                                     f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                     f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
                                     f"⏳ <b>این بسته با موفقیت در صف رزرو اشتراک شما قرار گرفت.</b>\n"
@@ -2378,7 +2378,7 @@ class ResellerBotInstance:
                             else:
                                 card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
                                 card_details = (
-                                    f"📦 پلن: <b>{html.escape(str(plan_name))}</b>\n"
+                                    f"📦 بسته: <b>{html.escape(str(plan_name))}</b>\n"
                                     f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                     f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>{cashback_note}"
                                 )
@@ -2709,7 +2709,7 @@ class ResellerBotInstance:
                 )
                 no_sub_msg = db.get_menu_text("reseller", "my_subscriptions", "empty", default=def_no_sub, brand=brand)
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🛍️ خرید اشتراک جدید", callback_data="r_back_plans")]
+                    [InlineKeyboardButton("🛍️ خرید اشتراک", callback_data="r_back_plans")]
                 ])
                 if update.callback_query:
                     await update.callback_query.answer()
@@ -2754,7 +2754,7 @@ class ResellerBotInstance:
 
             for i, sub in enumerate(subs, 1):
                 uuid_val = sub.get("hidify_uuid")
-                pname = html.escape(str(sub.get("plan_name") or "پلن اختصاصی"))
+                pname = html.escape(str(sub.get("plan_name") or "بسته اختصاصی"))
                 account_name = html.escape(str(sub.get("account_name") or f"tg_{user.id}"))
                 data_limit = float(sub.get("data_limit") or 0)
                 data_used = float(sub.get("data_used") or 0)
@@ -2972,11 +2972,11 @@ class ResellerBotInstance:
                 if not plans:
                     plans = [p for p in db.get_reseller_plans(r_id) if p.get("is_active", True)]
                 if not plans:
-                    await query.edit_message_text("❌ در حال حاضر پلن فعالی برای تمدید وجود ندارد.")
+                    await query.edit_message_text("❌ در حال حاضر بسته فعالی برای تمدید وجود ندارد.")
                     return
 
                 acc_title = html.escape(str(target_sub.get("account_name") or "اشتراک"))
-                text = f"🔄 <b>تمدید اشتراک «{acc_title}»:</b>\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:\n"
+                text = f"🔄 <b>تمدید اشتراک «{acc_title}»:</b>\n\nلطفاً بسته مد نظر خود را جهت تمدید انتخاب فرمایید:\n"
 
                 sub_cfg = db.get_sub_menu_config("reseller", "plans", is_reseller=True, reseller_id=r_id)
                 sub_dict = {str(it.get("id")): it for it in sub_cfg if isinstance(it, dict)}
@@ -2991,7 +2991,7 @@ class ResellerBotInstance:
                     st_arg = st if st in ("primary", "success", "danger") else None
                     kw = {"style": st_arg} if st_arg else {}
 
-                    pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                    pname = html.escape(str(p.get("display_name") or p.get("master_name", "بسته")))
                     price = p.get("display_price", 0)
                     vol = p.get("data_limit", 0)
                     days = p.get("duration", 30)
@@ -3019,7 +3019,7 @@ class ResellerBotInstance:
                 if not buttons:
                     for p in plans:
                         pid = p["plan_id"]
-                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                        pname = html.escape(str(p.get("display_name") or p.get("master_name", "بسته")))
                         price = p.get("display_price", 0)
                         vol = p.get("data_limit", 0)
                         days = p.get("duration", 30)
@@ -3034,7 +3034,7 @@ class ResellerBotInstance:
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Error in sub_renew_callback reseller {r_id}: {e}", exc_info=True)
-                await query.answer("❌ خطا در بارگذاری پلن‌های تمدید", show_alert=True)
+                await query.answer("❌ خطا در بارگذاری بسته‌های تمدید", show_alert=True)
 
         async def reseller_renew_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """انتخاب نحوه تمدید اشتراک: فعال‌سازی آنی یا قرارگیری در صف تمدید (رزرو خودکار)"""
@@ -3059,14 +3059,14 @@ class ResellerBotInstance:
                         plans = db.get_reseller_plans(r_id)
                         plan = next((p for p in plans if str(p.get("plan_id")) == str(plan_id)), None)
                     if not target_sub or not plan:
-                        await query.answer("❌ اشتراک یا پلن انتخابی یافت نشد.", show_alert=True)
+                        await query.answer("❌ اشتراک یا بسته انتخابی یافت نشد.", show_alert=True)
                         return
 
                     context.user_data["renew_sub_id"] = sub_id
                     context.user_data["is_renewal"] = True
                     context.user_data["buying_account_name"] = target_sub.get("account_name")
 
-                    pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                    pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "بسته")))
                     price = plan.get("display_price", 0)
                     vol = plan.get("data_limit", 0)
                     days = plan.get("duration", 30)
@@ -3091,7 +3091,7 @@ class ResellerBotInstance:
                         status_hint = "⚠️ <b>وضعیت فعلی اشتراک:</b> به پایان رسیده (منقضی یا اتمام حجم)\n💡 <b>پیشنهاد سیستم:</b> جهت برقراری فوری دسترسی اینترنت، گزینه <b>فعال‌سازی آنی</b> توصیه می‌شود."
                         btn_instant_text = db.format_styled_button_text("⚡ فعال‌سازی آنی (پیشنهادی - اتصال فوری)", "success")
                         btn_queue_text = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (رزرو)", "primary")
-                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
+                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست بسته‌ها", "danger")
                         buttons = [
                             [InlineKeyboardButton(btn_instant_text, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
                             [InlineKeyboardButton(btn_queue_text, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
@@ -3101,7 +3101,7 @@ class ResellerBotInstance:
                         status_hint = "🛡️ <b>وضعیت فعلی اشتراک:</b> دارای اعتبار فعال (روزها و حجم باقیمانده محفوظ است)\n💡 <b>پیشنهاد سیستم:</b> جهت جلوگیری از سوختن روزها و حجم باقیمانده، گزینه <b>قرارگیری در صف تمدید</b> توصیه می‌شود."
                         btn_queue_text = db.format_styled_button_text("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", "primary")
                         btn_instant_text = db.format_styled_button_text("⚡ فعال‌سازی آنی (ریست دوره فعلی)", "success")
-                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست پلن‌ها", "danger")
+                        back_title = db.format_styled_button_text("◀️ بازگشت به لیست بسته‌ها", "danger")
                         buttons = [
                             [InlineKeyboardButton(btn_queue_text, callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}", style="primary")],
                             [InlineKeyboardButton(btn_instant_text, callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}", style="success")],
@@ -3110,7 +3110,7 @@ class ResellerBotInstance:
 
                     text = (
                         f"🔄 <b>نحوه تمدید اشتراک «{acc_title}»:</b>\n\n"
-                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} | {days} روز)\n"
+                        f"📦 بسته انتخابی: <b>{pname}</b> ({vol_str} | {days} روز)\n"
                         f"💰 مبلغ: <b>{price:,} تومان</b>\n\n"
                         f"{status_hint}\n\n"
                         f"لطفاً روش اعمال این تمدید را مشخص فرمایید:\n\n"
@@ -3752,7 +3752,7 @@ class ResellerBotInstance:
                 device = data.replace("wiz_tb_sub_empty_", "")
                 text = (
                     "🔄 <b>اتمام اعتبار اشتراک VPN</b>\n\n"
-                    "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه تمدید اشتراک یا خرید اشتراک جدید را انتخاب کنید."
+                    "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه تمدید اشتراک یا خرید اشتراک را انتخاب کنید."
                 )
                 buttons = [
                     [InlineKeyboardButton("اشتراک را تمدید کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_sub_ok_{device}", style="primary")],
@@ -4137,7 +4137,7 @@ class ResellerBotInstance:
                 txt = (
                     f"🔍 <b>بررسی فیش پرداختی #{t_dict.get('id')}</b>\n\n"
                     f"👤 مشتری: <b>{u_name}</b> (ID: <code>{u_id}</code>)\n"
-                    f"📦 پلن: <b>{pname}</b>\n"
+                    f"📦 بسته: <b>{pname}</b>\n"
                     f"💰 مبلغ: <b>{amt:,} تومان</b>\n"
                     f"🆔 کد سفارش: <code>{ord_id}</code>\n"
                     f"📅 تاریخ: {t_dict.get('created_at', '')[:16].replace('T', ' ')}\n\n"
@@ -4187,11 +4187,11 @@ class ResellerBotInstance:
                 context.user_data["waiting_res_create_name"] = True
                 context.user_data["waiting_res_create_phone"] = False
                 plan = db.get_reseller_plan(r_id, pid)
-                pname = plan.get("display_name") or plan.get("master_name", "پلن") if plan else pid
+                pname = plan.get("display_name") or plan.get("master_name", "بسته") if plan else pid
                 w_price = plan.get("wholesale_price", 0) if plan else 0
                 msg = (
                     f"👤 <b>ساخت کاربر جدید (گام ۱ از ۴: تعیین نام اکانت)</b>\n\n"
-                    f"📦 پلن انتخابی: <b>{pname}</b>\n"
+                    f"📦 بسته انتخابی: <b>{pname}</b>\n"
                     f"💰 هزینه کسر از موجودی کیف پول: <b>{w_price:,} تومان</b>\n\n"
                     f"لطفاً <b>نام کاربری (حروف فارسی، لاتین و اعداد)</b> مدنظر برای اکانت مشتری را ارسال فرمایید\n"
                     f"(یا عبارت <code>auto</code> را ارسال کنید تا نام خودکار ایجاد شود):"
@@ -4218,7 +4218,7 @@ class ResellerBotInstance:
 
                 plan = db.get_reseller_plan(r_id, pid)
                 if not plan:
-                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                    await query.edit_message_text("❌ بسته مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                     return
 
                 pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -4237,9 +4237,9 @@ class ResellerBotInstance:
                     f"📋 <b>پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)</b>\n\n"
                     f"👤 نام اکانت: <code>{desired_name}</code>\n"
                     f"📱 شماره تماس: <code>{phone_display}</code>\n"
-                    f"📦 پلن انتخابی: <b>{pname}</b>\n"
+                    f"📦 بسته انتخابی: <b>{pname}</b>\n"
                     f"📊 حجم بسته: <b>{vol_str}</b> | ⏳ مدت اعتبار: <b>{days} روز</b>\n"
-                    f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                    f"💵 مبلغ اصلی بسته: <b>{selling_price:,} تومان</b>\n"
                     f"🎁 مبلغ تخفیف: <b>0 تومان</b>\n"
                     f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                     f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
@@ -4275,7 +4275,7 @@ class ResellerBotInstance:
 
                 plan = db.get_reseller_plan(r_id, pid)
                 if not plan:
-                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                    await query.edit_message_text("❌ بسته مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                     return
 
                 pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -4317,7 +4317,7 @@ class ResellerBotInstance:
                 power = r_stats.get("total_purchasing_power", 0)
                 if power < w_price:
                     await query.edit_message_text(
-                        f"❌ <b>موجودی و اعتبار پنل شما کافی نیست!</b>\n\nموجودی/اعتبار: <b>{power:,} تومان</b>\nهزینه پلن: <b>{w_price:,} تومان</b>",
+                        f"❌ <b>موجودی و اعتبار پنل شما کافی نیست!</b>\n\nموجودی/اعتبار: <b>{power:,} تومان</b>\nهزینه بسته: <b>{w_price:,} تومان</b>",
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("💰 خرید شارژ پنل", callback_data="res_adm_bundles")],
                             [InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]
@@ -4360,7 +4360,7 @@ class ResellerBotInstance:
                         amount=w_price,
                         plan_name=pname,
                         account_name=desired_name,
-                        description=f"ساخت دستی کاربر {desired_name} با پلن {pname} توسط {creator_user}",
+                        description=f"ساخت دستی کاربر {desired_name} با بسته {pname} توسط {creator_user}",
                         created_by=creator_user,
                         selling_price=reseller_selling,
                         profit_margin=profit_margin
@@ -4477,7 +4477,7 @@ class ResellerBotInstance:
                     succ_txt = (
                         f"🎉 <b>اکانت جدید با موفقیت صادر شد:</b>\n\n"
                         f"👤 نام اکانت: <code>{desired_name}</code>{phone_txt}\n"
-                        f"📦 پلن: <b>{pname}</b>\n"
+                        f"📦 بسته: <b>{pname}</b>\n"
                         f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>"
                         f"{disc_txt}\n"
                         f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
@@ -4533,10 +4533,10 @@ class ResellerBotInstance:
                         msg += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
                         btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
                     msg += "\n"
-                msg += "لطفاً پلن مدنظر جهت تمدید را انتخاب فرمایید:"
+                msg += "لطفاً بسته مدنظر جهت تمدید را انتخاب فرمایید:"
                 for p in plans:
                     pid = p["plan_id"]
-                    pn = p.get("display_name") or p.get("master_name", "پلن")
+                    pn = p.get("display_name") or p.get("master_name", "بسته")
                     w_price = p.get("wholesale_price", 0)
                     btns.append([InlineKeyboardButton(f"📦 {pn} ({w_price:,} ت)", callback_data=f"res_adm_dorenew_{sub_id}_{pid}")])
                 btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")])
@@ -4571,10 +4571,10 @@ class ResellerBotInstance:
                         msg += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
                         btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
                     msg += "\n"
-                msg += "لطفاً پلن مدنظر جهت تمدید را انتخاب فرمایید:"
+                msg += "لطفاً بسته مدنظر جهت تمدید را انتخاب فرمایید:"
                 for p in plans:
                     pid = p["plan_id"]
-                    pn = p.get("display_name") or p.get("master_name", "پلن")
+                    pn = p.get("display_name") or p.get("master_name", "بسته")
                     w_price = p.get("wholesale_price", 0)
                     btns.append([InlineKeyboardButton(f"📦 {pn} ({w_price:,} ت)", callback_data=f"res_adm_dorenew_{sub_id}_{pid}")])
                 btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")])
@@ -4591,7 +4591,7 @@ class ResellerBotInstance:
                         plans = db.get_reseller_plans(r_id)
                         plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     if not plan:
-                        await query.edit_message_text("❌ پلن یافت نشد.")
+                        await query.edit_message_text("❌ بسته یافت نشد.")
                         return
 
                     sub = db.get_subscription(s_id)
@@ -4609,7 +4609,7 @@ class ResellerBotInstance:
 
                     days = plan.get("duration", 30)
                     vol = plan.get("data_limit", 0)
-                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    pname = plan.get("display_name") or plan.get("master_name", "بسته")
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
 
@@ -4644,7 +4644,7 @@ class ResellerBotInstance:
 
                     p_text = (
                         f"🔄 <b>انتخاب نوع اعمال تمدید «{acct_name}» (گام ۲ از ۴)</b>\n\n"
-                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"📦 بسته انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n"
                         f"💰 کسر از پنل: <b>{w_price:,} تومان</b>\n\n"
                         f"{status_hint}\n\n"
@@ -4669,14 +4669,14 @@ class ResellerBotInstance:
                         plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     sub = db.get_subscription(s_id)
                     if not sub or not plan or int(sub.get("reseller_id") or 0) != int(r_id):
-                        await query.answer("❌ اشتراک یا پلن نامعتبر است.", show_alert=True)
+                        await query.answer("❌ اشتراک یا بسته نامعتبر است.", show_alert=True)
                         return
 
                     w_price = plan.get("wholesale_price", 0)
                     selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
                     days = plan.get("duration", 30)
                     vol = plan.get("data_limit", 0)
-                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    pname = plan.get("display_name") or plan.get("master_name", "بسته")
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
 
@@ -4690,7 +4690,7 @@ class ResellerBotInstance:
                     p_text = (
                         f"🎁 <b>تخفیف به مشتری برای تمدید «{acct_name}» (گام ۳ از ۴)</b>\n\n"
                         f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
-                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"📦 بسته انتخابی: <b>{pname}</b> ({vol_str} - {days} روز)\n"
                         f"💵 قیمت مصوب فروش: <b>{selling_price:,} تومان</b>\n\n"
                         f"در صورت تمایل، <b>مبلغ تخفیف</b> را به <b>تومان</b> تایپ و ارسال فرمایید:\n"
                         f"یا جهت ادامه بدون تخفیف، دکمه <b>«بدون تخفیف»</b> را لمس نمایید:"
@@ -4711,7 +4711,7 @@ class ResellerBotInstance:
                         plans = db.get_reseller_plans(r_id)
                         plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     if not plan:
-                        await query.edit_message_text("❌ پلن یافت نشد.")
+                        await query.edit_message_text("❌ بسته یافت نشد.")
                         return
 
                     sub = db.get_subscription(s_id)
@@ -4730,7 +4730,7 @@ class ResellerBotInstance:
 
                     days = plan.get("duration", 30)
                     vol = plan.get("data_limit", 0)
-                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    pname = plan.get("display_name") or plan.get("master_name", "بسته")
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
@@ -4741,8 +4741,8 @@ class ResellerBotInstance:
                     p_text = (
                         f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)</b>\n\n"
                         f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
-                        f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
-                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"📦 بسته: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"💵 مبلغ اصلی بسته: <b>{selling_price:,} تومان</b>\n"
                         f"🎁 مبلغ تخفیف: <b>0 تومان</b>\n"
                         f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                         f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
@@ -4793,7 +4793,7 @@ class ResellerBotInstance:
                         plan_id = saved_pid
 
                 if not plan:
-                    await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                    await query.answer("❌ بسته یافت نشد.", show_alert=True)
                     return
 
                 w_price = plan.get("wholesale_price", 0)
@@ -4938,7 +4938,7 @@ class ResellerBotInstance:
                         try:
                             cust_msg = (
                                 f"⏳ <b>بسته تمدیدی شما در صف رزرو قرار گرفت!</b>\n\n"
-                                f"📦 پلن: <b>{pname}</b>\n"
+                                f"📦 بسته: <b>{pname}</b>\n"
                                 f"📊 حجم بسته: <b>{vol} گیگابایت</b>\n"
                                 f"⏰ مدت اعتبار: <b>{days} روز</b>\n"
                                 f"🔹 نوبت در صف: <b>نوبت {q_order}</b>\n\n"
@@ -4951,7 +4951,7 @@ class ResellerBotInstance:
                     disc_txt = f"\n🎁 تخفیف: <b>{discount_amount:,} تومان</b>\n💵 دریافتی نهایی: <b>{final_price:,} تومان</b>" if discount_amount > 0 else ""
                     succ_txt = (
                         f"✅ <b>بسته تمدیدی «{acct_name}» با موفقیت در صف رزرو ثبت شد.</b>\n\n"
-                        f"📦 پلن: <b>{pname}</b>\n"
+                        f"📦 بسته: <b>{pname}</b>\n"
                         f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>\n"
                         f"⏳ نوبت در صف: <b>نوبت {q_order}</b>"
                         f"{disc_txt}\n"
@@ -4994,7 +4994,7 @@ class ResellerBotInstance:
                             status="active",
                             payment_status="debtor",
                             debt_amount=new_debt,
-                            debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
+                            debt_notes=f"بدهی تمدید بسته {pname} توسط {creator_user}" + (f" (تخفیف: {discount_amount:,} ت)" if discount_amount > 0 else ""),
                             last_renewed_at=get_now_iso(),
                             last_lifecycle_event_at=get_now_iso()
                         )
@@ -5111,7 +5111,7 @@ class ResellerBotInstance:
                     succ_txt = (
                         f"✅ <b>اشتراک «{acct_name}» با موفقیت تمدید شد.</b>\n\n"
                         f"⚡ نوع تمدید: <b>فعال‌سازی فوری و آنی</b>\n"
-                        f"📦 پلن جدید: <b>{pname}</b>\n"
+                        f"📦 بسته جدید: <b>{pname}</b>\n"
                         f"📊 حجم بسته: <b>{vol} گیگابایت</b> | ⏳ اعتبار: <b>{days} روز</b>"
                         f"{disc_txt}\n"
                         f"💳 وضعیت تسویه: <b>{pay_label}</b>\n"
@@ -5287,7 +5287,7 @@ class ResellerBotInstance:
                         pn = s.get("plan_name") or "پلن"
                         st = s.get("status", "active")
                         st_icon = "🟢" if st == "active" else "🔴"
-                        msg += f"{st_icon} <b>{acc}</b> (#{s_id}) | پلن: {pn}\n"
+                        msg += f"{st_icon} <b>{acc}</b> (#{s_id}) | بسته: {pn}\n"
                         btns.append([InlineKeyboardButton(f"🔄 تمدید «{acc}»", callback_data=f"res_adm_rsub_{s_id}")])
                     btns.append([InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")])
                     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(btns), parse_mode="HTML")
@@ -5343,7 +5343,7 @@ class ResellerBotInstance:
                     disc_msg = (
                         f"👤 نام اکانت: <code>{desired_name}</code>\n"
                         f"📱 شماره تماس: <code>{phone_display}</code>\n"
-                        f"📦 پلن انتخابی: <b>{pname}</b> ({selling_price:,} تومان)\n\n"
+                        f"📦 بسته انتخابی: <b>{pname}</b> ({selling_price:,} تومان)\n\n"
                         f"🎁 <b>ساخت مشتری جدید (گام ۳ از ۴: مبلغ تخفیف به مشتری)</b>\n"
                         f"لطفاً مبلغ تخفیف مورد نظر برای این مشتری را به <b>تومان</b> ارسال فرمایید (مثال: <code>10000</code> یا <code>20000</code>).\n"
                         f"در صورتی که تخفیفی در نظر ندارید، دکمه <b>«بدون تخفیف»</b> را لمس کرده یا عدد <code>0</code> را ارسال فرمایید:"
@@ -5369,7 +5369,7 @@ class ResellerBotInstance:
                     phone = context.user_data.get("res_create_phone")
                     plan = db.get_reseller_plan(r_id, pid)
                     if not plan:
-                        await update.message.reply_text("❌ پلن مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                        await update.message.reply_text("❌ بسته مورد نظر یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
                         return
 
                     pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
@@ -5388,9 +5388,9 @@ class ResellerBotInstance:
                         f"📋 <b>پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۴ از ۴)</b>\n\n"
                         f"👤 نام اکانت: <code>{desired_name}</code>\n"
                         f"📱 شماره تماس: <code>{phone_display}</code>\n"
-                        f"📦 پلن انتخابی: <b>{pname}</b>\n"
+                        f"📦 بسته انتخابی: <b>{pname}</b>\n"
                         f"📊 حجم بسته: <b>{vol_str}</b> | ⏳ مدت اعتبار: <b>{days} روز</b>\n"
-                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"💵 مبلغ اصلی بسته: <b>{selling_price:,} تومان</b>\n"
                         f"🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n"
                         f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                         f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
@@ -5427,7 +5427,7 @@ class ResellerBotInstance:
                         plan = next((p for p in plans if str(p.get("plan_id")) == str(p_id)), None)
                     sub = db.get_subscription(s_id)
                     if not sub or not plan:
-                        await update.message.reply_text("❌ اشتراک یا پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                        await update.message.reply_text("❌ اشتراک یا بسته یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
                         return
 
                     w_price = plan.get("wholesale_price", 0)
@@ -5437,7 +5437,7 @@ class ResellerBotInstance:
 
                     days = plan.get("duration", 30)
                     vol = plan.get("data_limit", 0)
-                    pname = plan.get("display_name") or plan.get("master_name", "پلن")
+                    pname = plan.get("display_name") or plan.get("master_name", "بسته")
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
                     acct_name = sub.get("account_name") or f"sub_{s_id}"
                     cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
@@ -5448,8 +5448,8 @@ class ResellerBotInstance:
                     p_text = (
                         f"🔄 <b>تایید تمدید و شیوه تسویه حساب «{acct_name}» (گام ۴ از ۴)</b>\n\n"
                         f"🎯 شیوه تمدید: <b>{mode_label}</b>\n"
-                        f"📦 پلن: <b>{pname}</b> ({vol_str} - {days} روز)\n"
-                        f"💵 مبلغ اصلی پلن: <b>{selling_price:,} تومان</b>\n"
+                        f"📦 بسته: <b>{pname}</b> ({vol_str} - {days} روز)\n"
+                        f"💵 مبلغ اصلی بسته: <b>{selling_price:,} تومان</b>\n"
                         f"🎁 مبلغ تخفیف: <b>{discount_amount:,} تومان</b>\n"
                         f"💳 مبلغ نهایی دریافتی از مشتری: <b>{final_price:,} تومان</b>\n"
                         f"💰 کسر از کیف پول پنل: <b>{w_price:,} تومان</b>\n\n"
@@ -5573,11 +5573,11 @@ class ResellerBotInstance:
 
                     r_plan = db.get_reseller_plan(r_id, plan_id)
                     if r_plan:
-                        pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "پلن انتخابی")
+                        pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "بسته انتخابی")
                     else:
                         plans = load_plans()
                         plan = plans.get(plan_id, {})
-                        pname = plan.get("name", "پلن انتخابی")
+                        pname = plan.get("name", "بسته انتخابی")
 
                     now_iso = get_now_iso()
                     is_renewal_val = 1 if (p_inv.get("is_renewal") or context.user_data.get("is_renewal")) else 0
@@ -5612,7 +5612,7 @@ class ResellerBotInstance:
                     notif_text = (
                         f"🔔 <b>رسید متنی واریز جدید در ربات شما!</b>\n\n"
                         f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
-                        f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                        f"📦 بسته: <b>{html.escape(str(pname))}</b>\n"
                         f"👤 نام اکانت انتخابی: <code>{html.escape(str(account_name))}</code>\n"
                         f"💰 مبلغ: <b>{price:,} تومان</b>\n"
                         f"🔢 کد/متن پیگیری: <code>{html.escape(text)}</code>\n"
@@ -5709,10 +5709,10 @@ class ResellerBotInstance:
                 if plan_id:
                     plan = db.get_reseller_plan(r_id, plan_id)
                     price = plan.get("display_price", 0) if plan else 0
-                    pname = plan.get("display_name", "پلن") if plan else "پلن"
+                    pname = plan.get("display_name", "بسته") if plan else "پلن"
                     confirm_msg = (
                         f"✅ <b>نام اکانت شما تنظیم شد:</b> <code>{html.escape(clean_name)}</code>\n\n"
-                        f"📦 پلن: <b>{pname}</b>\n"
+                        f"📦 بسته: <b>{pname}</b>\n"
                         f"💰 مبلغ: <b>{price:,} تومان</b>\n\n"
                         f"جهت انتخاب روش پرداخت روی دکمه زیر بزنید:"
                     )
@@ -5826,7 +5826,7 @@ class ResellerBotInstance:
                     p_text = "🧾 <b>آخرین سوابق پرداخت شما:</b>\n\n"
                     for tx in txs:
                         st = "✅ تایید شده" if tx["status"] in ("approved", "completed") else ("⏳ در حال بررسی" if tx["status"] == "pending" else "❌ رد شده")
-                        p_text += f"• سفارش #{tx['id']} | {html.escape(str(tx['plan_name'] or 'پلن'))}\n  💰 {tx['amount']:,} ت ({st})\n  📅 {tx['created_at'][:16].replace('T', ' ')}\n\n"
+                        p_text += f"• سفارش #{tx['id']} | {html.escape(str(tx['plan_name'] or 'بسته'))}\n  💰 {tx['amount']:,} ت ({st})\n  📅 {tx['created_at'][:16].replace('T', ' ')}\n\n"
                     await update.message.reply_text(p_text, parse_mode="HTML")
                     return
                 elif b_id == "test_sub":

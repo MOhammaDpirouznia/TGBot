@@ -72,7 +72,7 @@
                         <th class="ps-2 sortable-th" data-column="1">سفارش</th>
                         <th class="sortable-th" data-column="2">مشتری</th>
                         <th class="sortable-th text-center" data-column="3">مبدأ</th>
-                        <th class="sortable-th" data-column="4">پلن درخواستی</th>
+                        <th class="sortable-th" data-column="4">بسته درخواستی</th>
                         <th class="sortable-th" data-column="5">مبلغ</th>
                         <th class="sortable-th" data-column="6">روش پرداخت</th>
                         <th class="sortable-th" data-column="7">وضعیت</th>
@@ -404,7 +404,7 @@
                         </div>
                         
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">پلن خریداری شده <span class="text-danger">*</span>:</label>
+                            <label class="form-label fw-bold">بسته خریداری شده <span class="text-danger">*</span>:</label>
                             <select name="purchased_plan_id" class="form-select" required>
                                 <option value="" disabled selected>انتخاب کنید...</option>
                                 {% if plans is mapping %}
@@ -418,7 +418,7 @@
                                 {% endif %}
                             </select>
                             <div class="form-text text-muted">
-                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب پلن صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور هیدیفای دست‌نخورده باقی می‌ماند.
+                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب بسته صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور هیدیفای دست‌نخورده باقی می‌ماند.
                             </div>
                         </div>
                         
@@ -503,7 +503,7 @@
                                 </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">پلن درخواستی:</span>
+                                <span class="text-muted">بسته درخواستی:</span>
                                 <strong class="text-dark">{{ tx['plan_name'] or '-' }}</strong>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">

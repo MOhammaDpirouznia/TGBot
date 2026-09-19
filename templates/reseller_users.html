@@ -157,7 +157,7 @@
                             <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
                         </th>
                         <th class="ps-2">مشتری / اکانت</th>
-                        <th>پلن منقضی/حذف‌شده</th>
+                        <th>بسته منقضی/حذف‌شده</th>
                         <th>حجم مصرفی</th>
                         <th>علت حذف</th>
                         <th>حذف‌کننده</th>
@@ -248,7 +248,7 @@
                         <th class="ps-2 sortable-th" data-column="1">مشتری / اکانت</th>
                         <th class="sortable-th" data-column="2">شماره و تلگرام</th>
                         <th class="sortable-th" data-column="3">وضعیت مالی</th>
-                        <th class="sortable-th" data-column="4">پلن و حجم</th>
+                        <th class="sortable-th" data-column="4">بسته و حجم</th>
                         <th class="sortable-th" data-column="5">مدت اعتبار</th>
                         <th class="sortable-th" data-column="6">وضعیت اتصال</th>
                         <th class="sortable-th" data-column="7">تاریخ</th>
@@ -645,7 +645,7 @@
                             {{ sub['account_name'] or 'بدون نام' }}
                             {% if sub.get('is_vip') %}<span class="badge badge-vip ms-1"><i class="fas fa-crown"></i> VIP</span>{% endif %}
                         </h5>
-                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | پلن: {{ sub['plan_name'] }}</small>
+                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | بسته: {{ sub['plan_name'] }}</small>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -1072,13 +1072,13 @@
                     <input type="hidden" name="payment_source" value="wallet">
                     {% endif %}
 
-                    <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
+                    <label class="form-label fw-bold">انتخاب بسته تمدید:</label>
                     <div class="d-flex flex-column gap-2 mb-3">
                         {% for p_key, p in plans.items() %}
                         {% if p.get('is_active', True) and p.get('master_is_active', True) or p_key == sub['plan_id'] %}
                         {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
                         {% set p_final = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
-                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'بسته' %}
                         {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
                         {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                         <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
@@ -1122,7 +1122,7 @@
                         </div>
                         <small class="{% if gift_balance > 0 %}text-muted{% else %}text-danger fw-bold{% endif %}" style="font-size: 0.72rem;">
                             {% if gift_balance > 0 %}
-                            از سهمیه هدیه شما ({{ gift_balance }} GB) کسر می‌شود و بدون کسر وجه به سقف پلن افزوده می‌شود.
+                            از سهمیه هدیه شما ({{ gift_balance }} GB) کسر می‌شود و بدون کسر وجه به سقف بسته افزوده می‌شود.
                             {% else %}
                             سهمیه هدیه به اتمام رسیده است و امکان افزودن هدیه ندارید تا مدیریت سهمیه شما را مجدداً شارژ کند.
                             {% endif %}
@@ -1189,7 +1189,7 @@
                                                 </label>
                                                 <div class="p-2 bg-white border border-success rounded text-center shadow-sm">
                                                     <div class="fs-5 fw-bold text-success font-monospace" id="resellerRenewFinalPayable{{ sub['id'] }}">۰ تومان</div>
-                                                    <div class="text-muted small" style="font-size: 0.7rem;" id="resellerRenewDiscountBreakdown{{ sub['id'] }}">قیمت مصوب پلن: ۰ ت (بدون تخفیف)</div>
+                                                    <div class="text-muted small" style="font-size: 0.7rem;" id="resellerRenewDiscountBreakdown{{ sub['id'] }}">قیمت مصوب بسته: ۰ ت (بدون تخفیف)</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1198,7 +1198,7 @@
                                 <div class="col-md-6" id="resellerRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
                                     <input type="number" step="1000" name="debt_amount" id="resellerRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateResellerRenewDebtBreakdown('{{ sub['id'] }}')">
-                                    <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس پلن منهای تخفیف وارد می‌شود و قابل تغییر دستی است.</small>
+                                    <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس بسته منهای تخفیف وارد می‌شود و قابل تغییر دستی است.</small>
                                     {% if sub.get('debt_amount', 0) > 0 %}
                                     <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small" id="resellerRenewCumulativeDebtHint{{ sub['id'] }}">
                                         <i class="fas fa-coins text-warning me-1"></i>
@@ -1255,7 +1255,7 @@
                         <h5 class="modal-title fw-bold text-dark mb-0" id="customerQueueModalLabel{{ sub['id'] }}">
                             <i class="fas fa-layer-group text-primary me-1"></i> صف تمدید: {{ sub['account_name'] }}
                         </h5>
-                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | پلن فعلی: {{ sub['plan_name'] }}</small>
+                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | بسته فعلی: {{ sub['plan_name'] }}</small>
                     </div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1319,7 +1319,7 @@
                                 <strong class="font-monospace" dir="ltr">{{ q['created_at']|gregorian_clean }}</strong>
                             </li>
                             <li class="list-group-item d-flex justify-content-between px-0 py-2">
-                                <span class="text-muted"><i class="fas fa-hashtag me-1"></i>شناسه پلن:</span>
+                                <span class="text-muted"><i class="fas fa-hashtag me-1"></i>شناسه بسته:</span>
                                 <span class="font-monospace text-secondary">{{ q['plan_id'] }}</span>
                             </li>
                             {% if q.get('note') %}
@@ -2053,14 +2053,14 @@
                     <input type="hidden" name="payment_source" value="wallet">
                     {% endif %}
 
-                    <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
+                    <label class="form-label fw-bold">انتخاب بسته تمدید:</label>
                     <div class="d-flex flex-column gap-2 mb-3">
                         <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center bg-light">
                             <div class="d-flex align-items-center gap-2">
                                 <input type="radio" name="plan_id" value="current" class="form-check-input mt-0" checked>
                                 <div>
-                                    <div class="fw-bold">🔄 تمدید با پلن فعلی هر اشتراک (پیش‌فرض)</div>
-                                    <small class="text-muted">هر اشتراک دقیقاً طبق حجم و روز پلن فعلی‌اش تمدید می‌شود.</small>
+                                    <div class="fw-bold">🔄 تمدید با بسته فعلی هر اشتراک (پیش‌فرض)</div>
+                                    <small class="text-muted">هر اشتراک دقیقاً طبق حجم و روز بسته فعلی‌اش تمدید می‌شود.</small>
                                 </div>
                             </div>
                         </label>
@@ -2068,7 +2068,7 @@
                         {% if p.get('is_active', True) and p.get('master_is_active', True) %}
                         {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
                         {% set p_final = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
-                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'بسته' %}
                         {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
                         {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                         <label class="p-2 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
@@ -2463,10 +2463,10 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-dark mb-1">
-                        <i class="fas fa-box-open text-primary me-1"></i> انتخاب پلن (اختیاری):
+                        <i class="fas fa-box-open text-primary me-1"></i> انتخاب بسته (اختیاری):
                     </label>
                     <select id="addDebtPlanSelect" class="form-select" onchange="onAddDebtPlanChange()">
-                        <option value="" data-price="0">-- بدون پلن (ثبت بدهی متفرقه / آزاد) --</option>
+                        <option value="" data-price="0">-- بدون بسته (ثبت بدهی متفرقه / آزاد) --</option>
                         {% for p_key, p in plans.items() %}
                         <option value="{{ p.get('name') or p_key }}" data-price="{{ p.get('price') or 0 }}">
                             {{ p.get('name') or p_key }} - {{ "{:,}".format(p.get('price') or 0) }} تومان
@@ -2477,7 +2477,7 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-dark mb-1">
-                        <i class="fas fa-calendar-check text-info me-1"></i> تاریخ تحویل پلن:
+                        <i class="fas fa-calendar-check text-info me-1"></i> تاریخ تحویل بسته:
                     </label>
                     <input type="text" id="addDebtDeliveryDate" class="form-control font-monospace" placeholder="مثلاً: 1403/06/25 یا 2024-09-15 (پیش‌فرض: زمان جاری)">
                     <div class="form-text small text-muted" style="font-size: 0.75rem;">
@@ -2668,7 +2668,7 @@ function handleResellerRenewPlanChange(subId) {
         if (disc > 0) {
             breakdownEl.innerText = `قیمت مصوب: ${price.toLocaleString('fa-IR')} ت - تخفیف: ${disc.toLocaleString('fa-IR')} ت`;
         } else {
-            breakdownEl.innerText = `قیمت مصوب پلن: ${price.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
+            breakdownEl.innerText = `قیمت مصوب بسته: ${price.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
         }
     }
 
@@ -3225,7 +3225,7 @@ function loadCustomerDebtReportData(subId, accountName) {
                                     <th class="text-center" style="width: 50px;">رسید</th>
                                     <th>تاریخ و زمان</th>
                                     <th>عملیات</th>
-                                    <th>پلن</th>
+                                    <th>بسته</th>
                                     <th>مبلغ این دوره</th>
                                     <th>مجموع بدهی تا آن زمان</th>
                                     <th>وضعیت</th>
@@ -3653,7 +3653,7 @@ function openSubscriptionHistory(subId, accountName) {
                                 <tr>
                                     <th class="text-center" style="width: 40px;">#</th>
                                     <th>شماره سفارش</th>
-                                    <th>پلن خریداری شده</th>
+                                    <th>بسته خریداری شده</th>
                                     <th>مبلغ پرداختی</th>
                                     <th>روش پرداخت</th>
                                     <th>وضعیت</th>
@@ -3722,7 +3722,7 @@ function openSubscriptionHistory(subId, accountName) {
                             <div class="card-body p-3">
                                 <div class="row g-2 text-center">
                                     <div class="col-md-3 col-6">
-                                        <small class="text-muted d-block">پلن جاری:</small>
+                                        <small class="text-muted d-block">بسته جاری:</small>
                                         <strong class="text-dark">${cur.plan_name || '-'}</strong>
                                     </div>
                                     <div class="col-md-3 col-6">
@@ -3779,8 +3779,8 @@ function openSubscriptionHistory(subId, accountName) {
                                             <input type="text" class="form-control form-control-sm mt-1" id="histCustomLabel" placeholder="عنوان سفارشی دوره (مثلاً: دوره پاییز ۱۴۰۲)" style="display: none;">
                                         </div>
                                         <div class="col-md-4 col-12">
-                                            <label class="form-label small fw-bold mb-1">نام پلن در آن دوره (اختیاری):</label>
-                                            <input type="text" class="form-control form-control-sm" id="histPlanName" placeholder="پیش‌فرض: ${cur.plan_name || 'پلن جاری'}" value="${cur.plan_name || ''}">
+                                            <label class="form-label small fw-bold mb-1">نام بسته در آن دوره (اختیاری):</label>
+                                            <input type="text" class="form-control form-control-sm" id="histPlanName" placeholder="پیش‌فرض: ${cur.plan_name || 'بسته جاری'}" value="${cur.plan_name || ''}">
                                         </div>
                                         <div class="col-md-4 col-12">
                                             <label class="form-label small fw-bold mb-1">مبلغ / هزینه پرداختی (تومان - اختیاری):</label>
@@ -3826,7 +3826,7 @@ function openSubscriptionHistory(subId, accountName) {
                                 <tr>
                                     <th class="text-center" style="width: 40px;">#</th>
                                     <th>دوره</th>
-                                    <th>مشخصات پلن</th>
+                                    <th>مشخصات بسته</th>
                                     <th>مدت و مصرف در روز</th>
                                     <th>بازه زمانی دوره</th>
                                     <th>میزان مصرف و درصد</th>
@@ -3876,7 +3876,7 @@ function openSubscriptionHistory(subId, accountName) {
                             </td>
                             <td>
                                 <strong>${h.plan_name || '-'}</strong>
-                                <small class="text-muted d-block font-monospace">پلن اسمی: ${h.period_days || 30} روزه</small>
+                                <small class="text-muted d-block font-monospace">بسته اسمی: ${h.period_days || 30} روزه</small>
                                 ${h.note ? `<div class="text-muted small mt-1" style="font-size: 10.5px;"><i class="fas fa-comment-dots text-info me-1"></i>${h.note}</div>` : ''}
                             </td>
                             <td>
@@ -3959,7 +3959,7 @@ function openSubscriptionHistory(subId, accountName) {
                                 <tr>
                                     <th class="text-center" style="width: 40px;">#</th>
                                     <th>نام اشتراک</th>
-                                    <th>پلن</th>
+                                    <th>بسته</th>
                                     <th>حجم مصرفی / سقف</th>
                                     <th>حجم باقیمانده</th>
                                     <th>تاریخ انقضا</th>

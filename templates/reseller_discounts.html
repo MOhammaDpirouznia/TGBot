@@ -26,7 +26,7 @@
                     <tr>
                         <th class="ps-3 sortable-th" data-column="0">کد تخفیف</th>
                         <th class="sortable-th" data-column="1">میزان تخفیف</th>
-                        <th class="sortable-th" data-column="2">پلن‌های مجاز</th>
+                        <th class="sortable-th" data-column="2">بسته‌های مجاز</th>
                         <th class="sortable-th" data-column="3">سقف استفاده</th>
                         <th class="sortable-th" data-column="4">تعداد استفاده شده</th>
                         <th class="sortable-th" data-column="5">مهلت اعتبار</th>
@@ -59,7 +59,7 @@
                                     {% endfor %}
                                 </div>
                             {% else %}
-                                <span class="badge bg-light text-secondary border"><i class="fas fa-layer-group me-1"></i>همه پلن‌ها</span>
+                                <span class="badge bg-light text-secondary border"><i class="fas fa-layer-group me-1"></i>همه بسته‌ها</span>
                             {% endif %}
                         </td>
                         <td data-value="{{ d.get('max_uses') or 99999 }}">{{ d.get('max_uses') if d.get('max_uses') > 0 else 'نامحدود' }}</td>
@@ -144,7 +144,7 @@
                         </div>
                     </div>
                     <div class="mb-3 mt-3">
-                        <label class="form-label fw-bold">پلن‌های مجاز (اختیاری - در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
+                        <label class="form-label fw-bold">بسته‌های مجاز (اختیاری - در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
                         <div class="border p-2 rounded bg-light" style="max-height: 180px; overflow-y: auto;">
                             {% for p in plans %}
                             <div class="form-check py-1 border-bottom border-light">
@@ -156,7 +156,7 @@
                             </div>
                             {% endfor %}
                             {% if not plans %}
-                            <div class="text-center py-2 text-muted small">هیچ پلن فعالی یافت نشد.</div>
+                            <div class="text-center py-2 text-muted small">هیچ بسته فعالی یافت نشد.</div>
                             {% endif %}
                         </div>
                     </div>
@@ -216,7 +216,7 @@
                         </label>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">پلن‌های مجاز (در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
+                        <label class="form-label fw-bold">بسته‌های مجاز (در صورت عدم انتخاب برای همه اعمال می‌شود):</label>
                         <div class="border p-2 rounded bg-light" style="max-height: 180px; overflow-y: auto;">
                             {% for p in plans %}
                             <div class="form-check py-1 border-bottom border-light">

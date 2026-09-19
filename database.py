@@ -1834,6 +1834,74 @@ class Database:
         except Exception as e:
             logger.warning(f"Initial repair_reseller_transactions_balance_after check: {e}")
 
+        # اصلاح خودکار عناوین دکمه‌ها و تغییر اصطلاح پلن به بسته در تنظیمات ذخیره‌شده
+        try:
+            self._migrate_button_titles_and_terms()
+        except Exception as e:
+            logger.warning(f"Initial _migrate_button_titles_and_terms check: {e}")
+
+    def _migrate_button_titles_and_terms(self):
+        """اصلاح خودکار عناوین قدیمی دکمه‌ها و تغییر اصطلاح پلن به بسته در تنظیمات ذخیره شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. اصلاح دکمه‌های منوی ربات در settings
+            for key in ["bot_menu_buttons_config", "reseller_bot_menu_buttons_config"]:
+                cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    try:
+                        btns = json.loads(row[0])
+                        changed = False
+                        for b in btns:
+                            b_id = b.get("id")
+                            b_title = b.get("title", "")
+                            if b_id == "buy" and ("خرید اشتراک جدید" in b_title or "خرید پلن" in b_title):
+                                b["title"] = "🛍️ خرید اشتراک"
+                                changed = True
+                            elif b_id == "renew" and ("تمدید اشتراک فعلی" in b_title or "تمدید سرویس" in b_title or "تمدید پلن" in b_title):
+                                b["title"] = "🔄 تمدید اشتراک"
+                                changed = True
+                        if changed:
+                            now = get_now_iso()
+                            cursor.execute("UPDATE settings SET value = ?, updated_at = ? WHERE key = ?", (json.dumps(btns, ensure_ascii=False), now, key))
+                    except Exception:
+                        pass
+
+            # ۲. اصلاح زیرمنوی renew اگر ذخیره شده باشد
+            for key in ["sub_menu_renew_admin", "sub_menu_renew_reseller"]:
+                cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    try:
+                        s_btns = json.loads(row[0])
+                        changed = False
+                        for b in s_btns:
+                            b_id = b.get("id")
+                            if b_id in ("renew_current", "renew_change_plan") and "پلن" in b.get("title", ""):
+                                b["title"] = b["title"].replace("پلن", "بسته")
+                                changed = True
+                        if changed:
+                            now = get_now_iso()
+                            cursor.execute("UPDATE settings SET value = ?, updated_at = ? WHERE key = ?", (json.dumps(s_btns, ensure_ascii=False), now, key))
+                    except Exception:
+                        pass
+
+            # ۳. اصلاح متن‌های منو ذخیره شده که شامل واژه «پلن» هستند
+            cursor.execute("SELECT key, value FROM settings WHERE key LIKE 'menu_text_%' AND value LIKE '%پلن%'")
+            rows = cursor.fetchall()
+            for r in rows:
+                k, v = r[0], r[1]
+                new_v = v.replace("پلن‌های", "بسته‌های").replace("پلن", "بسته")
+                now = get_now_iso()
+                cursor.execute("UPDATE settings SET value = ?, updated_at = ? WHERE key = ?", (new_v, now, k))
+
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error in _migrate_button_titles_and_terms: {e}")
+        finally:
+            conn.close()
+
     def export_full_backup_json(self) -> dict:
         """پشتیبان‌گیری کامل از تمام جداول، کاربران، پلن‌ها، کارت‌ها، تنظیمات، تخفیف‌ها و نمایندگان در قالب یک فایل JSON پایدار"""
         conn = self.get_connection()
@@ -5519,13 +5587,13 @@ class Database:
         },
         {
             "id": "renew",
-            "title": "🔄 تمدید سرویس",
+            "title": "🔄 تمدید اشتراک",
             "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
             "row": 1,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+            "disabled_message": "⚠️ بخش تمدید اشتراک موقتاً غیرفعال است.",
         },
         {
             "id": "wallet",
@@ -5642,13 +5710,13 @@ class Database:
         },
         {
             "id": "renew",
-            "title": "🔄 تمدید سرویس",
+            "title": "🔄 تمدید اشتراک",
             "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
             "row": 1,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+            "disabled_message": "⚠️ بخش تمدید اشتراک موقتاً غیرفعال است.",
         },
         {
             "id": "test_sub",
@@ -16906,7 +16974,7 @@ class Database:
             {"id": "name_auto_tg", "title": "🔄 انتخاب خودکار (آیدی تلگرام)", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
             {"id": "name_smart", "title": "🧠 نام هوشمند / تصادفی", "enabled": True, "row": 1, "col": 0, "order": 2, "style": "default"},
             {"id": "name_custom", "title": "✏️ نام دلخواه", "enabled": True, "row": 2, "col": 0, "order": 3, "style": "default"},
-            {"id": "back_to_plans", "title": "◀️ بازگشت به لیست پلن‌ها", "enabled": True, "row": 3, "col": 0, "order": 4, "style": "danger"}
+            {"id": "back_to_plans", "title": "◀️ بازگشت به لیست بسته‌ها", "enabled": True, "row": 3, "col": 0, "order": 4, "style": "danger"}
         ],
         "confirm_subscription": [
             {"id": "confirm_pay", "title": "✅ تایید و انتخاب روش پرداخت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "success"},
@@ -16962,8 +17030,8 @@ class Database:
             {"id": "back", "title": "🔙 بازگشت به منو", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "danger"}
         ],
         "renew": [
-            {"id": "renew_current", "title": "🔄 تمدید همین پلن فعلی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
-            {"id": "renew_change_plan", "title": "📦 تغییر پلن و حجم", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "renew_current", "title": "🔄 تمدید همین بسته فعلی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "renew_change_plan", "title": "📦 تغییر بسته و حجم", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
             {"id": "renew_wallet", "title": "⚡ تمدید فوری از کیف پول", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
             {"id": "renew_support", "title": "🎧 راهنمایی و پشتیبانی تمدید", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"},
             {"id": "renew_history", "title": "🧾 سوابق تمدیدهای قبلی", "enabled": True, "row": 2, "col": 0, "order": 5, "style": "default"},
@@ -16999,15 +17067,15 @@ class Database:
 
     DEFAULT_MENU_TEXTS = {
         "plans": {
-            "header": "📦 تعرفه‌های اشتراک {brand}:\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:",
-            "empty": "❌ هیچ پلن فعالی وجود ندارد!\n\nلطفاً با پشتیبانی تماس بگیرید."
+            "header": "📦 تعرفه‌های بسته‌های {brand}:\n\nلطفاً بسته مورد نظر خود را انتخاب فرمایید:",
+            "empty": "❌ هیچ بسته فعالی وجود ندارد!\n\nلطفاً با پشتیبانی تماس بگیرید."
         },
         "account_naming": {
-            "header": "👤 تعیین نام اشتراک:\n\nلطفاً یکی از روش‌های زیر را جهت نام‌گذاری اشتراک انتخاب نمایید:\n\n📦 پلن انتخابی: {plan_name}",
+            "header": "👤 تعیین نام اشتراک:\n\nلطفاً یکی از روش‌های زیر را جهت نام‌گذاری اشتراک انتخاب نمایید:\n\n📦 بسته انتخابی: {plan_name}",
             "custom_prompt": "✏️ لطفاً نام کاربری دلخواه خود را به حروف یا اعداد انگلیسی وارد نمایید:"
         },
         "confirm_subscription": {
-            "header": "📋 پیش‌فاکتور خرید اشتراک:\n\n• پلن: {plan_name}\n• مدت: {duration} روز\n• حجم: {data_limit} گیگابایت\n• مبلغ قابل پرداخت: {price} تومان\n\nلطفاً اطلاعات فاکتور را بررسی نموده و جهت تکمیل خرید ادامه دهید:"
+            "header": "📋 پیش‌فاکتور خرید اشتراک:\n\n• بسته: {plan_name}\n• مدت: {duration} روز\n• حجم: {data_limit} گیگابایت\n• مبلغ قابل پرداخت: {price} تومان\n\nلطفاً اطلاعات فاکتور را بررسی نموده و جهت تکمیل خرید ادامه دهید:"
         },
         "payment": {
             "header": "💳 انتخاب روش پرداخت:\n\nلطفاً روش پرداخت مورد نظر خود را انتخاب فرمایید:"
@@ -17017,8 +17085,8 @@ class Database:
         },
         "renew": {
             "header": "🔄 تمدید اشتراک «{account_name}»:\n\nلطفاً نحوه تمدید مورد نظر خود را انتخاب نمایید:",
-            "no_sub": "❌ شما در حال حاضر هیچ اشتراکی ندارید!\n\nبرای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید.",
-            "choose_plan": "🔄 تمدید اشتراک «{account_name}»:\n\nلطفاً پلن مد نظر خود را جهت تمدید انتخاب فرمایید:"
+            "no_sub": "❌ شما در حال حاضر هیچ اشتراکی ندارید!\n\nبرای خرید اشتراک، روی «🛍️ خرید اشتراک» کلیک کنید.",
+            "choose_plan": "🔄 تمدید اشتراک «{account_name}»:\n\nلطفاً بسته مد نظر خود را جهت تمدید انتخاب فرمایید:"
         },
         "my_subscriptions": {
             "header": "📊 وضعیت لحظه‌ای اشتراک‌های شما:",
@@ -21305,12 +21373,15 @@ class Database:
             master_duration = p.get("duration", 30)
             display_duration = custom_duration if (custom_duration is not None and custom_duration > 0) else master_duration
 
-            if is_reseller_modified and reseller_is_active is not None:
+            master_is_active = bool(p.get("is_active", True))
+            if not master_is_active:
+                is_active = False
+            elif is_reseller_modified and reseller_is_active is not None:
                 is_active = bool(reseller_is_active)
             elif admin_is_active is not None:
                 is_active = bool(admin_is_active)
             else:
-                is_active = p.get("is_active", True)
+                is_active = True
             
             # قیمت تمام‌شده خرید عمده برای نماینده همیشه بر مبنای قیمت پایه تعیین شده توسط مدیر (admin_price) محاسبه می‌شود
             base_wholesale_price = admin_price
@@ -21403,12 +21474,17 @@ class Database:
                 base_wholesale_price = admin_custom_price if admin_custom_price > 0 else master_p
 
                 display_price = reseller_custom_price if (is_reseller_modified and reseller_custom_price is not None and reseller_custom_price > 0) else base_wholesale_price
-                display_name = reseller_custom_name if (is_reseller_modified and reseller_custom_name) else (admin_custom_name or p_meta.get("name", "پلن"))
+                display_name = reseller_custom_name if (is_reseller_modified and reseller_custom_name) else (admin_custom_name or p_meta.get("name", "بسته"))
 
-                if is_reseller_modified and reseller_is_active is not None:
+                master_is_active = bool(p_meta.get("is_active", True)) if p_meta else True
+                if not master_is_active:
+                    is_active = False
+                elif is_reseller_modified and reseller_is_active is not None:
                     is_active = bool(reseller_is_active)
+                elif admin_is_active is not None:
+                    is_active = bool(admin_is_active)
                 else:
-                    is_active = admin_is_active
+                    is_active = True
 
                 if custom_wholesale_price is not None and custom_wholesale_price >= 0:
                     wholesale_price = int(custom_wholesale_price)
@@ -21455,7 +21531,7 @@ class Database:
                     "description": "",
                     "plan_icon": p_meta.get("plan_icon", ""),
                     "is_active": is_active,
-                    "master_is_active": True,
+                    "master_is_active": master_is_active,
                     "is_dedicated": is_dedicated,
                     "allowed_resellers": allowed,
                     "show_in_reseller_bot": bool(p_meta.get("show_in_reseller_bot", True)),
@@ -21496,6 +21572,17 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            # اگر بسته مادر توسط مدیریت غیرفعال شده باشد، نماینده تحت هیچ شرایطی نمی‌تواند آن را فعال کند
+            if is_reseller:
+                try:
+                    from admin_manager import load_plans
+                    _raw_master = load_plans()
+                    _mp = _raw_master.get(str(plan_id)) or {}
+                    if not _mp.get("is_active", True):
+                        is_active = False
+                except Exception:
+                    pass
+
             if is_reseller or preserve_specs:
                 cursor.execute("""
                     INSERT INTO reseller_plans (

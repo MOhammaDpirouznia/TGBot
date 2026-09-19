@@ -618,7 +618,7 @@
         .progress-glow {
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
         }
-        /* ─── استایل پایه دکمه‌های پلن (Base Plan Card) ─── */
+        /* ─── استایل پایه دکمه‌های بسته (Base Plan Card) ─── */
         .plan-card {
             background: rgba(255, 255, 255, 0.05);
             border: 2px solid transparent;
@@ -2403,7 +2403,7 @@
     {% endmacro %}
 
     {% macro macro_renewal_card() %}
-    <!-- بخش انتخاب پلن تمدید یا خرید جدید -->
+    <!-- بخش انتخاب بسته تمدید یا خرید جدید -->
     {% if portal_enable_renewal or is_new_customer %}
     <div class="glass-card p-4 mb-4">
         <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>{% if is_new_customer %}خرید اشتراک جدید{% else %}تمدید یا ارتقای اشتراک{% endif %}</h5>
@@ -2758,7 +2758,7 @@
                     {{ macro_support_card() }}
                 </div>
             </div>
-            <!-- ستون عملیات: فاکتور تمدید، انتخاب پلن‌ها و پرداخت -->
+            <!-- ستون عملیات: فاکتور تمدید، انتخاب بسته‌ها و پرداخت -->
             <div class="col-lg-7">
                 {{ macro_debt_card() }}
                 {{ macro_invoice_card() }}
@@ -2922,7 +2922,7 @@
             <!-- صف بسته‌های رزرو -->
             {{ macro_queue_card() }}
 
-            <!-- ردیف ۳ بنتو: تمدید و انتخاب پلن‌ها -->
+            <!-- ردیف ۳ بنتو: تمدید و انتخاب بسته‌ها -->
             <div class="mb-3">
                 {{ macro_renewal_card() }}
             </div>
@@ -2985,7 +2985,7 @@
 </div>
 
 {% if enable_new_purchase %}
-<!-- مودال خرید اشتراک جدید در مینی‌اپ با تفکیک پلن‌ها و قیمت‌های نماینده یا مدیریت -->
+<!-- مودال خرید اشتراک جدید در مینی‌اپ با تفکیک بسته‌ها و قیمت‌های نماینده یا مدیریت -->
 <div class="modal fade" id="newSubPurchaseModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
@@ -3017,7 +3017,7 @@
                         <small class="text-secondary" style="font-size: 0.76rem;">در صورت خالی گذاشتن، نام کاربری به طور خودکار تعیین می‌شود.</small>
                     </div>
 
-                    <!-- لیست پلن‌های فعال مربوط به این ربات -->
+                    <!-- لیست بسته‌های فعال مربوط به این ربات -->
                     <label class="form-label fw-bold small text-white mb-2">
                         <i class="fas fa-boxes-stacked text-primary me-1"></i> انتخاب بسته:
                     </label>
@@ -4118,7 +4118,7 @@ function applyModalNewDiscount() {
     });
 }
 
-// انتخاب پلن‌ها با کلیک و محاسبه قیمت
+// انتخاب بسته‌ها با کلیک و محاسبه قیمت
 document.querySelectorAll('.portal-plans-wrapper').forEach(wrapper => {
     wrapper.querySelectorAll('.plan-card').forEach(card => {
         card.addEventListener('click', function() {

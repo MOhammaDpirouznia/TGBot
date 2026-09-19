@@ -191,7 +191,7 @@
                             مبدأ <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
                         <th class="sortable-th" data-column="4" style="cursor: pointer;">
-                            پلن / نوع <i class="fas fa-sort text-muted ms-1"></i>
+                            بسته / نوع <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
                         <th class="sortable-th" data-column="5" style="cursor: pointer;">
                             مبلغ پرداختی <i class="fas fa-sort text-muted ms-1"></i>
@@ -646,7 +646,7 @@
                                 </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">پلن خریداری شده:</span>
+                                <span class="text-muted">بسته خریداری شده:</span>
                                 <span class="fw-bold text-dark">{{ tx['plan_name'] or '-' }}</span>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
@@ -1226,7 +1226,7 @@
                         </div>
                         
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">پلن خریداری شده <span class="text-danger">*</span>:</label>
+                            <label class="form-label fw-bold">بسته خریداری شده <span class="text-danger">*</span>:</label>
                             <select name="purchased_plan_id" class="form-select" required>
                                 <option value="" disabled selected>انتخاب کنید...</option>
                                 {% if plans is mapping %}
@@ -1240,7 +1240,7 @@
                                 {% endif %}
                             </select>
                             <div class="form-text text-muted">
-                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب پلن صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور هیدیفای دست‌نخورده باقی می‌ماند.
+                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب بسته صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور هیدیفای دست‌نخورده باقی می‌ماند.
                             </div>
                         </div>
 
@@ -1726,7 +1726,7 @@ function searchCustomersAjax(query) {
                             <span class="small text-muted">${resellerLabel}</span>
                         </div>
                         <div class="small text-muted mt-1">
-                            پلن: ${c.plan_title || '-'} | انقضا: ${c.expire_date ? c.expire_date.substring(0, 10) : '-'}
+                            بسته: ${c.plan_title || '-'} | انقضا: ${c.expire_date ? c.expire_date.substring(0, 10) : '-'}
                         </div>
                     </button>
                 `;
@@ -1748,7 +1748,7 @@ function selectCustomer(custJson) {
         document.getElementById('selectedCustName').textContent = (c.account_name || 'اشتراک #' + c.id) + (c.telegram_id ? ` (@${c.telegram_id})` : '');
         const resellerLabel = c.reseller_name ? `نماینده: ${c.reseller_name}` : 'مشتری مستقیم مدیریت';
         const trashLabel = c.is_deleted == 1 ? ' | در سطل زباله' : '';
-        document.getElementById('selectedCustMeta').textContent = `پلن: ${c.plan_title || '-'} | ${resellerLabel}${trashLabel}`;
+        document.getElementById('selectedCustMeta').textContent = `بسته: ${c.plan_title || '-'} | ${resellerLabel}${trashLabel}`;
 
         currentCustomerDebt = Number(c.debt_amount || 0);
         const debtBadge = document.getElementById('selectedCustDebt');

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}مدیریت پلن‌ها و قیمت‌گذاری - پنل نمایندگی{% endblock %}
+{% block title %}مدیریت بسته‌ها و قیمت‌گذاری - پنل نمایندگی{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-layer-group text-primary me-2"></i>مدیریت پلن‌ها و قیمت‌گذاری فروش</h1>
+        <h1 class="page-title"><i class="fas fa-layer-group text-primary me-2"></i>مدیریت بسته‌ها و قیمت‌گذاری فروش</h1>
         <p class="text-muted mb-0">تعیین نام‌های نمایشی اختصاصی، سود دلخواه و قیمت فروش برای مشتریان ربات تلگرام شما</p>
     </div>
     <div class="badge bg-primary fs-6 py-2 px-3 shadow-sm">
@@ -15,7 +15,7 @@
 <div class="alert alert-info border-0 shadow-sm d-flex align-items-center mb-4">
     <i class="fas fa-shield-halved fs-3 me-3 text-info"></i>
     <div>
-        <h6 class="fw-bold mb-1">راهنمای هوشمند سیستم پلن‌ها و قیمت‌گذاری نمایندگی:</h6>
+        <h6 class="fw-bold mb-1">راهنمای هوشمند سیستم بسته‌ها و قیمت‌گذاری نمایندگی:</h6>
         <p class="mb-0 small text-muted">
             <b>قیمت خرید عمده شما:</b> همواره بر مبنای قیمت پایه مدیریت کل با کسر <b>{{ reseller.get('discount_percent', 20) }}٪ تخفیف اختصاصی شما</b> محاسبه و ثابت است؛ تغییر قیمت فروش یا تغییر سود، هزینه خرید عمده شما را تغییر نمی‌دهد.<br>
             <b>تنظیم دستی سود یا قیمت فروش:</b> شما می‌توانید <b>سود دلخواه</b> یا <b>قیمت فروش به مشتری</b> را به دلخواه وارد کنید. با تغییر هر کدام، مقدار دیگری به صورت خودکار و بلادرنگ همگام‌سازی می‌شود.
@@ -25,15 +25,15 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست پلن‌های قابل فروش</h5>
-        <span class="badge bg-secondary">{{ plans|length }} پلن موجود</span>
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست بسته‌های قابل فروش</h5>
+        <span class="badge bg-secondary">{{ plans|length }} بسته موجود</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0 sortable-table" id="resellerPlansTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">پلن اصلی سیستم</th>
+                        <th class="ps-3 sortable-th" data-column="0">بسته اصلی سیستم</th>
                         <th class="sortable-th" data-column="1">مشخصات فنی</th>
                         <th class="sortable-th" data-column="2">قیمت پایه مدیر</th>
                         <th class="sortable-th" data-column="3">قیمت خرید عمده شما</th>
@@ -136,9 +136,14 @@
                                 </span>
                             </div>
                         </td>
-                        <td data-value="{{ 1 if p['is_active'] else 0 }}" class="text-center">
-                            {% if not p.get('show_in_reseller_bot', True) %}
-                            <span class="badge bg-secondary-subtle text-secondary border font-monospace" style="font-size: 0.72rem;" title="این پلن فقط مخصوص فروش دستی در پنل وب است و در ربات تلگرام نمایش داده نمی‌شود.">
+                        <td data-value="{{ 1 if (p['is_active'] and p.get('master_is_active', True)) else 0 }}" class="text-center">
+                            {% if not p.get('master_is_active', True) %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger font-monospace py-1 px-2" style="font-size: 0.72rem;" title="این بسته توسط مدیریت کل غیرفعال شده است و امکان فعال‌سازی توسط نماینده وجود ندارد.">
+                                <i class="fas fa-ban me-1"></i>غیرفعال توسط مدیریت
+                            </span>
+                            <input type="hidden" name="is_active" value="0" form="form_override_{{ p['plan_id'] }}">
+                            {% elif not p.get('show_in_reseller_bot', True) %}
+                            <span class="badge bg-secondary-subtle text-secondary border font-monospace" style="font-size: 0.72rem;" title="این بسته فقط مخصوص فروش دستی در پنل وب است و در ربات تلگرام نمایش داده نمی‌شود.">
                                 <i class="fas fa-eye-slash me-1"></i>مخفی از ربات (فقط پنل)
                             </span>
                             <div class="form-check form-switch d-none">
@@ -155,11 +160,11 @@
                         </td>
                         <td class="text-end pe-3">
                             <div class="d-flex justify-content-end gap-1">
-                                <button type="submit" form="form_override_{{ p['plan_id'] }}" class="btn btn-sm btn-primary px-3" title="ذخیره تنظیمات پلن">
+                                <button type="submit" form="form_override_{{ p['plan_id'] }}" class="btn btn-sm btn-primary px-3" title="ذخیره تنظیمات بسته">
                                     <i class="fas fa-save me-1"></i> ذخیره
                                 </button>
                                 {% if p.get('is_reseller_modified') %}
-                                <form method="POST" action="{{ url_for('reseller_plans') }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی این پلن به تنظیمات تعیین‌شده توسط مدیریت اطمینان دارید؟');">
+                                <form method="POST" action="{{ url_for('reseller_plans') }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی این بسته به تنظیمات تعیین‌شده توسط مدیریت اطمینان دارید؟');">
                                     <input type="hidden" name="action" value="reset_override">
                                     <input type="hidden" name="plan_id" value="{{ p['plan_id'] }}">
                                     <button type="submit" class="btn btn-sm btn-outline-secondary" title="بازگردانی به تنظیمات مدیریت">
