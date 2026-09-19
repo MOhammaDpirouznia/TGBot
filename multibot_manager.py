@@ -402,7 +402,7 @@ class ResellerBotInstance:
 
         def get_reseller_main_keyboard(lang: str = "fa", is_reseller_admin: bool = False, user_id: int = None) -> ReplyKeyboardMarkup:
             """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت با اتصال مینی‌اپ اختصاصی نماینده"""
-            menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
+            menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True, reseller_id=r_id)
             kb_list = []
             for r in menu_rows:
                 row_btns = []
@@ -427,11 +427,15 @@ class ResellerBotInstance:
                 if row_btns:
                     kb_list.append(row_btns)
             if not kb_list:
+                ref_cfg = db.get_customer_referral_config(reseller_id=r_id)
+                ref_btn_row = [KeyboardButton("👥 کسب درآمد و دعوت")] if ref_cfg.get("is_enabled") else []
                 kb_list = [
                     [KeyboardButton("🛍️ خرید اشتراک", style="success"), KeyboardButton("👤 اشتراک‌های من", style="primary")],
                     [KeyboardButton("💳 کیف پول و شارژ"), KeyboardButton("🎧 پشتیبانی و تیکت")],
                     [KeyboardButton("📖 راهنمای اتصال"), KeyboardButton("🛠️ حل مشکلات اتصال")]
                 ]
+                if ref_btn_row:
+                    kb_list.insert(2, ref_btn_row)
             if is_reseller_admin:
                 kb_list.append([KeyboardButton("🔧 پنل مدیریت نماینده", style="danger")])
             return ReplyKeyboardMarkup(kb_list, resize_keyboard=True)
@@ -449,6 +453,19 @@ class ResellerBotInstance:
                 elif update.callback_query:
                     await update.callback_query.message.reply_text(msg)
                 return
+
+            # پردازش کد معرف / رفرال مشتری در ربات نماینده
+            if context.args and len(context.args) > 0:
+                arg = context.args[0].strip()
+                if arg.startswith("ref_"):
+                    try:
+                        ref_id_str = arg.replace("ref_", "")
+                        ref_id = int(ref_id_str)
+                        if ref_id and ref_id != user.id:
+                            db.add_customer_referral(referrer_id=ref_id, referred_id=user.id, reseller_id=r_id)
+                            context.user_data["pending_ref"] = ref_id
+                    except Exception as e_ref:
+                        logger.debug(f"Error parsing referral in reseller start: {e_ref}")
 
             # ذخیره کاربر با شناسه این نماینده
             db.save_user(
@@ -554,6 +571,13 @@ class ResellerBotInstance:
             except Exception:
                 pass
             is_adm, _ = check_admin_access(user.id)
+            if context.user_data.get("pending_ref"):
+                try:
+                    ref_id = int(context.user_data.get("pending_ref"))
+                    if ref_id and ref_id != user.id:
+                        db.add_customer_referral(referrer_id=ref_id, referred_id=user.id, reseller_id=r_id)
+                except Exception as e_pref:
+                    logger.debug(f"Error resolving pending referral in reseller select_language: {e_pref}")
             await context.bot.send_message(chat_id=user.id, text=t("choose_option", lang), reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm, user_id=user.id))
 
         async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -573,6 +597,14 @@ class ResellerBotInstance:
             phone_number = contact.phone_number
             db.set_user_phone(user.id, phone_number)
             db.save_user(telegram_id=user.id, username=user.username or user.first_name, reseller_id=r_id)
+
+            if context.user_data.get("pending_ref"):
+                try:
+                    ref_id = int(context.user_data.pop("pending_ref"))
+                    if ref_id and ref_id != user.id:
+                        db.add_customer_referral(referrer_id=ref_id, referred_id=user.id, reseller_id=r_id)
+                except Exception as e_pref:
+                    logger.debug(f"Error resolving pending referral in reseller contact_handler: {e_pref}")
 
             is_adm, _ = check_admin_access(user.id)
             brand = self.reseller_data.get("brand_name") or self.reseller_data.get("name") or "سرویس VPN"
@@ -1417,6 +1449,27 @@ class ResellerBotInstance:
                         context.user_data.pop("applied_discount_code", None)
                         context.user_data.pop("applied_discount_amount", None)
                         context.user_data.pop("applied_discount_plan_id", None)
+
+                    # تکمیل پاداش دعوت مشتری در تمدید از کیف پول
+                    try:
+                        ref_res = db.complete_customer_referral(referred_id=user.id, order_amount=price, reseller_id=r_id)
+                        if ref_res.get("success"):
+                            ref_referrer_id = ref_res.get("referrer_id")
+                            ref_reward = ref_res.get("reward_amount", 0)
+                            ref_balance = ref_res.get("new_balance", 0)
+                            notif_txt = (
+                                f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                                f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{price:,} تومان</b> تمدید کرد.\n"
+                                f"🎁 مبلغ <b>{ref_reward:,} تومان</b> پاداش نقدی به کیف پول شما در این ربات افزوده شد.\n"
+                                f"💳 موجودی فعلی کیف پول: <b>{ref_balance:,} تومان</b>"
+                            )
+                            try:
+                                await context.bot.send_message(chat_id=ref_referrer_id, text=notif_txt, parse_mode="HTML")
+                            except Exception:
+                                pass
+                    except Exception as e_cr:
+                        logger.error(f"Error completing customer referral in wallet renew: {e_cr}")
+
                     return
                 finally:
                     RenewalGuard.release_lock(renew_sub_id)
@@ -1477,6 +1530,26 @@ class ResellerBotInstance:
                 context.user_data.pop("applied_discount_code", None)
                 context.user_data.pop("applied_discount_amount", None)
                 context.user_data.pop("applied_discount_plan_id", None)
+
+            # تکمیل پاداش دعوت مشتری در خرید جدید از کیف پول
+            try:
+                ref_res = db.complete_customer_referral(referred_id=user.id, order_amount=price, reseller_id=r_id)
+                if ref_res.get("success"):
+                    ref_referrer_id = ref_res.get("referrer_id")
+                    ref_reward = ref_res.get("reward_amount", 0)
+                    ref_balance = ref_res.get("new_balance", 0)
+                    notif_txt = (
+                        f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                        f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{price:,} تومان</b> خریداری کرد.\n"
+                        f"🎁 مبلغ <b>{ref_reward:,} تومان</b> پاداش نقدی به کیف پول شما در این ربات افزوده شد.\n"
+                        f"💳 موجودی فعلی کیف پول: <b>{ref_balance:,} تومان</b>"
+                    )
+                    try:
+                        await context.bot.send_message(chat_id=ref_referrer_id, text=notif_txt, parse_mode="HTML")
+                    except Exception:
+                        pass
+            except Exception as e_cr:
+                logger.error(f"Error completing customer referral in wallet buy: {e_cr}")
 
         async def pay_online_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """هدایت به درگاه پرداخت آنلاین اختصاصی نماینده"""
@@ -2086,6 +2159,27 @@ class ResellerBotInstance:
                     except Exception as e_cust:
                         logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e_cust}", exc_info=True)
 
+                    # تکمیل پاداش دعوت مشتری در صورت وجود معرف
+                    try:
+                        paid_amt = int(tx_data.get("amount") or selling_price or 0)
+                        ref_res = db.complete_customer_referral(referred_id=target_uid, order_amount=paid_amt, reseller_id=r_id)
+                        if ref_res.get("success"):
+                            ref_referrer_id = ref_res.get("referrer_id")
+                            ref_reward = ref_res.get("reward_amount", 0)
+                            ref_balance = ref_res.get("new_balance", 0)
+                            notif_txt = (
+                                f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                                f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{paid_amt:,} تومان</b> خریداری کرد.\n"
+                                f"🎁 مبلغ <b>{ref_reward:,} تومان</b> پاداش نقدی به کیف پول شما در این ربات افزوده شد.\n"
+                                f"💳 موجودی فعلی کیف پول: <b>{ref_balance:,} تومان</b>"
+                            )
+                            try:
+                                await context.bot.send_message(chat_id=ref_referrer_id, text=notif_txt, parse_mode="HTML")
+                            except Exception:
+                                pass
+                    except Exception as e_cr:
+                        logger.error(f"Error completing customer referral in rapprove: {e_cr}")
+
                     # ۷. اعلان موفقیت مستقیم به مدیر کلیک‌کننده
                     try:
                         await query.answer("✅ پرداخت تایید شد و مشخصات اشتراک برای مشتری ارسال گردید.", show_alert=True)
@@ -2471,6 +2565,27 @@ class ResellerBotInstance:
                                     logger.warning(f"send_subscription_card_sync returned False for customer {user_id}")
                         except Exception as e_u:
                             logger.error(f"Failed to notify customer in res_pay_app: {e_u}", exc_info=True)
+
+                    # تکمیل پاداش دعوت مشتری در صورت وجود معرف
+                    try:
+                        paid_amt = int(tx_data.get("amount") or original_price or 0)
+                        ref_res = db.complete_customer_referral(referred_id=user_id, order_amount=paid_amt, reseller_id=r_id)
+                        if ref_res.get("success"):
+                            ref_referrer_id = ref_res.get("referrer_id")
+                            ref_reward = ref_res.get("reward_amount", 0)
+                            ref_balance = ref_res.get("new_balance", 0)
+                            notif_txt = (
+                                f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                                f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{paid_amt:,} تومان</b> خریداری کرد.\n"
+                                f"🎁 مبلغ <b>{ref_reward:,} تومان</b> پاداش نقدی به کیف پول شما در این ربات افزوده شد.\n"
+                                f"💳 موجودی فعلی کیف پول: <b>{ref_balance:,} تومان</b>"
+                            )
+                            try:
+                                await context.bot.send_message(chat_id=ref_referrer_id, text=notif_txt, parse_mode="HTML")
+                            except Exception:
+                                pass
+                    except Exception as e_cr:
+                        logger.error(f"Error completing customer referral in res_pay_app: {e_cr}")
 
                     await query.answer("✅ پرداخت تایید شد و مشخصات اشتراک برای مشتری ارسال گردید.", show_alert=True)
                 except Exception as ex_app:
@@ -3520,6 +3635,72 @@ class ResellerBotInstance:
                 await update.callback_query.message.reply_text(msg, reply_markup=kb, parse_mode="HTML")
             else:
                 await update.message.reply_text(msg, reply_markup=kb, parse_mode="HTML")
+
+        async def customer_referral_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """منوی کسب درآمد و دعوت از دوستان برای مشتریان ربات نماینده"""
+            user = update.effective_user
+            if not user:
+                return
+
+            cfg = db.get_customer_referral_config(reseller_id=r_id)
+            if not cfg.get("is_enabled"):
+                msg = "⚠️ سیستم کسب درآمد و دعوت از دوستان در حال حاضر غیرفعال می‌باشد."
+                if update.callback_query:
+                    await update.callback_query.answer()
+                    await update.callback_query.message.reply_text(msg)
+                elif update.message:
+                    await update.message.reply_text(msg)
+                return
+
+            try:
+                bot_info = await context.bot.get_me()
+                bot_username = bot_info.username or ""
+            except Exception:
+                bot_username = ""
+
+            ref_link = f"https://t.me/{bot_username}?start=ref_{user.id}" if bot_username else f"ref_{user.id}"
+
+            if cfg.get("reward_type") == "percent":
+                reward_desc = f"{cfg.get('reward_amount', 10)}٪ از مبلغ خرید بسته"
+            else:
+                reward_desc = f"{int(cfg.get('reward_amount', 10000)):,} تومان"
+
+            cond_desc = "اولین خرید بسته" if cfg.get("reward_condition") == "first_purchase" else "تمامی خریدهای بسته"
+            min_order = int(cfg.get("min_purchase_amount") or 0)
+            min_order_str = f"• 🎯 حداقل مبلغ خرید بسته: <b>{min_order:,}</b> تومان\n" if min_order > 0 else ""
+
+            stats = db.get_customer_referral_stats(user.id, reseller_id=r_id)
+            wallet_bal = stats.get("wallet_balance", 0)
+
+            custom_txt = (cfg.get("custom_text") or "").strip()
+            custom_section = f"\n📢 <i>{html.escape(custom_txt)}</i>\n" if custom_txt else ""
+
+            text_msg = (
+                f"👥 <b>سیستم کسب درآمد و دعوت از دوستان</b>\n\n"
+                f"با معرفی این ربات به دوستان خود، به ازای {cond_desc} آن‌ها <b>{reward_desc}</b> پاداش نقدی در کیف پول دریافت کنید!\n"
+                f"{min_order_str}{custom_section}\n"
+                f"🔗 <b>لینک دعوت اختصاصی شما:</b>\n"
+                f"<code>{ref_link}</code>\n\n"
+                f"📊 <b>آمار دعوت‌های شما:</b>\n"
+                f"• 👥 کل افراد دعوت شده: <b>{stats.get('total_referred', 0)}</b> نفر\n"
+                f"• ✅ خریدهای موفق ثبت شده: <b>{stats.get('completed_referrals', 0)}</b>\n"
+                f"• 💰 مجموع پاداش کسب شده: <b>{stats.get('total_earnings', 0):,}</b> تومان\n"
+                f"• 💳 موجودی فعلی کیف پول: <b>{wallet_bal:,}</b> تومان\n\n"
+                f"💡 پاداش به صورت خودکار به کیف پول شما واریز شده و برای خرید و تمدید <b>بسته</b> قابل استفاده است."
+            )
+
+            import urllib.parse
+            share_txt = urllib.parse.quote("خرید اشتراک پرسرعت و بدون قطعی")
+            share_url = f"https://t.me/share/url?url={ref_link}&text={share_txt}"
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📤 اشتراک‌گذاری لینک دعوت", url=share_url)]
+            ])
+
+            if update.callback_query:
+                await update.callback_query.answer()
+                await update.callback_query.message.reply_text(text_msg, reply_markup=kb, parse_mode="HTML")
+            elif update.message:
+                await update.message.reply_text(text_msg, reply_markup=kb, parse_mode="HTML")
 
         async def reseller_quick_ticket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """ثبت سریع تیکت پشتیبانی توسط مشتری با گزینه‌های کپی و ویرایش یا ارسال مستقیم"""
@@ -5830,6 +6011,10 @@ class ResellerBotInstance:
                     await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت <code>تیکت:</code> بنویسید.", parse_mode="HTML")
                 return
 
+            # ۲.۵. بررسی کلید یا دستور کسب درآمد و دعوت از دوستان
+            if text in ("👥 کسب درآمد و دعوت", "کسب درآمد", "دعوت از دوستان", "کسب درآمد و دعوت", "/referral", "/invite", "/ref"):
+                return await customer_referral_handler(update, context)
+
             # ۳. بررسی تطابق با دکمه‌های منوی ربات نماینده
             btn = db.match_bot_menu_button(text, is_reseller=True)
             if btn:
@@ -5856,6 +6041,8 @@ class ResellerBotInstance:
                     else:
                         await update.message.reply_text("⚠️ آدرس وب‌اپ تنظیم نشده است.")
                     return
+                elif b_id == "referral":
+                    return await customer_referral_handler(update, context)
                 elif b_id == "buy":
                     return await plans_handler(update, context)
                 elif b_id in ("my_subs", "renew"):
@@ -5917,10 +6104,12 @@ class ResellerBotInstance:
 
         # ثبت هندلرها
         app.add_handler(CommandHandler("start", start_handler))
+        app.add_handler(CommandHandler(["referral", "invite", "ref"], customer_referral_handler))
         app.add_handler(CommandHandler(["admin", "admin_panel", "manage", "panel"], reseller_admin_panel_handler))
         app.add_handler(CommandHandler("plans", plans_handler))
         app.add_handler(CommandHandler("help", guide_handler))
         app.add_handler(CommandHandler(["reply_ticket", "reply"], reseller_reply_command_handler))
+        app.add_handler(CallbackQueryHandler(customer_referral_handler, pattern="^(r_referral|r_ref_info)$"))
         app.add_handler(CallbackQueryHandler(select_language_callback, pattern="^(r_lang_|lang_)"))
         app.add_handler(CallbackQueryHandler(plans_handler, pattern="^r_back_plans$"))
         app.add_handler(CallbackQueryHandler(plan_naming_callback, pattern="^r_buy_"))

@@ -99,8 +99,14 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link rounded-pill px-3 py-2 fw-bold {% if active_tab == 'customer' %}active{% endif %}" id="customer-referrals-tab" data-bs-toggle="tab" data-bs-target="#customer-referrals" type="button" role="tab">
+                        <i class="fas fa-gift me-1 text-warning"></i> کسب درآمد مشتریان مدیریت
+                        <span class="badge bg-warning text-dark ms-1 rounded-pill">{{ customer_referrals|length }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link rounded-pill px-3 py-2 fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
-                        <i class="fas fa-sliders me-1 text-primary"></i> تنظیمات زیرمجموعه‌گیری
+                        <i class="fas fa-sliders me-1 text-primary"></i> تنظیمات زیرمجموعه‌گیری همکاران
                     </button>
                 </li>
             </ul>
@@ -343,14 +349,177 @@
                     </div>
                 </div>
 
-                <!-- TAB 4: Settings -->
-                <div class="tab-pane fade" id="settings" role="tabpanel">
-                    <div class="p-4" style="max-width: 760px;">
+                <!-- TAB 4: Customer Referrals (Direct Admin Customers) -->
+                <div class="tab-pane fade {% if active_tab == 'customer' %}show active{% endif %}" id="customer-referrals" role="tabpanel">
+                    <div class="p-4">
+                        <div class="row g-4 mb-4">
+                            <div class="col-12 col-xl-6">
+                                <div class="card border rounded-4 shadow-sm p-4 h-100">
+                                    <h5 class="fw-bold mb-3 d-flex align-items-center gap-2">
+                                        <i class="fas fa-sliders text-warning"></i>
+                                        تنظیمات کسب درآمد مشتریان مستقیم مدیریت
+                                    </h5>
+                                    <form method="POST" action="{{ url_for('admin_customer_referral_update_settings') }}">
+                                        <div class="form-check form-switch mb-4 p-3 rounded-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                                            <input class="form-check-input ms-0 me-3" type="checkbox" id="adminCustomerRefEnabled" name="is_enabled" value="1" {% if customer_ref_cfg.is_enabled %}checked{% endif %}>
+                                            <label class="form-check-label fw-bold" for="adminCustomerRefEnabled">
+                                                فعال‌سازی سیستم کسب درآمد برای مشتریان مستقیم مدیریت
+                                            </label>
+                                            <small class="text-muted d-block mt-1">در صورت فعال بودن، دکمه «کسب درآمد» در پرتال مشتریان مدیریت و منوی ربات اصلی تلگرام نمایش داده می‌شود.</small>
+                                        </div>
+
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label small fw-bold">نوع پاداش</label>
+                                                <select class="form-select" name="reward_type">
+                                                    <option value="fixed" {% if customer_ref_cfg.reward_type == 'fixed' %}selected{% endif %}>مبلغ ثابت (تومان)</option>
+                                                    <option value="percent" {% if customer_ref_cfg.reward_type == 'percent' %}selected{% endif %}>درصد از فاکتور خرید بسته</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label small fw-bold">مقدار پاداش</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" name="reward_amount" value="{{ customer_ref_cfg.reward_amount }}" min="1" required>
+                                                    <span class="input-group-text">{% if customer_ref_cfg.reward_type == 'percent' %}٪{% else %}تومان{% endif %}</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label small fw-bold">حداقل مبلغ خرید برای پاداش</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" name="min_purchase_amount" value="{{ customer_ref_cfg.min_purchase_amount }}" min="0" step="5000">
+                                                    <span class="input-group-text">تومان</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label small fw-bold">شرط تعلق پاداش</label>
+                                                <select class="form-select" name="reward_condition">
+                                                    <option value="first_purchase" {% if customer_ref_cfg.reward_condition == 'first_purchase' %}selected{% endif %}>فقط اولین خرید بسته مشتری</option>
+                                                    <option value="all_purchases" {% if customer_ref_cfg.reward_condition == 'all_purchases' %}selected{% endif %}>تمام خریدهای بسته مشتری</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label small fw-bold">سقف پاداش روزانه هر کاربر (ضد تقلب)</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" name="max_daily_rewards" value="{{ customer_ref_cfg.max_daily_rewards }}" min="1" max="50">
+                                                    <span class="input-group-text">پاداش در ۲۴ ساعت</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <label class="form-label small fw-bold">متن راهنما و قوانین پورتال (اختیاری)</label>
+                                                <textarea class="form-control" name="custom_terms" rows="2">{{ customer_ref_cfg.custom_terms }}</textarea>
+                                            </div>
+                                        </div>
+
+                                        <button type="submit" class="btn btn-warning px-4 py-2 fw-bold rounded-pill">
+                                            <i class="fas fa-save me-1"></i> ذخیره تنظیمات کسب درآمد مشتریان مدیریت
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-xl-6">
+                                <div class="card border rounded-4 shadow-sm p-4 h-100" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(245, 158, 11, 0.05) 100%);">
+                                    <h5 class="fw-bold mb-3 text-primary d-flex align-items-center gap-2">
+                                        <i class="fas fa-shield-halved"></i>
+                                        سپرهای فعال ضد تقلب مشتریان
+                                    </h5>
+                                    <ul class="text-secondary small mb-3 ps-3" style="line-height: 2;">
+                                        <li><strong>جلوگیری از خود-دعوتی (Self-Referral):</strong> مسدودسازی خودکار ثبت کاربر به عنوان معرف خودش.</li>
+                                        <li><strong>جلوگیری از دعوت چرخه‌ای (Circular Referral):</strong> اگر کاربر A معرف B باشد، کاربر B تحت هیچ شرایطی نمی‌تواند معرف A شود.</li>
+                                        <li><strong>محدود به خرید واقعی:</strong> پاداش منحصراً پس از پرداخت قطعی فاکتور خرید بسته شارژ می‌شود و روی اکانت‌های تست رایگان پاداشی تعلق نمی‌گیرد.</li>
+                                        <li><strong>سقف زمانی تبدیل (Rate Limiting):</strong> جلوگیری از ثبت رفرال‌های ماشینی و ربات‌های اسپم.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- جدول سوابق دعوت‌های مشتریان مستقیم مدیریت -->
+                        <div class="card border rounded-4 shadow-sm overflow-hidden">
+                            <div class="card-header bg-transparent border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+                                <h6 class="fw-bold mb-0"><i class="fas fa-list text-primary me-2"></i>لیست دعوت‌های ثبت‌شده مشتریان مدیریت</h6>
+                                <span class="badge bg-primary rounded-pill px-3 py-2">{{ customer_referrals|length }} رکورد</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-4">مشتری معرف</th>
+                                                <th>مشتری دعوت‌شده</th>
+                                                <th class="text-center">مبلغ خرید بسته</th>
+                                                <th class="text-center">پاداش</th>
+                                                <th class="text-center">وضعیت</th>
+                                                <th class="pe-4 text-end">تاریخ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if customer_referrals %}
+                                                {% for cr in customer_referrals %}
+                                                <tr>
+                                                    <td class="ps-4">
+                                                        <span class="fw-bold">{{ cr.referrer_username or ('کاربر #' ~ cr.referrer_id) }}</span>
+                                                        <small class="text-muted font-monospace d-block">{{ cr.referrer_id }}</small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="fw-bold">{{ cr.referred_username or ('کاربر #' ~ cr.referred_id) }}</span>
+                                                        <small class="text-muted font-monospace d-block">{{ cr.referred_id }}</small>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if cr.order_amount and cr.order_amount > 0 %}
+                                                            <span class="fw-semibold">{{ "{:,}".format(cr.order_amount) }} تومان</span>
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if cr.status == 'rewarded' %}
+                                                            <span class="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1 fs-6">
+                                                                +{{ "{:,}".format(cr.reward_amount) }} تومان
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1">در انتظار</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if cr.status == 'rewarded' %}
+                                                            <span class="badge bg-success rounded-pill px-2 py-1">تسویه شده</span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary rounded-pill px-2 py-1">در انتظار</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="pe-4 text-end">
+                                                        <small class="text-muted dir-ltr">{{ cr.created_at[:16].replace('T', ' ') if cr.created_at else '-' }}</small>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                            <tr>
+                                                <td colspan="6" class="text-center py-4 text-muted">
+                                                    هنوز دعوتی برای مشتریان مستقیم مدیریت ثبت نشده است.
+                                                </td>
+                                            </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 5: Settings -->
+                <div class="tab-pane fade {% if active_tab == 'settings' %}show active{% endif %}" id="settings" role="tabpanel">
+                    <div class="p-4" style="max-width: 850px;">
                         <form method="POST" action="{{ url_for('admin_reseller_affiliates_update_settings') }}">
                             <div class="mb-4">
                                 <div class="form-check form-switch fs-5">
                                     <input class="form-check-input" type="checkbox" id="affEnabled" name="enabled" value="1" {% if overview.settings.enabled %}checked{% endif %}>
-                                    <label class="form-check-label fw-bold" for="affEnabled">فعال‌سازی سیستم زیرمجموعه‌گیری نمایندگان</label>
+                                    <label class="form-check-label fw-bold" for="affEnabled">فعال‌سازی سیستم زیرمجموعه‌گیری نمایندگان و همکاران</label>
                                 </div>
                                 <small class="text-muted d-block mt-1">با فعال بودن این گزینه، نمایندگان لینک اختصاصی دریافت کرده و پورسانت خریدهای زیرمجموعه‌ها به صورت خودکار محاسبه می‌شود.</small>
                             </div>
@@ -368,10 +537,44 @@
                                 <div class="col-12 col-md-6">
                                     <label class="form-label fw-bold">مبنای محاسبه پورسانت</label>
                                     <select name="calc_base" class="form-select">
-                                        <option value="plan_price" {% if overview.settings.calc_base == 'plan_price' %}selected{% endif %}>قیمت اصلی پلن (پیش‌فرض پیشنهادی)</option>
+                                        <option value="plan_price" {% if overview.settings.calc_base == 'plan_price' %}selected{% endif %}>قیمت اصلی بسته (پیش‌فرض پیشنهادی)</option>
                                         <option value="wholesale_price" {% if overview.settings.calc_base == 'wholesale_price' %}selected{% endif %}>مبلغ عمده کسر شده از کیف پول نماینده</option>
                                     </select>
-                                    <small class="text-muted">نحوه محاسبه مبلغ پورسانت بر مبنای قیمت کامل پلن یا هزینه عمده.</small>
+                                    <small class="text-muted">نحوه محاسبه مبلغ پورسانت بر مبنای قیمت کامل بسته یا هزینه عمده.</small>
+                                </div>
+                            </div>
+
+                            <!-- سپرهای ضد تقلب همکاران -->
+                            <div class="mb-4 p-3 rounded-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                                <div class="form-check form-switch fs-6 mb-2">
+                                    <input class="form-check-input" type="checkbox" id="antiFraudEnabled" name="anti_fraud_enabled" value="1" {% if overview.settings.anti_fraud_enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold" for="antiFraudEnabled">
+                                        <i class="fas fa-shield-halved text-warning me-1"></i>
+                                        سپر هوشمند ضد تقلب چندپنلی همکاران (Self-Reselling Prevention)
+                                    </label>
+                                </div>
+                                <small class="text-muted d-block">
+                                    پایش خودکار و مسدودسازی پورسانت در صورت تطابق شماره کارت، شماره شبا، شماره تلفن و شناسه تلگرام بین نماینده معرف و زیرمجموعه جهت پیشگیری از ساخت چند پنل برای سودجویی از پورسانت خرید عمده خود.
+                                </small>
+                            </div>
+
+                            <!-- پیش‌نیازهای فعالیت و سهمیه ماهانه -->
+                            <div class="row g-3 mb-4">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-bold">حداقل فروش بسته در ۳۰ روز اخیر (سهمیه فعالیت)</label>
+                                    <div class="input-group">
+                                        <input type="number" min="0" name="min_monthly_sales" class="form-control" value="{{ overview.settings.min_monthly_sales or 0 }}">
+                                        <span class="input-group-text">بسته</span>
+                                    </div>
+                                    <small class="text-muted">در صورت تنظیم عدد بزرگتر از ۰، نماینده معرف برای فعال‌ماندن واریز پورسانت باید حداقل این تعداد بسته در ماه فروخته باشد.</small>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-bold">حداقل گردش مالی در ۳۰ روز اخیر</label>
+                                    <div class="input-group">
+                                        <input type="number" min="0" step="50000" name="min_monthly_turnover" class="form-control" value="{{ overview.settings.min_monthly_turnover or 0 }}">
+                                        <span class="input-group-text">تومان</span>
+                                    </div>
+                                    <small class="text-muted">حداقل مجموع تراکنش‌های بسته توسط نماینده معرف در ۳۰ روز اخیر جهت آزادسازی پورسانت زیرمجموعه‌ها.</small>
                                 </div>
                             </div>
 
@@ -382,7 +585,7 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary px-4 py-2 fw-bold rounded-pill">
-                                <i class="fas fa-save me-1"></i> ذخیره تنظیمات زیرمجموعه‌گیری
+                                <i class="fas fa-save me-1"></i> ذخیره تنظیمات زیرمجموعه‌گیری همکاران
                             </button>
                         </form>
                     </div>

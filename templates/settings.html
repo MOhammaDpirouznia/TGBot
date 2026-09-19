@@ -19,7 +19,7 @@
     <!-- قرص‌های دسته‌بندی موضوعی -->
     <div class="d-flex align-items-center gap-2 overflow-x-auto pb-2 mb-2 settings-pills-bar" style="scrollbar-width: thin;">
         <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-2 text-nowrap settings-category-pill active shadow-sm" data-category="all" onclick="filterSettingsCategory('all', this)">
-            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">18</span>
+            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">19</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="infra" onclick="filterSettingsCategory('infra', this)">
             <i class="fas fa-server me-1 text-primary"></i> متغیرهای زیرساخت و سرور <span class="badge bg-primary-subtle text-primary ms-1">1</span>
@@ -40,7 +40,7 @@
             <i class="fas fa-credit-card me-1 text-success"></i> مالی و درگاه‌ها <span class="badge bg-success-subtle text-success ms-1">3</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="sms" onclick="filterSettingsCategory('sms', this)">
-            <i class="fas fa-comment-sms me-1 text-warning"></i> پیامک و اطلاع‌رسانی <span class="badge bg-warning-subtle text-warning ms-1">1</span>
+            <i class="fas fa-comment-sms me-1 text-warning"></i> پیامک و اطلاع‌رسانی <span class="badge bg-warning-subtle text-warning ms-1">2</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="system" onclick="filterSettingsCategory('system', this)">
             <i class="fas fa-server me-1 text-secondary"></i> سیستم و بکاپ <span class="badge bg-secondary-subtle text-secondary ms-1">2</span>
@@ -3617,6 +3617,127 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- ═══ بخش ۵: پیامک و اطلاع‌رسانی ═══ -->
+<!-- کارت: تنظیمات ساعت یادآوری و اطلاع‌رسانی (به وقت تهران) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="sms" id="card-tehran-reminder">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-clock text-primary me-2"></i> تنظیمات ساعت یادآوری و اطلاع‌رسانی روزانه (به وقت تهران)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-location-dot me-1"></i> ساعت تهران: <span id="liveTehranClockBadge" class="fw-bold font-monospace">{{ tehran_now_formatted }}</span>
+            </span>
+            {% if reminder_settings and reminder_settings.get('reminder_notification_enabled') %}
+                <span class="badge bg-success-subtle text-success border border-success px-3 py-2"><i class="fas fa-circle-check me-1"></i>یادآوری فعال</span>
+            {% else %}
+                <span class="badge bg-secondary-subtle text-muted border px-3 py-2"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <div class="alert alert-primary bg-primary-subtle border-primary-subtle p-3 rounded-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <div class="fw-bold mb-1 text-primary d-flex align-items-center gap-2">
+                    <i class="fas fa-bell fs-5"></i>
+                    <span>ارسال هوشمند اعلان‌ها با ساعت رسمی تهران (Asia/Tehran / UTC+03:30)</span>
+                </div>
+                <div class="text-muted small">
+                    اعلان‌های روزانه مهلت انقضا، هشدارهای سررسید و یادآوری تمدید اشتراک‌ها دقیقاً در این ساعت به وقت تهران برای مشتریان و مدیران ارسال می‌گردند تا از ارسال پیام در ساعات نامناسب شبانه جلوگیری شود.
+                </div>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-white text-dark border px-3 py-2 shadow-2xs font-monospace">
+                    <i class="fas fa-calendar-day text-primary me-1"></i> امروز: {{ tehran_now_shamsi }}
+                </span>
+            </div>
+        </div>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_reminder_settings">
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="reminder_notification_enabled" id="reminderNotificationEnabledSwitch" {% if reminder_settings and reminder_settings.get('reminder_notification_enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="reminderNotificationEnabledSwitch">
+                    فعال‌سازی ارسال خودکار اعلان‌های دوره‌ای و یادآوری‌های روزانه
+                </label>
+                <div class="form-text text-muted small">
+                    در صورت غیرفعال بودن، اعلان‌های روزانه انقضا و تمدید خودکار ارسال نخواهند شد (هشدارهای مصرف ترافیک به کار خود ادامه می‌دهند).
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold d-flex align-items-center justify-content-between">
+                        <span><i class="fas fa-business-time text-primary me-1"></i> ساعت ارسال یادآوری روزانه (به وقت تهران):</span>
+                        <span class="badge bg-light text-primary border">پیش‌فرض: ساعت ۱۲:۰۰ ظهر</span>
+                    </label>
+                    <select class="form-select form-select-lg fw-bold" name="reminder_notification_hour" id="reminderNotificationHourSelect">
+                        {% for h in range(24) %}
+                            <option value="{{ h }}" {% if reminder_settings and reminder_settings.get('reminder_notification_hour') == h %}selected{% elif not reminder_settings and h == 12 %}selected{% endif %}>
+                                ساعت {{ "%02d:00"|format(h) }} به وقت تهران
+                                {% if h == 12 %} (پیش‌فرض و پیشنهادی - ۱۲ ظهر)
+                                {% elif h == 10 %} (ساعت ۱۰ صبح)
+                                {% elif h == 11 %} (ساعت ۱۱ قبل از ظهر)
+                                {% elif h == 14 %} (ساعت ۲ بعد از ظهر)
+                                {% elif h == 18 %} (ساعت ۶ عصر)
+                                {% elif h == 20 %} (ساعت ۸ شب)
+                                {% elif h < 6 %} (نیمه‌شب)
+                                {% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text text-muted small">
+                        سیستم هر روز با رسیدن ساعت تهران به این مقدار، چرخه یادآوری‌های روزانه انقضا و تمدید اشتراک‌ها را اجرا می‌کند.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="bg-light p-3 rounded-3 border h-100">
+                        <label class="form-label fw-bold mb-2">
+                            <i class="fas fa-shield-halved text-success me-1"></i> محدوده ساعات سکوت شبانه (عدم مزاحمت):
+                        </label>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="reminder_quiet_hours_enabled" id="reminderQuietHoursSwitch" {% if reminder_settings and reminder_settings.get('reminder_quiet_hours_enabled') %}checked{% endif %}>
+                            <label class="form-check-label small fw-bold" for="reminderQuietHoursSwitch">رعایت ساعات استراحت شبانه (عدم ارسال پیام‌های غیراضطراری)</label>
+                        </div>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">از ساعت شب:</label>
+                                <select class="form-select form-select-sm font-monospace" name="reminder_quiet_start">
+                                    {% for qh in range(20, 25) %}
+                                        <option value="{{ qh % 24 }}" {% if reminder_settings and reminder_settings.get('reminder_quiet_start') == (qh % 24) %}selected{% elif not reminder_settings and qh == 23 %}selected{% endif %}>{{ "%02d:00"|format(qh % 24) }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">تا ساعت صبح:</label>
+                                <select class="form-select form-select-sm font-monospace" name="reminder_quiet_end">
+                                    {% for qh in range(6, 12) %}
+                                        <option value="{{ qh }}" {% if reminder_settings and reminder_settings.get('reminder_quiet_end') == qh %}selected{% elif not reminder_settings and qh == 9 %}selected{% endif %}>{{ "%02d:00"|format(qh) }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
+                <div class="text-muted small">
+                    <i class="fas fa-info-circle text-primary me-1"></i>
+                    هشدارهای بحرانی مصرف ترافیک (۹۵٪) بلافاصله جهت تداوم سرویس ارسال می‌شوند.
+                </div>
+                <button type="submit" class="btn btn-primary px-4 py-2 fw-bold rounded-pill shadow-sm">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات ساعت یادآوری
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- کارت ۱۴: درگاه پیامک -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="sms" id="card-sms">
     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
@@ -4374,6 +4495,33 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     } catch (e) {}
+
+    // به‌روزرسانی زنده ساعت تهران
+    function updateTehranLiveClock() {
+        const el = document.getElementById('liveTehranClockBadge');
+        if (!el) return;
+        try {
+            const now = new Date();
+            const tehranTimeStr = new Intl.DateTimeFormat('fa-IR', {
+                timeZone: 'Asia/Tehran',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).format(now);
+            el.textContent = tehranTimeStr;
+        } catch (e) {
+            try {
+                const now = new Date();
+                const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                const tehranDate = new Date(utc + (3.5 * 3600000));
+                const pad = (n) => n < 10 ? '0' + n : n;
+                el.textContent = `${pad(tehranDate.getHours())}:${pad(tehranDate.getMinutes())}:${pad(tehranDate.getSeconds())}`;
+            } catch (ex) {}
+        }
+    }
+    updateTehranLiveClock();
+    setInterval(updateTehranLiveClock, 1000);
 });
 </script>
 

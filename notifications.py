@@ -8,9 +8,20 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from database import db
-from utils import get_now_naive, get_now_iso, gregorian_to_shamsi_full
+from utils import (
+    get_now,
+    get_now_tehran,
+    get_now_naive,
+    get_now_iso,
+    gregorian_to_shamsi_full,
+    parse_to_tehran_dt,
+    is_tehran_hour,
+    is_in_quiet_hours,
+    TEHRAN_TZ,
+)
 from sms_service import send_sms
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -18,13 +29,14 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationScheduler:
-    """برنامه‌ریز اعلان‌های خودکار"""
+    """برنامه‌ریز اعلان‌های خودکار با پشتیبانی از ساعت رسمی تهران"""
     
     def __init__(self, bot=None, hidify=None):
         self.bot = bot
         self.hidify = hidify
         self.running = False
         self.task = None
+        self.last_daily_reminder_date = None
     
     def set_bot(self, bot):
         """تنظیم ربات"""
@@ -72,20 +84,21 @@ class NotificationScheduler:
                 break
 
     async def _run_loop(self):
-        """حلقه اصلی بررسی اعلان‌ها"""
+        """حلقه اصلی بررسی اعلان‌ها منطبق با ساعت تهران (بررسی هر ۱۵ دقیقه)"""
+        await asyncio.sleep(10)
         while self.running:
             try:
                 await self._check_all_notifications()
-                # هر ۱ ساعت بررسی کن
-                await asyncio.sleep(3600)
+                # بررسی هر ۱۵ دقیقه جهت تطبیق دقیق با ساعت یادآوری تهران
+                await asyncio.sleep(900)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in notification loop: {e}")
-                await asyncio.sleep(300)
+                await asyncio.sleep(120)
     
     async def _check_all_notifications(self):
-        """بررسی تمام اعلان‌ها با همگام‌سازی مصرف زنده هیدیفای"""
+        """بررسی تمام اعلان‌ها با ساعت رسمی تهران و همگام‌سازی مصرف زنده هیدیفای"""
         if not self.bot:
             return
         
@@ -107,7 +120,31 @@ class NotificationScheduler:
                 except Exception as e:
                     logger.warning(f"Could not live sync Hiddify users for notifications: {e}")
 
-            # ۲. دریافت تمام کاربران فعال
+            # ۲. بررسی زمان‌بندی ساعت یادآوری و وضعیت ساعات سکوت به وقت تهران
+            now_tehran = get_now()
+            today_tehran_str = now_tehran.strftime("%Y-%m-%d")
+            current_tehran_hour = now_tehran.hour
+
+            reminder_settings = db.get_reminder_settings()
+            reminder_enabled = reminder_settings.get("reminder_notification_enabled", True)
+            target_reminder_hour = int(reminder_settings.get("reminder_notification_hour", 12))
+            quiet_enabled = reminder_settings.get("reminder_quiet_hours_enabled", True)
+            quiet_start = int(reminder_settings.get("reminder_quiet_start", 23))
+            quiet_end = int(reminder_settings.get("reminder_quiet_end", 9))
+
+            in_quiet = False
+            if quiet_enabled:
+                in_quiet = is_in_quiet_hours(quiet_start, quiet_end)
+
+            # آیا زمان اجرای چرخه یادآوری روزانه است؟
+            # اگر یادآوری فعال است، در ساعات سکوت نیستیم، ساعت تهران >= ساعت هدف است، و امروز هنوز اجرا نشده است:
+            is_daily_reminder_time = False
+            if reminder_enabled and not in_quiet:
+                if current_tehran_hour >= target_reminder_hour and self.last_daily_reminder_date != today_tehran_str:
+                    is_daily_reminder_time = True
+                    logger.info(f"Triggering daily reminder cycle at Tehran hour {current_tehran_hour} (target: {target_reminder_hour}:00)")
+
+            # ۳. دریافت تمام کاربران فعال
             users = db.get_all_users()
             
             for user in users:
@@ -119,15 +156,19 @@ class NotificationScheduler:
                 subscriptions = db.get_user_subscriptions(telegram_id, status="active")
                 
                 for sub in subscriptions:
-                    await self._check_expiration(telegram_id, sub)
-                    await self._check_usage(telegram_id, sub)
+                    # بررسی انقضا در ساعت یادآوری روزانه
+                    if is_daily_reminder_time:
+                        await self._check_expiration(telegram_id, sub)
+                    # بررسی مصرف حجم (پیوسته در هر چرخه با توجه به ساعات سکوت)
+                    await self._check_usage(telegram_id, sub, in_quiet=in_quiet)
                 
-                # بررسی اشتراک‌های منقضی شده برای یادآوری
-                expired_subs = db.get_user_subscriptions(telegram_id, status="expired")
-                if expired_subs:
-                    await self._send_renewal_reminder(telegram_id)
+                # بررسی اشتراک‌های منقضی شده برای یادآوری روزانه تمدید در ساعت یادآوری تهران
+                if is_daily_reminder_time:
+                    expired_subs = db.get_user_subscriptions(telegram_id, status="expired")
+                    if expired_subs:
+                        await self._send_renewal_reminder(telegram_id, expired_subs)
 
-            # ۳. بررسی اشتراک‌های حضوری و فاقد تلگرام (ارسال پیامک با لینک اختصاصی تمدید)
+            # ۴. بررسی اشتراک‌های حضوری و فاقد تلگرام (ارسال پیامک با لینک اختصاصی تمدید)
             try:
                 conn = db.get_connection()
                 offline_subs = conn.execute("""
@@ -137,11 +178,21 @@ class NotificationScheduler:
                 conn.close()
 
                 for o_sub in offline_subs:
-                    await self._check_offline_subscription(dict(o_sub))
+                    await self._check_offline_subscription(
+                        dict(o_sub),
+                        check_expiration=is_daily_reminder_time,
+                        check_usage=True,
+                        in_quiet=in_quiet
+                    )
             except Exception as e_off:
                 logger.error(f"Error checking offline subscriptions: {e_off}")
             
-            # Check Admin Reminders
+            # در صورت اجرای موفق یادآوری روزانه، تاریخ امروز به وقت تهران ثبت شود
+            if is_daily_reminder_time:
+                self.last_daily_reminder_date = today_tehran_str
+                logger.info(f"Daily reminder cycle finished successfully for Tehran date: {today_tehran_str}")
+
+            # ۵. بررسی هشدارهای سررسید و ترافیک مدیریت با ساعت تهران
             await self._check_admin_reminders()
             
             logger.info("Notifications checked successfully")
@@ -166,7 +217,7 @@ class NotificationScheduler:
         return ""
 
     async def _check_expiration(self, telegram_id, subscription):
-        """بررسی منقضی شدن اشتراک بر اساس تاریخ دقیق انقضا"""
+        """بررسی منقضی شدن اشتراک بر اساس تاریخ انقضا و ساعت تهران"""
         try:
             start_date_str = subscription.get("start_date")
             duration = subscription.get("duration", 30)
@@ -174,28 +225,16 @@ class NotificationScheduler:
             
             expire_dt = None
             if expire_date_str:
-                try:
-                    expire_dt = datetime.fromisoformat(expire_date_str)
-                except Exception:
-                    try:
-                        expire_dt = datetime.strptime(str(expire_date_str)[:10], "%Y-%m-%d")
-                    except Exception:
-                        pass
+                expire_dt = parse_to_tehran_dt(expire_date_str)
 
             if not expire_dt and start_date_str:
-                try:
-                    start_dt = datetime.fromisoformat(start_date_str)
-                except Exception:
-                    try:
-                        start_dt = datetime.strptime(str(start_date_str)[:10], "%Y-%m-%d")
-                    except Exception:
-                        start_dt = get_now_naive()
+                start_dt = parse_to_tehran_dt(start_date_str) or get_now()
                 expire_dt = start_dt + timedelta(days=duration)
 
             if not expire_dt:
                 return
 
-            now = get_now_naive()
+            now = get_now()
             days_left = (expire_dt.date() - now.date()).days
             
             # اعلان ۳ روز قبل
@@ -311,8 +350,8 @@ class NotificationScheduler:
         except Exception as e:
             logger.error(f"Error in _check_expiration: {e}")
     
-    async def _check_usage(self, telegram_id, subscription):
-        """بررسی مصرف حجم (۸۰٪ و ۹۵٪ اضطراری)"""
+    async def _check_usage(self, telegram_id, subscription, in_quiet: bool = False):
+        """بررسی مصرف حجم (۸۰٪ و ۹۵٪ اضطراری) با رعایت ساعات سکوت برای هشدارهای غیراضطراری"""
         try:
             data_limit = subscription.get("data_limit", 0)
             data_used = subscription.get("data_used", 0)
@@ -326,7 +365,7 @@ class NotificationScheduler:
             remaining = data_limit - data_used
             portal_url = self._build_portal_url(subscription)
 
-            # اعلان ۹۵٪ مصرف (هشدار اضطراری)
+            # اعلان ۹۵٪ مصرف (هشدار اضطراری) - بدون محدودیت ساعت سکوت
             if usage_percent >= 95:
                 notif_type = f"usage_95_{sub_id}"
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
@@ -369,8 +408,10 @@ class NotificationScheduler:
                         except Exception as e:
                             logger.error(f"Error sending 95% usage SMS: {e}")
 
-            # اعلان ۸۰٪ مصرف
+            # اعلان ۸۰٪ مصرف (در ساعات سکوت شبانه ارسال نمی‌شود)
             elif usage_percent >= 80:
+                if in_quiet:
+                    return
                 notif_type = f"usage_80_{sub_id}"
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
                     text = f"""
@@ -418,8 +459,8 @@ class NotificationScheduler:
         except Exception as e:
             logger.error(f"Error in _check_usage: {e}")
 
-    async def _check_offline_subscription(self, subscription):
-        """بررسی اشتراک‌های حضوری و فاقد تلگرام و ارسال پیامک تمدید با لینک اختصاصی"""
+    async def _check_offline_subscription(self, subscription, check_expiration: bool = True, check_usage: bool = True, in_quiet: bool = False):
+        """بررسی اشتراک‌های حضوری و فاقد تلگرام و ارسال پیامک تمدید با لینک اختصاصی به وقت تهران"""
         try:
             phone = subscription.get("phone_number")
             if not phone:
@@ -429,63 +470,102 @@ class NotificationScheduler:
             plan_name = subscription.get("plan_name", "اشتراک")
             portal_url = self._build_portal_url(subscription)
 
-            # ۱. بررسی تاریخ انقضا (۳ روز مانده)
-            expire_date_str = subscription.get("expire_date")
-            if expire_date_str:
-                try:
-                    exp_dt = datetime.fromisoformat(expire_date_str)
-                    days_left = max(0, (exp_dt.date() - get_now_naive().date()).days)
-                    if 0 < days_left <= 3:
-                        notif_type = f"offline_expiring_{sub_id}_{days_left}d"
+            # ۱. بررسی تاریخ انقضا در ساعت یادآوری روزانه تهران (۳ روز مانده)
+            if check_expiration:
+                expire_date_str = subscription.get("expire_date")
+                if expire_date_str:
+                    try:
+                        exp_dt = parse_to_tehran_dt(expire_date_str)
+                        if exp_dt:
+                            days_left = (exp_dt.date() - get_now().date()).days
+                            if 0 < days_left <= 3:
+                                notif_type = f"offline_expiring_{sub_id}_{days_left}d"
+                                if not db.was_notification_sent(0, notif_type, sub_id):
+                                    sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
+                                    send_sms(phone, sms_text, db_instance=db)
+                                    db.save_notification(0, notif_type, sub_id)
+                                    logger.info(f"Offline expiration SMS ({days_left}d) sent to {phone} at Tehran time")
+                    except Exception as e:
+                        logger.debug(f"Error parsing offline expire date: {e}")
+
+            # ۲. بررسی مصرف حجم (۸۰٪ مصرف) با رعایت ساعات سکوت شبانه
+            if check_usage and not in_quiet:
+                data_limit = float(subscription.get("data_limit") or 0)
+                data_used = float(subscription.get("data_used") or 0)
+                if data_limit > 0:
+                    usage_percent = (data_used / data_limit) * 100
+                    if usage_percent >= 80:
+                        notif_type = f"offline_usage_80_{sub_id}"
                         if not db.was_notification_sent(0, notif_type, sub_id):
-                            sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
+                            sms_text = f"کاربر گرامی، کمتر از ۲۰٪ از حجم بسته شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
                             send_sms(phone, sms_text, db_instance=db)
                             db.save_notification(0, notif_type, sub_id)
-                            logger.info(f"Offline expiration SMS ({days_left}d) sent to {phone}")
-                except Exception as e:
-                    logger.debug(f"Error parsing offline expire date: {e}")
-
-            # ۲. بررسی مصرف حجم (۸۰٪ مصرف)
-            data_limit = float(subscription.get("data_limit") or 0)
-            data_used = float(subscription.get("data_used") or 0)
-            if data_limit > 0:
-                usage_percent = (data_used / data_limit) * 100
-                if usage_percent >= 80:
-                    notif_type = f"offline_usage_80_{sub_id}"
-                    if not db.was_notification_sent(0, notif_type, sub_id):
-                        sms_text = f"کاربر گرامی، کمتر از ۲۰٪ از حجم بسته شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
-                        send_sms(phone, sms_text, db_instance=db)
-                        db.save_notification(0, notif_type, sub_id)
-                        logger.info(f"Offline usage 80% SMS sent to {phone}")
+                            logger.info(f"Offline usage 80% SMS sent to {phone}")
         except Exception as ex:
             logger.error(f"Error in _check_offline_subscription: {ex}")
     
-    async def _send_renewal_reminder(self, telegram_id):
-        """ارسال یادآوری تمدید"""
+    async def _send_renewal_reminder(self, telegram_id, expired_subs=None):
+        """ارسال یادآوری روزانه تمدید در ساعت تعیین‌شده تهران"""
         try:
-            # بررسی اینکه آیا قبلاً یادآوری ارسال شده
-            notif_type = "daily_renewal_reminder"
+            today_str = get_now().strftime("%Y%m%d")
+            notif_type = f"daily_renewal_{today_str}"
             if db.was_notification_sent(telegram_id, notif_type):
                 return
+            
+            portal_url = ""
+            reseller_id = None
+            if expired_subs and isinstance(expired_subs, list) and len(expired_subs) > 0:
+                first_sub = expired_subs[0]
+                portal_url = self._build_portal_url(first_sub)
+                reseller_id = first_sub.get("reseller_id")
+
+            buttons = []
+            if expired_subs and isinstance(expired_subs, list) and len(expired_subs) > 0:
+                sub_id = expired_subs[0].get("id")
+                buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_{sub_id}")])
+            else:
+                buttons.append([InlineKeyboardButton("🛒 خرید اشتراک جدید", callback_data="buy_service")])
+
+            if portal_url:
+                buttons.append([InlineKeyboardButton("🌐 پورتال تمدید آنلاین (بدون فیلتر)", url=portal_url)])
+
+            reply_markup = InlineKeyboardMarkup(buttons)
             
             text = """
 💡 <b>یادآوری تمدید اشتراک</b>
 
 اشتراک شما منقضی شده است.
-برای استفاده مجدد از سرویس VPN، لطفاً اشتراک جدید خریداری کنید.
+جهت اتصال مجدد به شبکه و تداوم سرویس، لطفاً نسبت به تمدید یا خرید بسته جدید اقدام فرمایید.
 
-🛒 برای خرید، روی دکمه «🛒 خرید اشتراک» کلیک کنید.
+⏰ <i>این یادآوری روزانه بر اساس ساعت رسمی تهران ارسال گردیده است.</i>
 """
-            try:
-                await self.bot.send_message(
-                    chat_id=telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
+            sent = False
+            # در صورتی که کاربر اشتراک نمایندگی دارد، اولویت ارسال با ربات نماینده است
+            if reseller_id:
+                try:
+                    from dashboard import send_telegram_msg
+                    r_info = db.get_reseller(reseller_id) or {}
+                    r_tok = r_info.get("bot_token")
+                    if r_tok:
+                        sent = send_telegram_msg(telegram_id, text, reply_markup=reply_markup.to_dict(), bot_token=r_tok)
+                except Exception as ex_r:
+                    logger.debug(f"Could not send reminder via reseller bot: {ex_r}")
+
+            if not sent and self.bot:
+                try:
+                    await self.bot.send_message(
+                        chat_id=telegram_id,
+                        text=text,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup
+                    )
+                    sent = True
+                except Exception as e:
+                    logger.error(f"Error sending renewal reminder: {e}")
+
+            if sent:
                 db.save_notification(telegram_id, notif_type)
-                logger.info(f"Renewal reminder sent to {telegram_id}")
-            except Exception as e:
-                logger.error(f"Error sending renewal reminder: {e}")
+                logger.info(f"Renewal reminder ({today_str}) sent to {telegram_id} at Tehran time")
         
         except Exception as e:
             logger.error(f"Error in _send_renewal_reminder: {e}")
@@ -506,7 +586,7 @@ class NotificationScheduler:
             return False
 
     async def _check_admin_reminders(self):
-        """Check admin reminders and send telegram notification if triggered."""
+        """بررسی هشدارهای سررسید و ترافیک مدیریت با ساعت رسمی تهران و ارسال به تلگرام/پیامک"""
         from bot import ADMIN_ID
         if not self.bot:
             return
@@ -517,19 +597,23 @@ class NotificationScheduler:
             cursor.execute("SELECT * FROM admin_reminders WHERE is_active = 1 AND is_done = 0")
             reminders = [dict(r) for r in cursor.fetchall()]
             
-            now_iso = get_now_iso()
+            now_tehran = get_now()
+            now_iso = now_tehran.isoformat()
+            one_day_ago = now_tehran - timedelta(days=1)
             
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             import sms_service
             
             for r in reminders:
                 trigger = False
                 msg = ""
                 if r['type'] == 'date':
-                    if r['target_date'] and r['target_date'] <= now_iso:
-                        if not r['last_notified_at'] or r['last_notified_at'] < (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z":
+                    target_dt = parse_to_tehran_dt(r.get('target_date'))
+                    if target_dt and target_dt <= now_tehran:
+                        last_notified = parse_to_tehran_dt(r.get('last_notified_at'))
+                        if not last_notified or last_notified < one_day_ago:
                             trigger = True
-                            msg = f"🔔 <b>یادآوری سررسید:</b> {r['title']}\nتوضیحات: {r['description']}"
+                            target_shamsi = gregorian_to_shamsi_full(target_dt)
+                            msg = f"🔔 <b>یادآوری سررسید (به وقت تهران):</b> {r['title']}\n📅 موعد سررسید: <b>{target_shamsi}</b>\nتوضیحات: {r.get('description') or ''}"
                 elif r['type'] == 'traffic':
                     c = conn.cursor()
                     c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
@@ -544,19 +628,20 @@ class NotificationScheduler:
                     threshold = r.get('threshold_percent') or 100
                     
                     if limit > 0 and (current_traffic / limit) * 100 >= threshold:
-                        if not r['last_notified_at'] or r['last_notified_at'] < (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z":
+                        last_notified = parse_to_tehran_dt(r.get('last_notified_at'))
+                        if not last_notified or last_notified < one_day_ago:
                             trigger = True
-                            msg = f"⚠️ <b>یادآوری ترافیک:</b> {r['title']}\nترافیک مصرفی: {current_traffic:.2f} GB از {limit:.2f} GB (بیش از {threshold}%)\nتوضیحات: {r['description']}"
+                            msg = f"⚠️ <b>یادآوری ترافیک:</b> {r['title']}\nترافیک مصرفی: {current_traffic:.2f} GB از {limit:.2f} GB (بیش از {threshold}%)\nتوضیحات: {r.get('description') or ''}"
                 
                 if trigger:
-                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    keyboard = InlineKeyboardMarkup([
                         [
-                            InlineKeyboardButton(text="✅ انجام شد", callback_data=f"remind_done_{r['id']}"),
-                            InlineKeyboardButton(text="🔄 تکرار (1 روز بعد)", callback_data=f"remind_snooze_{r['id']}")
+                            InlineKeyboardButton("✅ انجام شد", callback_data=f"remind_done_{r['id']}"),
+                            InlineKeyboardButton("🔄 تکرار (1 روز بعد)", callback_data=f"remind_snooze_{r['id']}")
                         ]
                     ])
                     
-                    # Target selection for Telegram
+                    # انتخاب گیرندگان تلگرام
                     target_ids = []
                     if r.get('send_telegram', 1):
                         tt = r.get('telegram_target', 'main_admin')

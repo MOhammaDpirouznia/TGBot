@@ -4,8 +4,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 import jdatetime
 
-# ─── منطقه زمانی تهران (UTC+3:30) ───
-TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+# ─── منطقه زمانی تهران (UTC+3:30 / Asia/Tehran) ───
+try:
+    from zoneinfo import ZoneInfo
+    _tz_candidate = ZoneInfo("Asia/Tehran")
+    datetime.now(_tz_candidate)
+    TEHRAN_TZ = _tz_candidate
+except Exception:
+    TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30), name="Asia/Tehran")
 
 
 def get_now() -> datetime:
@@ -14,6 +20,13 @@ def get_now() -> datetime:
     
     Returns:
         datetime object با منطقه زمانی تهران
+    """
+    return datetime.now(TEHRAN_TZ)
+
+
+def get_now_tehran() -> datetime:
+    """
+    دریافت زمان فعلی با ساعت تهران (نام مستعار get_now جهت وضوح بیشتر)
     """
     return datetime.now(TEHRAN_TZ)
 
@@ -38,6 +51,65 @@ def get_now_timestamp() -> int:
     دریافت زمان فعلی تهران به فرمت timestamp
     """
     return int(get_now().timestamp())
+
+
+def parse_to_tehran_dt(date_input: Union[str, datetime, int, float, None]) -> Optional[datetime]:
+    """
+    تبدیل انواع ورودی تاریخ/زمان (ISO با Z، با افست، بدون افست، تایم‌استمپ یا datetime) به datetime معتبر با منطقه زمانی تهران
+    """
+    if not date_input:
+        return None
+    try:
+        if isinstance(date_input, (int, float)):
+            return datetime.fromtimestamp(date_input, tz=TEHRAN_TZ)
+        if isinstance(date_input, datetime):
+            if date_input.tzinfo is None:
+                return date_input.replace(tzinfo=TEHRAN_TZ)
+            return date_input.astimezone(TEHRAN_TZ)
+        
+        s = str(date_input).strip()
+        if not s:
+            return None
+            
+        if s.endswith("Z"):
+            clean = s[:-1]
+            dt = datetime.fromisoformat(clean).replace(tzinfo=timezone.utc)
+            return dt.astimezone(TEHRAN_TZ)
+        elif "+" in s or (s.count("-") >= 3):
+            dt = datetime.fromisoformat(s)
+            return dt.astimezone(TEHRAN_TZ)
+        else:
+            if "T" in s:
+                dt = datetime.fromisoformat(s)
+            elif " " in s:
+                dt = datetime.fromisoformat(s.replace(" ", "T"))
+            else:
+                dt = datetime.strptime(s[:10], "%Y-%m-%d")
+            return dt.replace(tzinfo=TEHRAN_TZ)
+    except Exception:
+        return None
+
+
+def is_tehran_hour(target_hour: int) -> bool:
+    """بررسی تطابق ساعت کنونی تهران با ساعت هدف (۰ تا ۲۳)"""
+    try:
+        return get_now().hour == int(target_hour)
+    except Exception:
+        return False
+
+
+def is_in_quiet_hours(start_hour: int = 23, end_hour: int = 9) -> bool:
+    """بررسی قرار داشتن زمان کنونی تهران در ساعات سکوت و استراحت شبانه"""
+    try:
+        h = get_now().hour
+        sh = int(start_hour)
+        eh = int(end_hour)
+        if sh > eh:
+            return h >= sh or h < eh
+        else:
+            return sh <= h < eh
+    except Exception:
+        return False
 
 
 def gregorian_to_shamsi(date_input: Union[str, datetime], fmt: str = "%Y/%m/%d") -> str:

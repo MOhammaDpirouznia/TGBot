@@ -559,7 +559,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and len(context.args) > 0:
         arg = context.args[0].strip()
         if arg.startswith("ref_"):
-            context.user_data["pending_ref"] = arg.replace("ref_", "")
+            try:
+                ref_id_int = int(arg.replace("ref_", ""))
+                if ref_id_int and ref_id_int != user.id:
+                    db.add_customer_referral(referrer_id=ref_id_int, referred_id=user.id, reseller_id=0)
+                    context.user_data["pending_ref"] = str(ref_id_int)
+            except Exception as e_ref:
+                logger.debug(f"Error parsing referral in start: {e_ref}")
 
     # بررسی بلاک بودن کاربر
     if db.is_blocked(user.id) and user.id != ADMIN_ID:
@@ -616,9 +622,9 @@ async def select_language_callback(update: Update, context: ContextTypes.DEFAULT
         try:
             ref_id = int(context.user_data.pop("pending_ref"))
             if ref_id != user.id:
-                db.add_referral(ref_id, user.id)
+                db.add_customer_referral(referrer_id=ref_id, referred_id=user.id, reseller_id=0)
         except Exception as e:
-            logger.warning(f"Error saving referral on language select: {e}")
+            logger.error(f"Error processing referral: {e}")
 
     # بررسی عضویت در کانال‌ها
     if REQUIRED_CHANNELS:
@@ -691,6 +697,14 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone_number = contact.phone_number
     db.set_user_phone(user.id, phone_number)
     logger.info(f"User {user.id} ({user.username}) successfully authenticated with phone: {phone_number}")
+
+    if context.user_data.get("pending_ref"):
+        try:
+            ref_id = int(context.user_data.pop("pending_ref"))
+            if ref_id != user.id:
+                db.add_customer_referral(referrer_id=ref_id, referred_id=user.id, reseller_id=0)
+        except Exception as e_pref:
+            logger.debug(f"Error resolving pending referral in handle_contact: {e_pref}")
 
     # ارسال پیام موفقیت و کیبورد منوی اصلی
     reply_markup = get_main_keyboard(user.id, ADMIN_ID, lang)
@@ -2256,6 +2270,30 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                             context.user_data.pop("discount_code", None)
                             context.user_data.pop("discount_amount", None)
                             context.user_data.pop("final_price", None)
+
+                        # تکمیل پاداش دعوت مشتری در تمدید از کیف پول
+                        try:
+                            ref_res = db.complete_customer_referral(referred_id=user.id, order_amount=price, reseller_id=0)
+                            if ref_res.get("success"):
+                                ref_id = ref_res["referrer_id"]
+                                rew_amt = ref_res.get("reward_amount", 0)
+                                new_bal = ref_res.get("new_balance", 0)
+                                try:
+                                    await context.bot.send_message(
+                                        chat_id=ref_id,
+                                        text=(
+                                            f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                                            f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{price:,} تومان</b> تمدید کرد.\n"
+                                            f"🎁 مبلغ <b>{rew_amt:,} تومان</b> پاداش نقدی به کیف پول شما افزوده شد.\n"
+                                            f"💳 موجودی فعلی کیف پول: <b>{new_bal:,} تومان</b>"
+                                        ),
+                                        parse_mode="HTML"
+                                    )
+                                except Exception:
+                                    pass
+                        except Exception as e_crf:
+                            logger.debug(f"Error completing referral in wallet renew: {e_crf}")
+
                         return CHOOSING
             finally:
                 RenewalGuard.release_lock(ren_sub_id)
@@ -2263,47 +2301,46 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         # ساخت اکانت جدید در هیدیفای (در صورتی که تمدید نباشد)
         username = f"tg_{user.id}"
         try:
-            result = await hidify.create_user(
+            user_data = await hidify.create_user(
                 name=username,
-                usage_limit_gb=plan.get("data_limit") if plan.get("data_limit", 0) > 0 else None,
-                package_days=plan.get("duration", 30),
-                enable=True,
-                comment=str(user.id)
+                usage_limit_gb=plan.get("data_limit", 0) if plan.get("data_limit", 0) > 0 else None,
+                package_days=plan.get("duration", 30)
             )
-            user_uuid = result.get("uuid", "")
+            user_uuid = user_data.get("uuid")
             if not user_uuid:
-                raise Exception("UUID received empty from Hiddify")
+                raise Exception("پاسخ سرور شامل شناسه کاربر نبود")
 
+            # ذخیره اشتراک در دیتابیس
             db.save_subscription(
                 telegram_id=user.id,
                 hidify_uuid=user_uuid,
                 plan_id=plan_id,
-                plan_name=plan.get("name", "نامشخص"),
+                plan_name=plan.get("name"),
                 data_limit=plan.get("data_limit", 0),
                 duration=plan.get("duration", 30),
                 status="active",
                 account_name=username,
-                account_comment=str(user.id),
-                created_by="admin_bot",
+                created_by="wallet"
             )
 
-            # اطلاع به ادمین
+            # ثبت تراکنش موفق
             try:
-                await context.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=f"⚡ <b>خرید آنی از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 بسته: <b>{plan.get('name')}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>\n💳 موجودی پس از کسر: <b>{deduct_res.get('new_balance'):,} تومان</b>",
-                    parse_mode="HTML"
+                db.save_transaction(
+                    user_id=user.id,
+                    amount=price,
+                    plan_id=plan_id,
+                    plan_name=plan.get("name", ""),
+                    status="approved",
+                    gateway="wallet"
                 )
             except Exception:
                 pass
 
-            # ارسال لینک به کاربر
             base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
             proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
             subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
-
             details = (
-                f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک فوراً فعال شد!\n\n"
+                f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک فعال شد!\n\n"
                 f"📋 بسته: <b>{plan.get('name')}</b>\n"
                 f"📊 حجم: <b>{plan.get('data_limit', 'نامحدود')} گیگابایت</b>\n"
                 f"⏰ مدت اعتبار: <b>{plan.get('duration', 30)} روز</b>\n"
@@ -2321,6 +2358,30 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data.pop("discount_code", None)
                 context.user_data.pop("discount_amount", None)
                 context.user_data.pop("final_price", None)
+
+            # تکمیل پاداش دعوت مشتری در خرید جدید از کیف پول
+            try:
+                ref_res = db.complete_customer_referral(referred_id=user.id, order_amount=price, reseller_id=0)
+                if ref_res.get("success"):
+                    ref_id = ref_res["referrer_id"]
+                    rew_amt = ref_res.get("reward_amount", 0)
+                    new_bal = ref_res.get("new_balance", 0)
+                    try:
+                        await context.bot.send_message(
+                            chat_id=ref_id,
+                            text=(
+                                f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                                f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{price:,} تومان</b> خریداری کرد.\n"
+                                f"🎁 مبلغ <b>{rew_amt:,} تومان</b> پاداش نقدی به کیف پول شما افزوده شد.\n"
+                                f"💳 موجودی فعلی کیف پول: <b>{new_bal:,} تومان</b>"
+                            ),
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+            except Exception as e_crf:
+                logger.debug(f"Error completing referral in wallet buy: {e_crf}")
+
             return CHOOSING
 
         except Exception as e:
@@ -4519,33 +4580,55 @@ async def referral_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await ensure_user_verified(update, context):
         return CHOOSING
 
+    cfg = db.get_customer_referral_config(0)
+    if not cfg.get("is_enabled"):
+        text = "⚠️ سیستم کسب درآمد و دعوت از دوستان در حال حاضر غیرفعال می‌باشد."
+        keyboard = [[InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(text, reply_markup=reply_markup)
+        return CHOOSING
+
     user = update.effective_user
     bot_info = await context.bot.get_me()
     bot_username = bot_info.username
 
     ref_link = f"https://t.me/{bot_username}?start=ref_{user.id}"
-    stats = db.get_referral_stats(user.id)
-    wallet = db.get_wallet(user.id)
-    balance = wallet.get("balance", 0)
+    stats = db.get_customer_referral_stats(user.id, reseller_id=0)
+    balance = stats.get("wallet_balance", 0)
+
+    if cfg.get("reward_type") == "percent":
+        reward_desc = f"{cfg.get('reward_amount', 10)}٪ از مبلغ خرید بسته"
+    else:
+        reward_desc = f"{int(cfg.get('reward_amount', 10000)):,} تومان"
+
+    cond_desc = "اولین خرید بسته" if cfg.get("reward_condition") == "first_purchase" else "تمامی خریدهای بسته"
+    min_order = int(cfg.get("min_purchase_amount") or 0)
+    min_order_str = f"• 🎯 حداقل مبلغ خرید بسته: <b>{min_order:,}</b> تومان\n" if min_order > 0 else ""
+
+    custom_text = (cfg.get("custom_text") or "").strip()
+    custom_section = f"\n📢 <i>{html.escape(custom_text)}</i>\n" if custom_text else ""
 
     text = f"""
 👥 <b>سیستم کسب درآمد و دعوت از دوستان</b>
 
-با معرفی ربات به دوستان خود، به ازای هر خرید موفق آن‌ها <b>۱۰,۰۰۰ تومان</b> پاداش نقدی در کیف پول دریافت کنید!
-
+با معرفی ربات به دوستان خود، به ازای {cond_desc} موفق آن‌ها <b>{reward_desc}</b> پاداش نقدی در کیف پول دریافت کنید!
+{min_order_str}{custom_section}
 🔗 <b>لینک دعوت اختصاصی شما:</b>
 <code>{ref_link}</code>
 
 📊 <b>آمار دعوت‌های شما:</b>
-• 👥 کل افراد دعوت شده: <b>{stats['total_invites']}</b> نفر
-• ✅ خریدهای موفق ثبت شده: <b>{stats['rewarded_invites']}</b> نفر
-• 💰 مجموع پاداش کسب شده: <b>{stats['total_reward']:,}</b> تومان
+• 👥 کل افراد دعوت شده: <b>{stats.get('total_referred', 0)}</b> نفر
+• ✅ خریدهای موفق ثبت شده: <b>{stats.get('completed_referrals', 0)}</b>
+• 💰 مجموع پاداش کسب شده: <b>{stats.get('total_earnings', 0):,}</b> تومان
 • 💳 موجودی فعلی کیف پول: <b>{balance:,}</b> تومان
 
-💡 موجودی کیف پول در خریدها و تمدیدهای بعدی شما قابل استفاده است.
+💡 موجودی کیف پول در خریدها و تمدیدهای بعدی <b>بسته</b> قابل استفاده است.
 """
     keyboard = [
-        [InlineKeyboardButton("📤 اشتراک‌گذاری لینک دعوت", url=f"https://t.me/share/url?url={ref_link}&text=خرید فیلترشکن پرسرعت و بدون قطعی")],
+        [InlineKeyboardButton("📤 اشتراک‌گذاری لینک دعوت", url=f"https://t.me/share/url?url={ref_link}&text=خرید بسته اینترنت آزاد با کیفیت عالی")],
         [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -5004,9 +5087,10 @@ async def admin_reminder_action_callback(update: Update, context: ContextTypes.D
         r = c.fetchone()
         if r:
             if r['type'] == 'date':
-                from datetime import datetime, timedelta
-                new_date = (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z"
-                c.execute("UPDATE admin_reminders SET target_date = ? WHERE id = ?", (new_date, reminder_id))
+                from datetime import timedelta
+                from utils import get_now
+                new_date = (get_now() + timedelta(days=1)).isoformat()
+                c.execute("UPDATE admin_reminders SET target_date = ?, last_notified_at = NULL WHERE id = ?", (new_date, reminder_id))
         conn.commit()
         conn.close()
         orig = query.message.text if query.message.text else "یادآوری"
@@ -6510,14 +6594,22 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     # ۴. پاداش رفرال به معرف در صورت وجود
     try:
-        ref_res = db.complete_referral(user_id)
+        paid_plan_price = int(plan.get("price", 0) or 0)
+        ref_res = db.complete_customer_referral(referred_id=user_id, order_amount=paid_plan_price, reseller_id=0)
         if ref_res.get("success"):
             ref_id = ref_res["referrer_id"]
+            rew_amt = ref_res.get("reward_amount", 0)
+            new_bal = ref_res.get("new_balance", 0)
             try:
                 await context.bot.send_message(
                     chat_id=ref_id,
-                    text="🎁 **تبریک!** کاربر معرفی شده توسط شما خرید انجام داد و مبلغ به کیف پول شما واریز شد!",
-                    parse_mode="Markdown"
+                    text=(
+                        f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                        f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{paid_plan_price:,} تومان</b> خریداری کرد.\n"
+                        f"🎁 مبلغ <b>{rew_amt:,} تومان</b> پاداش نقدی به کیف پول شما افزوده شد.\n"
+                        f"💳 موجودی فعلی کیف پول: <b>{new_bal:,} تومان</b>"
+                    ),
+                    parse_mode="HTML"
                 )
             except Exception:
                 pass
@@ -6790,14 +6882,22 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # ۵. پاداش رفرال به معرف در صورت وجود
     try:
-        ref_res = db.complete_referral(user_id)
+        paid_plan_price = int(plan.get("price", 0) or 0)
+        ref_res = db.complete_customer_referral(referred_id=user_id, order_amount=paid_plan_price, reseller_id=0)
         if ref_res.get("success"):
             ref_id = ref_res["referrer_id"]
+            rew_amt = ref_res.get("reward_amount", 0)
+            new_bal = ref_res.get("new_balance", 0)
             try:
                 await context.bot.send_message(
                     chat_id=ref_id,
-                    text="🎁 **تبریک!** کاربر معرفی شده توسط شما تمدید انجام داد و مبلغ به کیف پول شما واریز شد!",
-                    parse_mode="Markdown"
+                    text=(
+                        f"🎉 <b>پاداش دعوت از دوست واریز شد!</b>\n\n"
+                        f"یکی از دوستان دعوت‌شده توسط شما بسته‌ای به مبلغ <b>{paid_plan_price:,} تومان</b> تمدید کرد.\n"
+                        f"🎁 مبلغ <b>{rew_amt:,} تومان</b> پاداش نقدی به کیف پول شما افزوده شد.\n"
+                        f"💳 موجودی فعلی کیف پول: <b>{new_bal:,} تومان</b>"
+                    ),
+                    parse_mode="HTML"
                 )
             except Exception:
                 pass

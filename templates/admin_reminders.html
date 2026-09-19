@@ -43,7 +43,8 @@
                         </td>
                         <td>
                             {% if r.type == 'date' %}
-                                {{ r.target_date[:10] }}
+                                <span class="fw-semibold text-dark" title="{{ r.target_date }}">{{ r.target_date_shamsi if r.target_date_shamsi else r.target_date[:16] }}</span>
+                                <br><small class="text-muted"><i class="bi bi-clock me-1"></i>به وقت تهران</small>
                             {% else %}
                                 {{ "%.2f"|format(r.current_traffic|default(0)) }} / {{ r.target_traffic }} GB
                             {% endif %}
@@ -105,7 +106,7 @@
                     
                     <div id="dateFields" class="row">
                         <div class="col-md-12 mb-3">
-                            <label class="form-label">تاریخ سررسید</label>
+                            <label class="form-label">تاریخ و ساعت سررسید <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1"><i class="bi bi-clock me-1"></i>به وقت تهران</span></label>
                             <input type="datetime-local" class="form-control" id="target_date">
                         </div>
                     </div>
@@ -282,10 +283,7 @@ function saveReminder() {
         is_active: document.getElementById('is_active').checked
     };
     
-    if (data.type === 'date' && data.target_date) {
-        data.target_date = new Date(data.target_date).toISOString();
-    }
-    
+    // مقدار target_date مستقیماً با ساعت محلی تهران ارسال می‌شود تا سرور بدون تغییر ساعت آن را پردازش کند
     const url = editId ? '/api/admin/reminders/edit/' + editId : '/api/admin/reminders/add';
     
     fetch(url, {

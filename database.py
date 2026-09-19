@@ -1359,6 +1359,17 @@ class Database:
         for k, v in default_aff_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
+        # مقداردهی اولیه تنظیمات ساعت یادآوری و اطلاع‌رسانی به وقت تهران
+        default_reminder_settings = {
+            "reminder_notification_hour": "12",
+            "reminder_notification_enabled": "1",
+            "reminder_quiet_hours_enabled": "1",
+            "reminder_quiet_start": "23",
+            "reminder_quiet_end": "9",
+        }
+        for k, v in default_reminder_settings.items():
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+
         # ستون‌های حذف نرم اشتراک‌ها (Soft Delete & 7-Day Purge)
         for col_def in [
             ("is_deleted", "INTEGER DEFAULT 0"),
@@ -1454,6 +1465,47 @@ class Database:
                 cursor.execute(f"ALTER TABLE transactions ADD COLUMN {tx_note_col[0]} {tx_note_col[1]}")
             except Exception:
                 pass
+
+        # ستون‌های ایزولاسیون و پاداش برای جدول referrals
+        for ref_col in [
+            ("reseller_id", "INTEGER DEFAULT 0"),
+            ("order_amount", "INTEGER DEFAULT 0"),
+            ("reward_type", "TEXT DEFAULT 'fixed'"),
+            ("order_id", "TEXT DEFAULT NULL"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE referrals ADD COLUMN {ref_col[0]} {ref_col[1]}")
+            except Exception:
+                pass
+
+        # جدول تنظیمات سیستم کسب درآمد و رفرال مشتریان (ایزوله برای مدیریت و نمایندگان)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS customer_referral_settings (
+                    reseller_id INTEGER PRIMARY KEY,
+                    is_enabled INTEGER DEFAULT 0,
+                    reward_type TEXT DEFAULT 'fixed',
+                    reward_amount INTEGER DEFAULT 10000,
+                    min_purchase_amount INTEGER DEFAULT 50000,
+                    reward_condition TEXT DEFAULT 'first_purchase',
+                    max_daily_rewards INTEGER DEFAULT 5,
+                    custom_terms TEXT DEFAULT '',
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+            """)
+            # رکورد پیش‌فرض برای ادمین (reseller_id=0) در صورت عدم وجود
+            cursor.execute("""
+                INSERT OR IGNORE INTO customer_referral_settings (
+                    reseller_id, is_enabled, reward_type, reward_amount,
+                    min_purchase_amount, reward_condition, max_daily_rewards,
+                    custom_terms, created_at, updated_at
+                ) VALUES (0, 1, 'fixed', 10000, 50000, 'first_purchase', 5, '', datetime('now'), datetime('now'))
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_reseller_referrer ON referrals(reseller_id, referrer_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_reseller_referred ON referrals(reseller_id, referred_id)")
+        except Exception as e_crs:
+            logger.warning(f"Error initializing customer_referral_settings: {e_crs}")
 
         # تصحیح خودکار شناسه نماینده برای اشتراک‌های قدیمی که تگ نماینده در کامنت دارند اما reseller_id آن‌ها خالی است
         try:
@@ -5151,6 +5203,61 @@ class Database:
         finally:
             conn.close()
 
+    def get_reminder_settings(self) -> dict:
+        """دریافت تنظیمات ساعت یادآوری و اطلاع‌رسانی به وقت تهران"""
+        try:
+            hour_val = self.get_setting("reminder_notification_hour", "12")
+            try:
+                hour = int(hour_val)
+            except Exception:
+                hour = 12
+
+            enabled_val = str(self.get_setting("reminder_notification_enabled", "1")).lower()
+            enabled = enabled_val in ("1", "true", "yes")
+
+            quiet_val = str(self.get_setting("reminder_quiet_hours_enabled", "1")).lower()
+            quiet_enabled = quiet_val in ("1", "true", "yes")
+
+            try:
+                q_start = int(self.get_setting("reminder_quiet_start", "23"))
+            except Exception:
+                q_start = 23
+
+            try:
+                q_end = int(self.get_setting("reminder_quiet_end", "9"))
+            except Exception:
+                q_end = 9
+
+            return {
+                "reminder_notification_hour": hour,
+                "reminder_notification_enabled": enabled,
+                "reminder_quiet_hours_enabled": quiet_enabled,
+                "reminder_quiet_start": q_start,
+                "reminder_quiet_end": q_end,
+            }
+        except Exception as e:
+            logger.error(f"Error getting reminder settings: {e}")
+            return {
+                "reminder_notification_hour": 12,
+                "reminder_notification_enabled": True,
+                "reminder_quiet_hours_enabled": True,
+                "reminder_quiet_start": 23,
+                "reminder_quiet_end": 9,
+            }
+
+    def save_reminder_settings(self, hour: int = 12, enabled: bool = True, quiet_enabled: bool = True, quiet_start: int = 23, quiet_end: int = 9) -> bool:
+        """ذخیره تنظیمات ساعت یادآوری و اطلاع‌رسانی به وقت تهران"""
+        try:
+            self.save_setting("reminder_notification_hour", str(hour))
+            self.save_setting("reminder_notification_enabled", "1" if enabled else "0")
+            self.save_setting("reminder_quiet_hours_enabled", "1" if quiet_enabled else "0")
+            self.save_setting("reminder_quiet_start", str(quiet_start))
+            self.save_setting("reminder_quiet_end", str(quiet_end))
+            return True
+        except Exception as e:
+            logger.error(f"Error saving reminder settings: {e}")
+            return False
+
     def get_mandatory_channels(self, bot_type: str = "main") -> list:
         """دریافت لیست کانال‌های عضویت اجباری به صورت داینامیک برای ربات اصلی یا ربات فروش بسته"""
         bot_type = (bot_type or "main").strip().lower()
@@ -6030,13 +6137,20 @@ class Database:
         sorted_rows = [rows_dict[r] for r in sorted(rows_dict.keys())]
         return sorted_rows
 
-    def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False) -> List[List[dict]]:
+    def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False, reseller_id: int = 0) -> List[List[dict]]:
         """ساخت سطرهای چیدمان دکمه‌های منو بر اساس سطر و ستون و وضعیت فعال بودن"""
         buttons = self.get_reseller_bot_menu_buttons() if is_reseller else self.get_bot_menu_buttons()
         visible_buttons = []
+
+        # بررسی وضعیت فعال بودن سیستم کسب درآمد مشتریان
+        ref_cfg = self.get_customer_referral_config(reseller_id if is_reseller else 0)
+        ref_enabled = bool(ref_cfg.get("is_enabled"))
+
         for b in buttons:
             b_id = b.get("id")
-            if is_reseller and b_id in ("referral", "admin"):
+            if is_reseller and b_id == "admin":
+                continue
+            if b_id == "referral" and not ref_enabled:
                 continue
 
             if b.get("is_enabled", True):
@@ -7868,89 +7982,355 @@ class Database:
             conn.close()
 
     # ═══════════════════════════════════════════════════════════════
-    # مدیریت رفرال و زیرمجموعه‌گیری
+    # مدیریت رفرال و سیستم کسب درآمد مشتریان (ایزوله بین نمایندگان و مدیریت)
     # ═══════════════════════════════════════════════════════════════
 
-    def add_referral(self, referrer_id, referred_id):
-        """ثبت کاربر معرفی شده"""
-        if referrer_id == referred_id:
-            return {"success": False, "error": "self_referral"}
+    def get_customer_referral_config(self, reseller_id: int = 0) -> dict:
+        """دریافت تنظیمات ایزوله سیستم کسب درآمد و دعوت مشتریان برای نماینده یا مدیریت"""
+        reseller_id = int(reseller_id or 0)
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        defaults = {
+            "reseller_id": reseller_id,
+            "is_enabled": True if reseller_id == 0 else False,
+            "reward_type": "fixed", # 'fixed' یا 'percent'
+            "reward_amount": 10000,
+            "min_purchase_amount": 50000,
+            "reward_condition": "first_purchase", # 'first_purchase' یا 'all_purchases'
+            "max_daily_rewards": 5,
+            "custom_terms": ""
+        }
+        try:
+            cursor.execute("SELECT * FROM customer_referral_settings WHERE reseller_id = ?", (reseller_id,))
+            row = cursor.fetchone()
+            if row:
+                c_terms = str(row["custom_terms"] or "")
+                return {
+                    "reseller_id": reseller_id,
+                    "is_enabled": bool(row["is_enabled"]),
+                    "reward_type": str(row["reward_type"] or "fixed"),
+                    "reward_amount": int(row["reward_amount"] or 10000),
+                    "min_purchase_amount": int(row["min_purchase_amount"] or 50000),
+                    "reward_condition": str(row["reward_condition"] or "first_purchase"),
+                    "max_daily_rewards": int(row["max_daily_rewards"] or 5),
+                    "custom_terms": c_terms,
+                    "custom_text": c_terms
+                }
+            defaults["custom_text"] = defaults["custom_terms"]
+            return defaults
+        except Exception as e:
+            logger.error(f"Error getting customer referral config for reseller {reseller_id}: {e}")
+            defaults["custom_text"] = defaults["custom_terms"]
+            return defaults
+        finally:
+            conn.close()
+
+    def save_customer_referral_config(self, reseller_id: int = 0, config: dict = None) -> dict:
+        """ذخیره تنظیمات سیستم کسب درآمد مشتریان برای نماینده یا مدیریت"""
+        reseller_id = int(reseller_id or 0)
+        config = config or {}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            # ثبت در جدول referrals
+            is_enabled = 1 if config.get("is_enabled") in (True, 1, "1", "true", "True", "on") else 0
+            reward_type = "percent" if str(config.get("reward_type", "")).strip().lower() == "percent" else "fixed"
+            reward_amount = max(0, int(config.get("reward_amount") or 10000))
+            min_purchase_amount = max(0, int(config.get("min_purchase_amount") or 50000))
+            reward_condition = "all_purchases" if str(config.get("reward_condition", "")).strip() == "all_purchases" else "first_purchase"
+            max_daily_rewards = max(1, int(config.get("max_daily_rewards") or 5))
+            custom_terms = str(config.get("custom_terms") or config.get("custom_text") or "").strip()
+
             cursor.execute("""
-                INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward_amount, status, created_at, updated_at)
-                VALUES (?, ?, 0, 'pending', ?, ?)
-            """, (referrer_id, referred_id, now, now))
-            # ثبت معرف در جدول users
-            cursor.execute("""
-                UPDATE users SET referred_by = ?, updated_at = ?
-                WHERE telegram_id = ? AND referred_by IS NULL
-            """, (referrer_id, now, referred_id))
+                INSERT INTO customer_referral_settings (
+                    reseller_id, is_enabled, reward_type, reward_amount,
+                    min_purchase_amount, reward_condition, max_daily_rewards,
+                    custom_terms, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(reseller_id) DO UPDATE SET
+                    is_enabled = excluded.is_enabled,
+                    reward_type = excluded.reward_type,
+                    reward_amount = excluded.reward_amount,
+                    min_purchase_amount = excluded.min_purchase_amount,
+                    reward_condition = excluded.reward_condition,
+                    max_daily_rewards = excluded.max_daily_rewards,
+                    custom_terms = excluded.custom_terms,
+                    updated_at = excluded.updated_at
+            """, (reseller_id, is_enabled, reward_type, reward_amount, min_purchase_amount, reward_condition, max_daily_rewards, custom_terms, now, now))
             conn.commit()
             return {"success": True}
         except Exception as e:
-            logger.error(f"Error adding referral ({referrer_id} -> {referred_id}): {e}")
+            logger.error(f"Error saving customer referral config for reseller {reseller_id}: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    def get_referral_stats(self, referrer_id):
-        """دریافت آمار رفرال کاربر"""
+    def add_customer_referral(self, referrer_id: int, referred_id: int, reseller_id: int = 0) -> dict:
+        """
+        ثبت کاربر معرفی شده در قلمرو مشخص (مدیریت یا نماینده) همراه با سپرهای ضد تقلب
+        """
+        try:
+            referrer_id = int(referrer_id)
+            referred_id = int(referred_id)
+            reseller_id = int(reseller_id or 0)
+        except (ValueError, TypeError):
+            return {"success": False, "error": "invalid_ids"}
+
+        # ۱. سپر ضد تقلب: جلوگیری از خود-دعوتی (Self-Referral)
+        if referrer_id == referred_id:
+            return {"success": False, "error": "self_referral"}
+
+        # ۲. بررسی فعال بودن سیستم در قلمرو مربوطه
+        cfg = self.get_customer_referral_config(reseller_id)
+        if not cfg.get("is_enabled"):
+            return {"success": False, "error": "referral_disabled"}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # ۳. سپر ضد تقلب: جلوگیری از دعوت چرخه‌ای (Circular Referral)
+            # اگر کاربری که الان دعوت شده، قبلاً معرف همین دعوت‌کننده بوده باشد، مسدود می‌شود
+            cursor.execute("""
+                SELECT id FROM referrals
+                WHERE referrer_id = ? AND referred_id = ? AND COALESCE(reseller_id, 0) = ?
+            """, (referred_id, referrer_id, reseller_id))
+            if cursor.fetchone():
+                return {"success": False, "error": "circular_referral"}
+
+            # ۴. سپر ضد تقلب: ثبت یک‌باره (One-time Referral Lock) در این قلمرو
+            cursor.execute("""
+                SELECT id FROM referrals
+                WHERE referred_id = ? AND COALESCE(reseller_id, 0) = ?
+            """, (referred_id, reseller_id))
+            if cursor.fetchone():
+                return {"success": False, "error": "already_referred"}
+
+            # ۵. سپر ضد تقلب: بررسی مشتری قدیمی نبودن در این قلمرو (فقط کاربر بدون سفارش قبلی)
+            cursor.execute("""
+                SELECT COUNT(*) as sub_count FROM subscriptions
+                WHERE telegram_id = ? AND COALESCE(reseller_id, 0) = ?
+            """, (referred_id, reseller_id))
+            sub_res = cursor.fetchone()
+            if sub_res and sub_res["sub_count"] > 0:
+                return {"success": False, "error": "already_customer"}
+
+            # ثبت در جدول referrals با مشخصه reseller_id
+            cursor.execute("""
+                INSERT INTO referrals (referrer_id, referred_id, reseller_id, reward_amount, status, created_at, updated_at)
+                VALUES (?, ?, ?, 0, 'pending', ?, ?)
+            """, (referrer_id, referred_id, reseller_id, now, now))
+
+            # ثبت معرف در جدول users در صورت تعلق به مدیریت
+            if reseller_id == 0:
+                cursor.execute("""
+                    UPDATE users SET referred_by = ?, updated_at = ?
+                    WHERE telegram_id = ? AND (referred_by IS NULL OR referred_by = 0)
+                """, (referrer_id, now, referred_id))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error adding customer referral ({referrer_id} -> {referred_id}, reseller={reseller_id}): {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def add_referral(self, referrer_id, referred_id, reseller_id=0):
+        """سازگاری به عقب با متد قبلی"""
+        return self.add_customer_referral(referrer_id, referred_id, reseller_id=reseller_id)
+
+    def complete_customer_referral(self, referred_id: int, order_amount: int = 0, reseller_id: int = 0, reward_amount: int = None) -> dict:
+        """
+        بررسی و تکمیل پاداش رفرال پس از خرید موفق بسته توسط کاربر دعوت‌شده
+        همراه با سپرهای ضد تقلب و شارژ خودکار کیف پول معرف در قلمرو مربوطه
+        """
+        try:
+            referred_id = int(referred_id)
+            order_amount = int(order_amount or 0)
+            reseller_id = int(reseller_id or 0)
+        except (ValueError, TypeError):
+            return {"success": False, "reason": "invalid_parameters"}
+
+        cfg = self.get_customer_referral_config(reseller_id)
+        if not cfg.get("is_enabled"):
+            return {"success": False, "reason": "referral_disabled"}
+
+        # بررسی شرط حداقل مبلغ خرید
+        min_order = int(cfg.get("min_purchase_amount") or 0)
+        if order_amount > 0 and order_amount < min_order:
+            return {"success": False, "reason": "order_amount_below_minimum", "min_order": min_order, "order_amount": order_amount}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # ۱. جستجوی رفرال در انتظار
+            cursor.execute("""
+                SELECT * FROM referrals
+                WHERE referred_id = ? AND COALESCE(reseller_id, 0) = ? AND status = 'pending'
+                ORDER BY id DESC LIMIT 1
+            """, (referred_id, reseller_id))
+            ref = cursor.fetchone()
+
+            # اگر رفرال pending نبود اما شرط all_purchases فعال باشد، آخرین رفرال را برمی‌داریم
+            if not ref and cfg.get("reward_condition") == "all_purchases":
+                cursor.execute("""
+                    SELECT * FROM referrals
+                    WHERE referred_id = ? AND COALESCE(reseller_id, 0) = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (referred_id, reseller_id))
+                ref = cursor.fetchone()
+
+            if not ref:
+                return {"success": False, "reason": "no_pending_referral"}
+
+            ref_id = ref["id"]
+            referrer_id = ref["referrer_id"]
+
+            # ۲. سپر ضد تقلب: سقف روزانه پاداش برای معرف (Rate Limiting)
+            max_daily = int(cfg.get("max_daily_rewards") or 5)
+            cursor.execute("""
+                SELECT COUNT(*) as daily_cnt FROM referrals
+                WHERE referrer_id = ? AND COALESCE(reseller_id, 0) = ? AND status = 'rewarded'
+                AND updated_at >= datetime('now', '-1 day')
+            """, (referrer_id, reseller_id))
+            daily_res = cursor.fetchone()
+            if daily_res and daily_res["daily_cnt"] >= max_daily:
+                return {"success": False, "reason": "daily_limit_reached", "max_daily": max_daily}
+
+            # ۳. محاسبه مقدار پاداش
+            if reward_amount is not None and reward_amount > 0:
+                final_reward = int(reward_amount)
+            elif cfg.get("reward_type") == "percent":
+                percent = float(cfg.get("reward_amount") or 10)
+                final_reward = int((order_amount * percent) / 100)
+            else:
+                final_reward = int(cfg.get("reward_amount") or 10000)
+
+            if final_reward <= 0:
+                return {"success": False, "reason": "zero_reward"}
+
+            # ۴. ثبت وضعیت پاداش در جدول referrals
+            cursor.execute("""
+                UPDATE referrals
+                SET status = 'rewarded', reward_amount = ?, order_amount = ?, updated_at = ?
+                WHERE id = ?
+            """, (final_reward, order_amount, now, ref_id))
+
+            # همچنین برای سازگاری کامل جدول قدیمی wallet را هم آپدیت می‌کنیم
+            try:
+                cursor.execute("""
+                    INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
+                """, (referrer_id, final_reward, now, now, final_reward, now))
+            except Exception:
+                pass
+
+            conn.commit()
+
+            # ۵. واریز پاداش به موجودی کیف پول کاربر معرف
+            desc = f"پاداش دعوت از دوست ({order_amount:,} تومان خرید بسته)" if order_amount > 0 else "پاداش دعوت از دوست"
+            wallet_res = self.add_wallet_balance(
+                telegram_id=referrer_id,
+                amount=final_reward,
+                description=desc,
+                ref_id=str(referred_id),
+                tx_type="referral_reward"
+            )
+
+            logger.info(f"Customer referral #{ref_id} completed: Referrer={referrer_id}, Referred={referred_id}, Reseller={reseller_id}, Reward={final_reward}")
+            return {
+                "success": True,
+                "referrer_id": referrer_id,
+                "reward_amount": final_reward,
+                "order_amount": order_amount,
+                "reseller_id": reseller_id,
+                "new_balance": wallet_res.get("new_balance")
+            }
+        except Exception as e:
+            logger.error(f"Error completing customer referral for referred={referred_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def complete_referral(self, referred_id, reward_amount=None, order_amount=0, reseller_id=0):
+        """سازگاری به عقب با متد قبلی"""
+        return self.complete_customer_referral(referred_id, order_amount=order_amount, reseller_id=reseller_id, reward_amount=reward_amount)
+
+    def get_customer_referral_stats(self, user_id: int, reseller_id: int = 0) -> dict:
+        """دریافت آمار رفرال و درآمد مشتری در قلمرو مشخص (مدیریت یا نماینده)"""
+        try:
+            user_id = int(user_id)
+            reseller_id = int(reseller_id or 0)
+        except (ValueError, TypeError):
+            return {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0, "wallet_balance": 0}
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT COUNT(*) as total FROM referrals WHERE referrer_id = ?", (referrer_id,))
+            cursor.execute("""
+                SELECT COUNT(*) as total FROM referrals
+                WHERE referrer_id = ? AND COALESCE(reseller_id, 0) = ?
+            """, (user_id, reseller_id))
             total_invites = cursor.fetchone()["total"]
 
-            cursor.execute("SELECT COUNT(*) as rewarded FROM referrals WHERE referrer_id = ? AND status = 'rewarded'", (referrer_id,))
-            rewarded_invites = cursor.fetchone()["rewarded"]
+            cursor.execute("""
+                SELECT COUNT(*) as rewarded, COALESCE(SUM(reward_amount), 0) as total_reward
+                FROM referrals
+                WHERE referrer_id = ? AND COALESCE(reseller_id, 0) = ? AND status = 'rewarded'
+            """, (user_id, reseller_id))
+            rew_row = cursor.fetchone()
+            rewarded_invites = rew_row["rewarded"] if rew_row else 0
+            total_reward = rew_row["total_reward"] if rew_row else 0
 
-            cursor.execute("SELECT COALESCE(SUM(reward_amount), 0) as total_reward FROM referrals WHERE referrer_id = ? AND status = 'rewarded'", (referrer_id,))
-            total_reward = cursor.fetchone()["total_reward"]
+            wallet_balance = self.get_user_wallet_balance(user_id)
 
             return {
                 "total_invites": total_invites,
                 "rewarded_invites": rewarded_invites,
                 "total_reward": total_reward,
+                "wallet_balance": wallet_balance,
+                "total_referred": total_invites,
+                "completed_referrals": rewarded_invites,
+                "total_earnings": total_reward,
             }
         except Exception as e:
-            logger.error(f"Error getting referral stats for {referrer_id}: {e}")
-            return {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0}
+            logger.error(f"Error getting customer referral stats for user {user_id}: {e}")
+            return {
+                "total_invites": 0, "rewarded_invites": 0, "total_reward": 0, "wallet_balance": 0,
+                "total_referred": 0, "completed_referrals": 0, "total_earnings": 0,
+            }
         finally:
             conn.close()
 
-    def complete_referral(self, referred_id, reward_amount=10000):
-        """تکمیل پاداش رفرال پس از خرید کاربر"""
+    def get_referral_stats(self, referrer_id, reseller_id=0):
+        """سازگاری به عقب با متد قبلی"""
+        return self.get_customer_referral_stats(referrer_id, reseller_id=reseller_id)
+
+    def get_customer_referrals_list(self, reseller_id: int = 0, limit: int = 100, offset: int = 0) -> list:
+        """لیست سوابق دعوت‌های مشتریان برای پنل نماینده یا مدیریت همراه با مشخصات کاربران"""
+        reseller_id = int(reseller_id or 0)
         conn = self.get_connection()
         cursor = conn.cursor()
-        now = get_now_iso()
         try:
-            cursor.execute("SELECT * FROM referrals WHERE referred_id = ? AND status = 'pending'", (referred_id,))
-            ref = cursor.fetchone()
-            if not ref:
-                return {"success": False, "reason": "no_pending_referral"}
-            
-            referrer_id = ref["referrer_id"]
             cursor.execute("""
-                UPDATE referrals SET status = 'rewarded', reward_amount = ?, updated_at = ?
-                WHERE referred_id = ?
-            """, (reward_amount, now, referred_id))
-            
-            # افزودن پاداش به کیف پول معرف
-            cursor.execute("""
-                INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
-            """, (referrer_id, reward_amount, now, now, reward_amount, now))
-            
-            conn.commit()
-            return {"success": True, "referrer_id": referrer_id, "reward_amount": reward_amount}
+                SELECT r.*,
+                       u1.username as referrer_username,
+                       u2.username as referred_username
+                FROM referrals r
+                LEFT JOIN users u1 ON r.referrer_id = u1.telegram_id
+                LEFT JOIN users u2 ON r.referred_id = u2.telegram_id
+                WHERE COALESCE(r.reseller_id, 0) = ?
+                ORDER BY r.id DESC
+                LIMIT ? OFFSET ?
+            """, (reseller_id, limit, offset))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
         except Exception as e:
-            logger.error(f"Error completing referral for {referred_id}: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"Error getting customer referrals list for reseller {reseller_id}: {e}")
+            return []
         finally:
             conn.close()
 
@@ -10063,7 +10443,10 @@ class Database:
             "enabled": True,
             "default_percent": 10.0,
             "calc_base": "plan_price",
-            "terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید."
+            "terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید.",
+            "anti_fraud_enabled": True,
+            "min_monthly_sales": 0,
+            "min_monthly_turnover": 0
         }
         try:
             cursor.execute("SELECT key, value FROM settings WHERE key LIKE 'reseller_affiliate_%'")
@@ -10081,13 +10464,25 @@ class Database:
                     settings["calc_base"] = str(v).strip()
                 elif k == "reseller_affiliate_terms":
                     settings["terms"] = str(v)
+                elif k == "reseller_affiliate_anti_fraud_enabled":
+                    settings["anti_fraud_enabled"] = (str(v).strip() in ("1", "true", "True"))
+                elif k == "reseller_affiliate_min_monthly_sales":
+                    try:
+                        settings["min_monthly_sales"] = int(v)
+                    except (ValueError, TypeError):
+                        pass
+                elif k == "reseller_affiliate_min_monthly_turnover":
+                    try:
+                        settings["min_monthly_turnover"] = int(v)
+                    except (ValueError, TypeError):
+                        pass
         except Exception as e:
             logger.error(f"Error getting reseller affiliate settings: {e}")
         finally:
             conn.close()
         return settings
 
-    def update_reseller_affiliate_settings(self, enabled: bool, default_percent: float, calc_base: str, terms: str) -> dict:
+    def update_reseller_affiliate_settings(self, enabled: bool, default_percent: float, calc_base: str, terms: str, anti_fraud_enabled: bool = True, min_monthly_sales: int = 0, min_monthly_turnover: int = 0) -> dict:
         """بروزرسانی تنظیمات سیستم زیرمجموعه‌گیری نمایندگان"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -10096,7 +10491,10 @@ class Database:
                 "reseller_affiliate_enabled": "1" if enabled else "0",
                 "reseller_affiliate_default_percent": str(default_percent),
                 "reseller_affiliate_calc_base": calc_base,
-                "reseller_affiliate_terms": terms
+                "reseller_affiliate_terms": terms,
+                "reseller_affiliate_anti_fraud_enabled": "1" if anti_fraud_enabled else "0",
+                "reseller_affiliate_min_monthly_sales": str(max(0, int(min_monthly_sales or 0))),
+                "reseller_affiliate_min_monthly_turnover": str(max(0, int(min_monthly_turnover or 0)))
             }
             for k, v in data.items():
                 cursor.execute("""
@@ -10110,6 +10508,70 @@ class Database:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+    def check_reseller_self_affiliate_fraud(self, parent_id: int, sub_data_or_id) -> dict:
+        """
+        بررسی سپر ضد تقلب برای جلوگیری از سودجویی چندپنلی نماینده (Self-Reselling Fraud)
+        تشخیص همپوشانی اطلاعات هویتی و مالی معرف با زیرمجموعه
+        """
+        import re
+        parent = self.get_reseller(parent_id)
+        if not parent:
+            return {"fraud_detected": False}
+
+        if isinstance(sub_data_or_id, (int, str)):
+            try:
+                sub = self.get_reseller(int(sub_data_or_id))
+            except Exception:
+                sub = None
+        elif isinstance(sub_data_or_id, dict):
+            sub = sub_data_or_id
+        else:
+            sub = None
+
+        if not sub:
+            return {"fraud_detected": False}
+
+        matched_fields = []
+
+        # ۱. بررسی آیدی تلگرام
+        p_tg = str(parent.get("telegram_id") or "").strip()
+        s_tg = str(sub.get("telegram_id") or "").strip()
+        if p_tg and s_tg and p_tg == s_tg:
+            matched_fields.append("telegram_id")
+
+        # ۲. بررسی شماره کارت بانکی
+        def _clean_card(c):
+            return "".join(re.findall(r"\d+", str(c or "")))
+
+        p_card = _clean_card(parent.get("bank_card"))
+        s_card = _clean_card(sub.get("bank_card") or sub.get("card_number"))
+        if len(p_card) >= 16 and len(s_card) >= 16 and p_card == s_card:
+            matched_fields.append("bank_card")
+
+        # ۳. بررسی شماره تلفن همراه
+        def _clean_phone(ph):
+            digits = "".join(re.findall(r"\d+", str(ph or "")))
+            if digits.startswith("98"):
+                digits = digits[2:]
+            elif digits.startswith("0"):
+                digits = digits[1:]
+            return digits
+
+        p_phone = _clean_phone(parent.get("phone") or parent.get("support_phone"))
+        s_phone = _clean_phone(sub.get("phone") or sub.get("support_phone"))
+        if len(p_phone) >= 10 and len(s_phone) >= 10 and p_phone == s_phone:
+            matched_fields.append("phone")
+
+        if matched_fields:
+            logger.warning(f"Reseller self-affiliate fraud detected! Parent #{parent_id} matches Sub on fields: {matched_fields}")
+            return {
+                "fraud_detected": True,
+                "matched_fields": matched_fields,
+                "reason": "تشابه اطلاعات هویتی/مالی بین نماینده معرف و زیرمجموعه (تلاش برای سوءاستفاده چندپنلی)"
+            }
+
+        return {"fraud_detected": False}
 
     def get_reseller_referral_code(self, reseller_id: int) -> str:
         """دریافت یا تولید کد دعوت اختصاصی نماینده"""
@@ -10312,6 +10774,36 @@ class Database:
         parent_reseller = self.get_reseller(parent_id)
         if not parent_reseller or parent_reseller.get("status") != "active":
             return {"success": False, "reason": "parent_reseller_inactive"}
+
+        # ۱. سپر ضد تقلب: بررسی سوءاستفاده چندپنلی نماینده (Self-Reselling Prevention)
+        if aff_settings.get("anti_fraud_enabled", True):
+            fraud_check = self.check_reseller_self_affiliate_fraud(parent_id, sub_reseller)
+            if fraud_check.get("fraud_detected"):
+                logger.warning(f"Affiliate commission blocked for parent #{parent_id} from sub #{sub_reseller_id}: {fraud_check.get('reason')}")
+                return {"success": False, "reason": "fraud_self_affiliate_detected", "detail": fraud_check}
+
+        # ۲. بررسی پیش‌نیازهای فعالیت و سهمیه ماهانه (Performance Quotas)
+        min_sales = int(aff_settings.get("min_monthly_sales") or 0)
+        min_turnover = int(aff_settings.get("min_monthly_turnover") or 0)
+        if min_sales > 0 or min_turnover > 0:
+            q_conn = self.get_connection()
+            q_cur = q_conn.cursor()
+            try:
+                q_cur.execute("""
+                    SELECT COUNT(*) as sales_count, COALESCE(SUM(cost_paid), 0) as total_turnover
+                    FROM subscriptions
+                    WHERE reseller_id = ? AND created_at >= datetime('now', '-30 days')
+                """, (parent_id,))
+                q_row = q_cur.fetchone()
+                sales_count = int(q_row["sales_count"] or 0) if q_row else 0
+                total_turnover = int(q_row["total_turnover"] or 0) if q_row else 0
+                if sales_count < min_sales or total_turnover < min_turnover:
+                    logger.info(f"Affiliate commission suspended for parent #{parent_id}: quota not met (Sales: {sales_count}/{min_sales}, Turnover: {total_turnover}/{min_turnover})")
+                    return {"success": False, "reason": "parent_quota_not_met", "sales_count": sales_count, "total_turnover": total_turnover}
+            except Exception as e_q:
+                logger.warning(f"Could not verify parent quota for #{parent_id}: {e_q}")
+            finally:
+                q_conn.close()
 
         # درصد کمیسیون (اختصاصی بالادستی یا پیش‌فرض سیستم)
         commission_percent = parent_reseller.get("affiliate_commission_percent")

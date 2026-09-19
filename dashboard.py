@@ -36,7 +36,8 @@ load_dotenv()
 from database import db
 from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
-    format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ
+    format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ,
+    get_now, get_now_tehran, parse_to_tehran_dt, is_tehran_hour, is_in_quiet_hours
 )
 from admin_manager import (
     get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
@@ -5699,10 +5700,10 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
         except Exception as e_ctx:
             logger.error(f"Error logging card deposit for tx {order_id}: {e_ctx}")
 
-    # پاداش رفرال
+    # پاداش رفرال مشتری
     if user_id:
         try:
-            db.complete_referral(user_id)
+            db.complete_customer_referral(referred_id=int(user_id), order_amount=int(amount or 0), reseller_id=int(r_id or 0))
         except Exception:
             pass
 
@@ -6169,7 +6170,12 @@ def approve_payment(payment_id):
 
     # پاداش رفرال و کش‌بک تنها برای کاربران دارای اکانت تلگرام (user_id > 0)
     if user_id and int(user_id) > 0:
-        db.complete_referral(user_id)
+        try:
+            tx_amount = int(tx.get("amount") or 0)
+            tx_reseller_id = int(tx.get("reseller_id") or 0)
+            db.complete_customer_referral(referred_id=int(user_id), order_amount=tx_amount, reseller_id=tx_reseller_id)
+        except Exception as e_ref:
+            logger.debug(f"Error completing customer referral in admin approve: {e_ref}")
 
         # پردازش و واریز کش‌بک کاربران VIP
         try:
@@ -13351,6 +13357,31 @@ def settings():
             }, None)
             flash("قالب‌های پیش‌فرض پیامک مشتریان با موفقیت ذخیره شدند.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_reminder_settings":
+            try:
+                hour = int(request.form.get("reminder_notification_hour", 12))
+            except Exception:
+                hour = 12
+            enabled = request.form.get("reminder_notification_enabled") == "on"
+            quiet_enabled = request.form.get("reminder_quiet_hours_enabled") == "on"
+            try:
+                quiet_start = int(request.form.get("reminder_quiet_start", 23))
+            except Exception:
+                quiet_start = 23
+            try:
+                quiet_end = int(request.form.get("reminder_quiet_end", 9))
+            except Exception:
+                quiet_end = 9
+
+            db.save_reminder_settings(
+                hour=hour,
+                enabled=enabled,
+                quiet_enabled=quiet_enabled,
+                quiet_start=quiet_start,
+                quiet_end=quiet_end
+            )
+            flash("تنظیمات ساعت یادآوری و اطلاع‌رسانی به وقت تهران با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings", active_tab="sms"))
         elif action == "save_crypto_settings":
             crypto_enabled = "true" if request.form.get("crypto_enabled") == "on" else "false"
             crypto_provider = request.form.get("crypto_provider", "oxapay").strip().lower()
@@ -13790,7 +13821,10 @@ def settings():
         hiddify_backup_enabled=db.get_setting("hiddify_backup_enabled", "0") == "1",
         hiddify_backup_channel_id=db.get_setting("hiddify_backup_channel_id", ""),
         hiddify_backup_interval_hours=db.get_setting("hiddify_backup_interval_hours", "12"),
-        infrastructure_config=infrastructure_config
+        infrastructure_config=infrastructure_config,
+        reminder_settings=db.get_reminder_settings(),
+        tehran_now_formatted=get_now().strftime("%H:%M:%S"),
+        tehran_now_shamsi=get_now_shamsi()
     )
 
 
@@ -20030,12 +20064,20 @@ def admin_reseller_affiliates():
     commissions = db.get_reseller_affiliate_commissions_history(limit=150)
     all_tickets = db.get_all_tickets(category="resellers")
     applications = [t for t in all_tickets if t.get("ticket_type") == "reseller_application"]
+
+    # تنظیمات و گزارش‌های سیستم رفرال و کسب درآمد مشتریان مستقیم مدیریت
+    customer_ref_cfg = db.get_customer_referral_config(0)
+    customer_referrals = db.get_customer_referrals_list(0, limit=100)
+    active_tab = request.args.get("tab", "resellers")
     
     return render_template(
         "admin_reseller_affiliates.html",
         overview=overview,
         commissions=commissions,
-        applications=applications
+        applications=applications,
+        customer_ref_cfg=customer_ref_cfg,
+        customer_referrals=customer_referrals,
+        active_tab=active_tab
     )
 
 
@@ -20051,12 +20093,68 @@ def admin_reseller_affiliates_update_settings():
     calc_base = request.form.get("calc_base", "plan_price").strip()
     terms = request.form.get("terms", "").strip()
 
-    res = db.update_reseller_affiliate_settings(enabled, default_percent, calc_base, terms)
+    anti_fraud_enabled = bool(request.form.get("anti_fraud_enabled"))
+    try:
+        min_monthly_sales = int(request.form.get("min_monthly_sales", 0))
+    except (ValueError, TypeError):
+        min_monthly_sales = 0
+    try:
+        min_monthly_turnover = int(request.form.get("min_monthly_turnover", 0))
+    except (ValueError, TypeError):
+        min_monthly_turnover = 0
+
+    res = db.update_reseller_affiliate_settings(
+        enabled=enabled,
+        default_percent=default_percent,
+        calc_base=calc_base,
+        terms=terms,
+        anti_fraud_enabled=anti_fraud_enabled,
+        min_monthly_sales=min_monthly_sales,
+        min_monthly_turnover=min_monthly_turnover
+    )
     if res.get("success"):
-        flash("تنظیمات سیستم زیرمجموعه‌گیری با موفقیت ذخیره شد.", "success")
+        flash("تنظیمات سیستم زیرمجموعه‌گیری همکاران با موفقیت ذخیره شد.", "success")
     else:
         flash(f"خطا در ذخیره تنظیمات: {res.get('error')}", "danger")
-    return redirect(url_for("admin_reseller_affiliates"))
+    return redirect(url_for("admin_reseller_affiliates", tab="resellers"))
+
+
+@app.route("/admin/customer-referral/settings", methods=["POST"])
+@admin_required
+def admin_customer_referral_update_settings():
+    """ذخیره تنظیمات سیستم کسب درآمد مشتریان مستقیم مدیریت"""
+    is_enabled = bool(request.form.get("is_enabled"))
+    reward_type = request.form.get("reward_type", "fixed").strip()
+    try:
+        reward_amount = int(request.form.get("reward_amount", 10000))
+    except (ValueError, TypeError):
+        reward_amount = 10000
+    try:
+        min_purchase_amount = int(request.form.get("min_purchase_amount", 50000))
+    except (ValueError, TypeError):
+        min_purchase_amount = 50000
+    reward_condition = request.form.get("reward_condition", "first_purchase").strip()
+    try:
+        max_daily_rewards = int(request.form.get("max_daily_rewards", 5))
+    except (ValueError, TypeError):
+        max_daily_rewards = 5
+    custom_terms = request.form.get("custom_terms", "").strip()
+
+    cfg = {
+        "is_enabled": is_enabled,
+        "reward_type": reward_type,
+        "reward_amount": reward_amount,
+        "min_purchase_amount": min_purchase_amount,
+        "reward_condition": reward_condition,
+        "max_daily_rewards": max_daily_rewards,
+        "custom_terms": custom_terms
+    }
+    res = db.save_customer_referral_config(0, cfg)
+    if res.get("success"):
+        flash("تنظیمات سیستم کسب درآمد مشتریان مدیریت با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در ذخیره تنظیمات: {res.get('error')}", "danger")
+    return redirect(url_for("admin_reseller_affiliates", tab="customer"))
 
 
 @app.route("/admin/reseller-affiliates/set-parent", methods=["POST"])
@@ -20263,18 +20361,81 @@ def reseller_affiliates():
     sub_resellers = db.get_sub_resellers(reseller_id)
     commissions = db.get_reseller_affiliate_commissions_history(reseller_id=reseller_id, limit=100)
     
-    # تولید لینک دعوت اختصاصی
+    # تولید لینک دعوت اختصاصی همکاران
     base_url = request.host_url.rstrip("/")
     ref_code = stats.get("referral_code", f"REF-{reseller_id}")
     invite_link = f"{base_url}/reseller/apply?ref={ref_code}"
+
+    # تنظیمات و سوابق سیستم کسب درآمد مشتریان اختصاصی نماینده
+    customer_ref_cfg = db.get_customer_referral_config(reseller_id)
+    customer_referrals = db.get_customer_referrals_list(reseller_id=reseller_id, limit=100)
+
+    # اطلاعات ربات نماینده جهت پیش‌نمایش لینک تلگرامی
+    r_info = db.get_reseller(reseller_id) or {}
+    r_bot_username = (r_info.get("bot_username") or "").replace("@", "").strip()
+    sample_bot_link = f"https://t.me/{r_bot_username}?start=ref_USERID" if r_bot_username else ""
+
+    # محاسبه آمار تجمیعی دعوت‌های مشتریان این نماینده
+    cust_stats_total = len(customer_referrals)
+    cust_stats_rewarded = sum(1 for r in customer_referrals if r.get("status") == "rewarded")
+    cust_stats_paid = sum(int(r.get("reward_amount") or 0) for r in customer_referrals if r.get("status") == "rewarded")
+
+    active_tab = request.args.get("tab", "sub_resellers")
 
     return render_template(
         "reseller_affiliates.html",
         stats=stats,
         sub_resellers=sub_resellers,
         commissions=commissions,
-        invite_link=invite_link
+        invite_link=invite_link,
+        customer_ref_cfg=customer_ref_cfg,
+        customer_referrals=customer_referrals,
+        r_bot_username=r_bot_username,
+        sample_bot_link=sample_bot_link,
+        cust_stats_total=cust_stats_total,
+        cust_stats_rewarded=cust_stats_rewarded,
+        cust_stats_paid=cust_stats_paid,
+        active_tab=active_tab
     )
+
+
+@app.route("/reseller/customer-referral/settings", methods=["POST"])
+@reseller_required
+def reseller_customer_referral_update_settings():
+    """ذخیره تنظیمات سیستم کسب درآمد مشتریان اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    is_enabled = bool(request.form.get("is_enabled"))
+    reward_type = request.form.get("reward_type", "fixed").strip()
+    try:
+        reward_amount = int(request.form.get("reward_amount", 10000))
+    except (ValueError, TypeError):
+        reward_amount = 10000
+    try:
+        min_purchase_amount = int(request.form.get("min_purchase_amount", 50000))
+    except (ValueError, TypeError):
+        min_purchase_amount = 50000
+    reward_condition = request.form.get("reward_condition", "first_purchase").strip()
+    try:
+        max_daily_rewards = int(request.form.get("max_daily_rewards", 5))
+    except (ValueError, TypeError):
+        max_daily_rewards = 5
+    custom_terms = request.form.get("custom_terms", "").strip()
+
+    cfg = {
+        "is_enabled": is_enabled,
+        "reward_type": reward_type,
+        "reward_amount": reward_amount,
+        "min_purchase_amount": min_purchase_amount,
+        "reward_condition": reward_condition,
+        "max_daily_rewards": max_daily_rewards,
+        "custom_terms": custom_terms
+    }
+    res = db.save_customer_referral_config(reseller_id, cfg)
+    if res.get("success"):
+        flash("تنظیمات سیستم کسب درآمد مشتریان با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در ذخیره تنظیمات: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_affiliates", tab="customer"))
 
 
 @app.route("/reseller/apply", methods=["GET", "POST"])
@@ -20298,6 +20459,15 @@ def reseller_apply():
 
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
         referrer_id = referrer["id"] if referrer else None
+
+        # سپر ضد تقلب: بررسی همپوشانی اطلاعات بین معرف و متقاضی جدید نمایندگی
+        if referrer_id:
+            fraud_check = db.check_reseller_self_affiliate_fraud(referrer_id, {
+                "phone": phone_number,
+                "telegram_id": telegram_id
+            })
+            if fraud_check.get("fraud_detected"):
+                notes = (notes + "\n" if notes else "") + f"⚠️ هشدار ضد تقلب: {fraud_check.get('reason')} (فیلدهای منطبق: {fraud_check.get('matched_fields')})"
 
         res = db.create_reseller_application(
             referrer_id=referrer_id,
@@ -21182,6 +21352,29 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     portal_clock_check_enabled = str(db.get_setting("portal_clock_check_enabled", "1")).lower() in ("1", "true")
     server_time_ms = int(time.time() * 1000)
 
+    # تنظیمات و متغیرهای سیستم کسب درآمد و دعوت مشتریان (کاملاً ایزوله بین نماینده و مدیریت)
+    effective_r_id = sub.get("reseller_id") if sub else (reseller_id or 0)
+    customer_ref_cfg = db.get_customer_referral_config(effective_r_id or 0)
+    customer_ref_enabled = bool(customer_ref_cfg.get("is_enabled"))
+    customer_ref_link = ""
+    customer_ref_stats = {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0, "wallet_balance": user_wallet}
+
+    if customer_ref_enabled:
+        bot_username = ""
+        if effective_r_id and int(effective_r_id) > 0:
+            r_info_ref = db.get_reseller(int(effective_r_id)) or {}
+            bot_username = (r_info_ref.get("bot_username") or "").replace("@", "").strip()
+        if not bot_username:
+            bot_username = (db.get_setting("bot_username") or "").replace("@", "").strip()
+
+        target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
+        if target_tg_id and bot_username:
+            customer_ref_link = f"https://t.me/{bot_username}?start=ref_{target_tg_id}"
+            customer_ref_stats = db.get_customer_referral_stats(target_tg_id, reseller_id=effective_r_id or 0)
+            customer_ref_stats["wallet_balance"] = user_wallet
+        elif bot_username:
+            customer_ref_link = f"https://t.me/{bot_username}"
+
     return render_template(
         "customer_portal.html",
         sub=safe_sub,
@@ -21229,6 +21422,10 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         mini_app_splash_subtitle=mini_app_splash_subtitle,
         mini_app_splash_image=mini_app_splash_image,
         mini_app_splash_duration=mini_app_splash_duration,
+        customer_ref_enabled=customer_ref_enabled,
+        customer_ref_link=customer_ref_link,
+        customer_ref_stats=customer_ref_stats,
+        customer_ref_cfg=customer_ref_cfg,
         portal_banners=db.get_portal_customer_banners(
             for_reseller_id=(sub.get("reseller_id") if sub else reseller_id),
             customer_status=(
@@ -22956,9 +23153,15 @@ def admin_reminders():
     cursor.execute("SELECT * FROM admin_reminders ORDER BY id DESC")
     reminders = [dict(r) for r in cursor.fetchall()]
     
-    # Calculate traffic limit percentages if type is traffic
+    # Calculate traffic limit percentages if type is traffic and format dates in Shamsi
     for r in reminders:
-        if r['type'] == 'traffic':
+        if r['type'] == 'date' and r.get('target_date'):
+            dt = parse_to_tehran_dt(r['target_date'])
+            if dt:
+                r['target_date_shamsi'] = gregorian_to_shamsi_full(dt)
+            else:
+                r['target_date_shamsi'] = str(r['target_date'])[:16]
+        elif r['type'] == 'traffic':
             cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
             row = cursor.fetchone()
             total_used = row['total_used'] or 0
@@ -22980,10 +23183,11 @@ def api_admin_reminders_active():
     reminders = [dict(r) for r in cursor.fetchall()]
     
     active_alerts = []
-    now_iso = get_now_iso()
+    now_tehran = get_now()
     for r in reminders:
         if r['type'] == 'date':
-            if r['target_date'] and r['target_date'] <= now_iso:
+            dt = parse_to_tehran_dt(r.get('target_date'))
+            if dt and dt <= now_tehran:
                 active_alerts.append(r)
         elif r['type'] == 'traffic':
             cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
@@ -23012,7 +23216,12 @@ def api_admin_reminders_add():
     title = data.get('title')
     rtype = data.get('type')
     desc = data.get('description', '')
-    target_date = data.get('target_date')
+    raw_target_date = data.get('target_date')
+    if raw_target_date and rtype == 'date':
+        dt = parse_to_tehran_dt(raw_target_date)
+        target_date = dt.isoformat() if dt else raw_target_date
+    else:
+        target_date = raw_target_date
     target_traffic = data.get('target_traffic')
     threshold_percent = data.get('threshold_percent')
     manual_consumed = data.get('manual_consumed_traffic', 0)
@@ -23067,6 +23276,13 @@ def api_admin_reminders_edit(id):
         cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
         row = cursor.fetchone()
         baseline_traffic = row['total_used'] or 0
+
+    raw_target_date = data.get('target_date')
+    if raw_target_date and data.get('type') == 'date':
+        dt = parse_to_tehran_dt(raw_target_date)
+        clean_target_date = dt.isoformat() if dt else raw_target_date
+    else:
+        clean_target_date = raw_target_date
     
     cursor.execute("""
         UPDATE admin_reminders SET 
@@ -23077,7 +23293,7 @@ def api_admin_reminders_edit(id):
         WHERE id = ?
     """, (
         data.get('title'), data.get('type'), data.get('description', ''), 
-        data.get('target_date'), data.get('target_traffic'), data.get('threshold_percent'),
+        clean_target_date, data.get('target_traffic'), data.get('threshold_percent'),
         data.get('manual_consumed_traffic', 0), baseline_traffic,
         1 if data.get('send_telegram') else 0, 1 if data.get('send_sms') else 0,
         data.get('telegram_target', 'main_admin'), data.get('specific_telegram_id', ''),

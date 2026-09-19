@@ -2080,6 +2080,12 @@
                     <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
                 </button>
 
+                {% if customer_ref_enabled %}
+                <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal" title="کسب درآمد و دعوت از دوستان">
+                    <i class="fas fa-gift me-1 text-warning"></i>کسب درآمد
+                </button>
+                {% endif %}
+
                 {% if sub_url %}
                 <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ sub_url }}', 'لینک اشتراک')" title="کپی لینک ساب">
                     <i class="fas fa-link me-1 text-primary"></i>کپی ساب
@@ -2915,6 +2921,9 @@
                         {% endif %}
                         <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal"><i class="fas fa-chart-line me-1"></i>آمار مصرف</button>
                         <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
+                        {% if customer_ref_enabled %}
+                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal" title="کسب درآمد و دعوت از دوستان"><i class="fas fa-gift text-warning me-1"></i>کسب درآمد</button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -2974,6 +2983,110 @@
                         <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i> V2box</a>
                     </div>
                 </div>
+                <div class="modal-footer border-0 pt-0 justify-content-center">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- مودال پاپ‌آپ جامع سیستم کسب درآمد و دعوت از دوستان -->
+    {% if customer_ref_enabled %}
+    <div class="modal fade" id="customerReferralModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
+                <div class="modal-header border-secondary border-opacity-25 pb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar-sm bg-warning bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-warning p-2" style="width: 42px; height: 42px;">
+                            <i class="fas fa-gift fs-5"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0">کسب درآمد و دعوت از دوستان</h5>
+                            <small class="text-secondary">دوستان خود را دعوت کنید و با هر خرید بسته آن‌ها، پاداش نقدی دریافت نمایید</small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body py-3">
+                    <!-- کارت‌های ۴گانه آمار کاربر -->
+                    <div class="row g-2 mb-4">
+                        <div class="col-6 col-md-3">
+                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">👥 دعوت‌شده‌ها</span>
+                                <span class="fw-bold fs-5 text-info">{{ customer_ref_stats.total_invites }}</span>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">✅ خریدهای موفق</span>
+                                <span class="fw-bold fs-5 text-success">{{ customer_ref_stats.rewarded_invites }}</span>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💰 مجموع پاداش</span>
+                                <span class="fw-bold fs-5 text-warning">{{ "{:,}".format(customer_ref_stats.total_reward) }}</span>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💳 کیف پول فعلی</span>
+                                <span class="fw-bold fs-5 text-primary">{{ "{:,}".format(customer_ref_stats.wallet_balance) }}</span>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بخش لینک اختصاصی دعوت -->
+                    <div class="p-3 rounded-3 mb-4" style="background: rgba(245, 158, 11, 0.07); border: 1px dashed rgba(245, 158, 11, 0.3);">
+                        <label class="form-label small fw-bold text-warning mb-2">
+                            <i class="fas fa-link me-1"></i> لینک اختصاصی دعوت شما در تلگرام:
+                        </label>
+                        {% if customer_ref_link %}
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control font-monospace text-warning text-center text-md-start bg-dark border-secondary border-opacity-50" style="font-size: 0.85rem;" value="{{ customer_ref_link }}" readonly id="customerRefLinkInput">
+                            <button class="btn btn-warning px-3" type="button" onclick="copyText('{{ customer_ref_link }}', 'لینک دعوت')">
+                                <i class="fas fa-copy me-1"></i>کپی لینک
+                            </button>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-md-start mt-2">
+                            <a href="https://t.me/share/url?url={{ customer_ref_link|urlencode }}&text={{ 'خرید فیلترشکن پرسرعت، پایدار و بدون قطعی'|urlencode }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3">
+                                <i class="fab fa-telegram-plane me-1"></i>اشتراک‌گذاری در تلگرام
+                            </a>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-secondary py-2 small mb-0">
+                            جهت دریافت لینک اختصاصی دعوت، لطفاً ابتدا از طریق ربات تلگرام وارد شوید تا شناسه تلگرام شما شناسایی شود.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- قوانین و راهنمای سیستم پاداش -->
+                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);">
+                        <h6 class="fw-bold small text-white mb-2"><i class="fas fa-info-circle text-info me-1"></i> شرایط و قوانین دریافت پاداش:</h6>
+                        <ul class="text-secondary small mb-0 ps-3" style="font-size: 0.8rem; line-height: 1.8;">
+                            {% if customer_ref_cfg.reward_type == 'percent' %}
+                            <li>به ازای هر خرید موفق دوستان شما، <b class="text-white">{{ customer_ref_cfg.reward_amount }}٪</b> از مبلغ فاکتور خرید فوراً به کیف پول شما اضافه می‌شود.</li>
+                            {% else %}
+                            <li>به ازای هر خرید موفق دوستان شما، مبلغ <b class="text-white">{{ "{:,}".format(customer_ref_cfg.reward_amount) }} تومان</b> پاداش نقدی فوراً به کیف پول شما واریز خواهد شد.</li>
+                            {% endif %}
+                            {% if customer_ref_cfg.min_purchase_amount > 0 %}
+                            <li>حداقل مبلغ خرید برای تعلق پاداش: <b class="text-white">{{ "{:,}".format(customer_ref_cfg.min_purchase_amount) }} تومان</b> می‌باشد.</li>
+                            {% endif %}
+                            <li>موجودی کیف پول شما به صورت خودکار در خریدهای بعدی یا تمدید <b>بسته‌ها</b> اعمال شده و از مبلغ فاکتور کسر می‌گردد.</li>
+                            <li>پاداش صرفاً به خریدهای معتبر و قطعی <b>بسته‌ها</b> تعلق می‌گیرد و برای اکانت‌های تست رایگان پاداشی ثبت نخواهد شد.</li>
+                            {% if customer_ref_cfg.custom_terms %}
+                            <li class="text-info mt-1">{{ customer_ref_cfg.custom_terms }}</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+
                 <div class="modal-footer border-0 pt-0 justify-content-center">
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
                 </div>
