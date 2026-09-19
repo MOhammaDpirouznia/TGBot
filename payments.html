@@ -187,8 +187,8 @@
                         </td>
                         <td data-value="{{ tx.get('customer_name') or tx['username'] or tx['user_id'] or '' }}">
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ avatar_url(tx.get('customer_name') or tx['user_id'] or tx['username'] or 'User') }}" 
-                                     alt="{{ tx.get('customer_name') or tx['username'] or tx['user_id'] }}" 
+                                <img src="{{ avatar_url(tx.get('user_id') or tx.get('telegram_id') or tx.get('customer_name') or tx.get('username') or 'User') }}" 
+                                     alt="{{ tx.get('customer_name') or tx.get('username') or tx.get('user_id') }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 36px; height: 36px; object-fit: cover;" 
                                      loading="lazy">

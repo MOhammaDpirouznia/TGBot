@@ -174,7 +174,7 @@
                         </td>
                         <td class="ps-2">
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
+                                <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
                                      alt="{{ sub['account_name'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 38px; height: 38px; object-fit: cover;">
@@ -271,8 +271,8 @@
                         <td class="ps-2" data-value="{{ (sub['account_name'] or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت">
                                 <div class="position-relative">
-                                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
-                                         alt="{{ sub['account_name'] }}" 
+                                    <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                                         alt="{{ sub['account_name'] or sub.get('telegram_id') }}" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 38px; height: 38px; object-fit: cover;" 
                                          loading="lazy">
@@ -635,7 +635,7 @@
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-dark text-white py-3">
                 <div class="d-flex align-items-center gap-2">
-                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 42px; height: 42px; object-fit: cover;">
+                    <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 42px; height: 42px; object-fit: cover;">
                     <div>
                         <h5 class="modal-title fw-bold mb-0" id="customerDetailModalLabel{{ sub['id'] }}">
                             {{ sub['account_name'] or 'بدون نام' }}
@@ -1246,7 +1246,7 @@
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-info bg-opacity-25 py-3">
                 <div class="d-flex align-items-center gap-2">
-                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 38px; height: 38px; object-fit: cover;">
+                    <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 38px; height: 38px; object-fit: cover;">
                     <div>
                         <h5 class="modal-title fw-bold text-dark mb-0" id="customerQueueModalLabel{{ sub['id'] }}">
                             <i class="fas fa-layer-group text-primary me-1"></i> صف تمدید: {{ sub['account_name'] }}
@@ -1435,7 +1435,7 @@
                 </div>
                 <div class="modal-body p-4">
                     <div class="text-center mb-3 p-3 bg-light rounded-3 border">
-                        <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
+                        <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
                              class="rounded-circle border shadow-sm mb-2" 
                              style="width: 70px; height: 70px; object-fit: cover;">
                         <div class="fw-bold fs-6">{{ sub['account_name'] }}</div>
@@ -1791,7 +1791,7 @@
                                 <td class="text-center text-muted font-monospace small">{{ loop.index }}</td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ avatar_url(item['phone_number'] or item['account_name'] or 'Customer') }}" 
+                                        <img src="{{ avatar_url(item.get('telegram_id') or item.get('phone_number') or item.get('account_name') or 'Customer') }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 34px; height: 34px; object-fit: cover;">
                                         <div>

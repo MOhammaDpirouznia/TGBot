@@ -145,7 +145,7 @@
                             {% elif tx['source'] == 'portal' %}
                                 <!-- مشتری پرتال وب -->
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(tx['account_name'] or tx['customer_name'] or 'Customer') }}" 
+                                    <img src="{{ avatar_url(tx.get('user_id') or tx.get('telegram_id') or tx.get('account_name') or tx.get('customer_name') or 'Customer') }}" 
                                          alt="Customer" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
                                     <div>
                                         <div class="d-flex align-items-center gap-1">

@@ -374,30 +374,64 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     # ۱. استخراج هوشمند telegram_id برای مدیر، نماینده یا مشتری
     target_tg_id = None
     if contact_info and contact_info.get("telegram_id"):
-        target_tg_id = contact_info.get("telegram_id")
+        try:
+            tg_val = int(contact_info.get("telegram_id"))
+            if tg_val > 0:
+                target_tg_id = tg_val
+        except (ValueError, TypeError):
+            pass
 
+    # بررسی شماره تلفن یا آیدی عددی مستقیم
     is_phone = bool(re.match(r"^(\+98|0098|98|0)?9\d{9}$", clean_ident))
     if not target_tg_id:
-        if clean_ident.isdigit() and not is_phone:
-            # شاید مستقیماً آیدی عددی تلگرام ارسال شده باشد
-            target_tg_id = int(clean_ident)
-        elif is_phone:
+        if is_phone:
             try:
-                target_tg_id = db.find_telegram_id_by_phone(clean_ident)
+                found_by_phone = db.find_telegram_id_by_phone(clean_ident)
+                if found_by_phone and int(found_by_phone) > 0:
+                    target_tg_id = int(found_by_phone)
             except Exception:
+                pass
+
+        if not target_tg_id and clean_ident.isdigit():
+            try:
+                val = int(clean_ident)
+                # اگر آیدی معتبر تلگرام است (غیر صفر و بین ۵ تا ۱۲ رقم)
+                if 10000 <= val <= 99999999999:
+                    target_tg_id = val
+            except (ValueError, TypeError):
+                pass
+
+    # بررسی نام کاربری یا اشتراک در صورتی که الگوی آیدی تلگرام دارد (مانند tg_12345678 یا u12345678 یا r10_u12345678_5802)
+    if not target_tg_id:
+        m_tg = re.search(r'(?:^|[_\-a-zA-Z])(?:u|tg|user|id)?(\d{6,12})(?:[_\-a-zA-Z]|$)', clean_ident)
+        if m_tg:
+            try:
+                val = int(m_tg.group(1))
+                if val > 10000:
+                    target_tg_id = val
+            except (ValueError, TypeError):
                 pass
 
     # بررسی در جدول اشتراک‌ها (Subscriptions)
     if not target_tg_id:
         try:
             conn = db.get_connection()
-            s_row = conn.execute("SELECT telegram_id FROM subscriptions WHERE account_name=? OR id=? OR hidify_uuid=? LIMIT 1", (clean_ident, clean_ident, clean_ident)).fetchone()
-            if s_row and s_row["telegram_id"]:
-                target_tg_id = s_row["telegram_id"]
+            s_row = conn.execute(
+                "SELECT telegram_id, phone_number FROM subscriptions WHERE (account_name=? OR id=? OR hidify_uuid=?) AND (is_deleted=0 OR is_deleted IS NULL) LIMIT 1",
+                (clean_ident, clean_ident, clean_ident)
+            ).fetchone()
+            if s_row:
+                if s_row["telegram_id"] and int(s_row["telegram_id"]) > 0:
+                    target_tg_id = int(s_row["telegram_id"])
+                elif s_row["phone_number"]:
+                    found_by_sub_phone = db.find_telegram_id_by_phone(s_row["phone_number"])
+                    if found_by_sub_phone and int(found_by_sub_phone) > 0:
+                        target_tg_id = int(found_by_sub_phone)
+
             if not target_tg_id and clean_ident.isdigit():
-                r_row = conn.execute("SELECT telegram_id FROM resellers WHERE id=?", (int(clean_ident),)).fetchone()
+                r_row = conn.execute("SELECT telegram_id FROM resellers WHERE id=? AND telegram_id > 0", (int(clean_ident),)).fetchone()
                 if r_row and r_row["telegram_id"]:
-                    target_tg_id = r_row["telegram_id"]
+                    target_tg_id = int(r_row["telegram_id"])
             conn.close()
         except Exception:
             pass
@@ -406,9 +440,12 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     if not target_tg_id:
         try:
             conn = db.get_connection()
-            a_row = conn.execute("SELECT telegram_id FROM admin_users WHERE LOWER(username)=? OR LOWER(display_name)=? LIMIT 1", (clean_ident.lower(), clean_ident.lower())).fetchone()
+            a_row = conn.execute(
+                "SELECT telegram_id FROM admin_users WHERE (LOWER(username)=? OR LOWER(display_name)=?) AND telegram_id > 0 LIMIT 1",
+                (clean_ident.lower(), clean_ident.lower())
+            ).fetchone()
             if a_row and a_row["telegram_id"]:
-                target_tg_id = a_row["telegram_id"]
+                target_tg_id = int(a_row["telegram_id"])
             conn.close()
         except Exception:
             pass
@@ -417,41 +454,69 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     if not target_tg_id:
         try:
             conn = db.get_connection()
-            u_row = conn.execute("SELECT telegram_id FROM users WHERE LOWER(username)=? LIMIT 1", (clean_ident.lower(),)).fetchone()
+            u_row = conn.execute(
+                "SELECT telegram_id FROM users WHERE LOWER(username)=? AND telegram_id > 0 LIMIT 1",
+                (clean_ident.lower(),)
+            ).fetchone()
             if u_row and u_row["telegram_id"]:
-                target_tg_id = u_row["telegram_id"]
+                target_tg_id = int(u_row["telegram_id"])
             conn.close()
         except Exception:
             pass
 
     # ۲. دریافت عکس واقعی پروفایل تلگرام با Telegram ID واقعی
-    if target_tg_id and target_tg_id > 0:
+    if target_tg_id and int(target_tg_id) > 0:
+        target_tg_id = int(target_tg_id)
         cache_file_tg = AVATAR_CACHE_DIR / f"tg_{target_tg_id}.jpg"
-        if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 7):
+        if cache_file_tg.exists() and cache_file_tg.stat().st_size > 100 and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 7):
             return cache_file_tg.read_bytes(), "image/jpeg"
 
-        bot_token = get_bot_token()
-        if bot_token:
-            try:
-                url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={target_tg_id}&limit=1"
-                with httpx.Client(timeout=2.0) as client:
-                    resp = client.get(url)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        photos = data.get("result", {}).get("photos", [])
-                        if photos and len(photos) > 0 and len(photos[0]) > 0:
-                            file_id = photos[0][-1].get("file_id") or photos[0][0].get("file_id")
-                            file_info_resp = client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
-                            if file_info_resp.status_code == 200:
-                                file_path = file_info_resp.json().get("result", {}).get("file_path")
-                                if file_path:
-                                    img_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-                                    img_resp = client.get(img_url)
-                                    if img_resp.status_code == 200 and len(img_resp.content) > 100:
-                                        cache_file_tg.write_bytes(img_resp.content)
-                                        return img_resp.content, "image/jpeg"
-            except Exception as e:
-                logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
+        # بررسی کش منفی (اگر کاربر قبلاً بررسی شده و عکسی نداشته یا خطای دسترسی داده)
+        cache_file_neg = AVATAR_CACHE_DIR / f"tg_none_{target_tg_id}.flag"
+        is_neg_cached = cache_file_neg.exists() and (time.time() - cache_file_neg.stat().st_mtime < 86400)
+
+        if not is_neg_cached:
+            bot_token = get_bot_token()
+            if bot_token and len(bot_token) > 10 and ":" in bot_token:
+                try:
+                    url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={target_tg_id}&limit=1"
+                    with httpx.Client(timeout=4.0) as client:
+                        resp = client.get(url)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if data.get("ok"):
+                                photos = data.get("result", {}).get("photos", [])
+                                if photos and len(photos) > 0 and len(photos[0]) > 0:
+                                    photo_sizes = photos[0]
+                                    # انتخاب سایز بهینه (~160px یا ~320px) جهت کمترین حجم و لود آنی در صفحات
+                                    target_photo = photo_sizes[1] if len(photo_sizes) > 1 else photo_sizes[0]
+                                    file_id = target_photo.get("file_id") or photo_sizes[-1].get("file_id")
+                                    if file_id:
+                                        file_info_resp = client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
+                                        if file_info_resp.status_code == 200 and file_info_resp.json().get("ok"):
+                                            file_path = file_info_resp.json().get("result", {}).get("file_path")
+                                            if file_path:
+                                                img_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                                                img_resp = client.get(img_url)
+                                                if img_resp.status_code == 200 and len(img_resp.content) > 100:
+                                                    cache_file_tg.write_bytes(img_resp.content)
+                                                    return img_resp.content, "image/jpeg"
+                                # کاربر عکس پروفایل ندارد
+                                try:
+                                    cache_file_neg.write_text("no_photo")
+                                except Exception:
+                                    pass
+                        elif resp.status_code in (400, 401, 403, 404):
+                            try:
+                                cache_file_neg.write_text(f"status_{resp.status_code}")
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
+                    try:
+                        cache_file_neg.write_text("temp_error")
+                    except Exception:
+                        pass
 
     # ۳. در صورت نداشتن آیدی تلگرام یا عدم وجود عکس در تلگرام: تولید آواتار تصادفی/مدرن محلی
     hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
@@ -602,8 +667,8 @@ def miniapp_logo():
 @app.template_global("avatar_url")
 def avatar_url_helper(identifier=None):
     """هلپر امن برای تولید آدرس آواتار در تمامی قالب‌ها بدون خطای BuildError"""
-    if not identifier:
-        identifier = "User"
+    if not identifier or str(identifier).strip() in ("", "0", "None", "null", "false", "False"):
+        identifier = "Customer"
     return url_for("telegram_avatar", identifier=str(identifier))
 
 
@@ -22065,7 +22130,7 @@ def api_portal_chat_init(token: str):
                 "chat_button_style": chat_cfg.get("chat_button_style", "floating_pill"),
                 "chat_button_text": chat_cfg.get("chat_button_text", "گفتگوی آنلاین"),
                 "chat_button_position": chat_cfg.get("chat_button_position", "bottom_right"),
-                "customer_avatar_url": f"/avatar/{tg_id}" if tg_id else "/static/images/default_avatar.png",
+                "customer_avatar_url": f"/avatar/{tg_id}" if (tg_id and int(tg_id) > 0) else f"/avatar/{token or 'Customer'}",
                 "support_avatar_url": f"/avatar/{('reseller_' + str(reseller_id)) if reseller_id else 'support'}"
             })
         return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
@@ -22113,7 +22178,7 @@ def api_portal_chat_init(token: str):
         "chat_button_style": chat_cfg["chat_button_style"],
         "chat_button_text": chat_cfg["chat_button_text"],
         "chat_button_position": chat_cfg["chat_button_position"],
-        "customer_avatar_url": f"/avatar/{tg_id if tg_id else (sub.get('account_name') or sub_id)}",
+        "customer_avatar_url": f"/avatar/{tg_id if (tg_id and int(tg_id) > 0) else (sub.get('account_name') or sub_id)}",
         "support_avatar_url": f"/avatar/{('reseller_' + str(reseller_id)) if reseller_id else 'support'}"
     })
 

@@ -2024,33 +2024,49 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary border-opacity-25">
             <div>
                 <div class="d-flex align-items-center gap-2 mb-1">
-                    <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
-                    {% if sub.get('status') == 'active' %}
-                        <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">
-                            <i class="fas fa-circle-check me-1"></i> فعال
-                        </span>
-                    {% elif sub.get('status') == 'expired' %}
-                        <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">
-                            <i class="fas fa-triangle-exclamation me-1"></i> منقضی شده
-                        </span>
-                    {% elif sub.get('status') == 'disabled' %}
-                        <span class="badge bg-secondary text-white border border-secondary px-2 py-1 rounded-pill small">
-                            <i class="fas fa-ban me-1"></i> غیرفعال
-                        </span>
-                    {% elif sub.get('status') == 'limited' %}
-                        <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">
-                            <i class="fas fa-gauge me-1"></i> محدود شده
-                        </span>
-                    {% else %}
-                        <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ 'غیرفعال' if sub.get('status') == 'disabled' else sub.get('status') }}</span>
-                    {% endif %}
-                    {% if (sub.get('debt_amount') or 0)|int > 0 %}
-                        <span class="badge bg-danger text-white border border-danger px-2 py-1 rounded-pill small">
-                            <i class="fas fa-hand-holding-dollar me-1"></i> بدهکار ({{ "{:,}".format(sub.get('debt_amount')) }} ت)
-                        </span>
-                    {% endif %}
+                    <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                         alt="{{ sub.get('account_name') or 'کاربر' }}" 
+                         class="rounded-circle border border-primary border-opacity-50 shadow-sm flex-shrink-0" 
+                         style="width: 40px; height: 40px; object-fit: cover;" 
+                         onerror="this.onerror=null; this.src='/avatar/User';">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                            {% if sub.get('status') == 'active' %}
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">
+                                    <i class="fas fa-circle-check me-1"></i> فعال
+                                </span>
+                            {% elif sub.get('status') == 'expired' %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">
+                                    <i class="fas fa-triangle-exclamation me-1"></i> منقضی شده
+                                </span>
+                            {% elif sub.get('status') == 'disabled' %}
+                                <span class="badge bg-secondary text-white border border-secondary px-2 py-1 rounded-pill small">
+                                    <i class="fas fa-ban me-1"></i> غیرفعال
+                                </span>
+                            {% elif sub.get('status') == 'limited' %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">
+                                    <i class="fas fa-gauge me-1"></i> محدود شده
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ 'غیرفعال' if sub.get('status') == 'disabled' else sub.get('status') }}</span>
+                            {% endif %}
+                            {% if (sub.get('debt_amount') or 0)|int > 0 %}
+                                <span class="badge bg-danger text-white border border-danger px-2 py-1 rounded-pill small">
+                                    <i class="fas fa-hand-holding-dollar me-1"></i> بدهکار ({{ "{:,}".format(sub.get('debt_amount')) }} ت)
+                                </span>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap text-secondary small" style="font-size: 0.75rem;">
+                            <span>پورتال هوشمند و اختصاصی اشتراک</span>
+                            {% if sub.get('phone_number') %}
+                                <span class="font-monospace text-info"><i class="fas fa-phone-alt me-1" style="font-size: 0.7rem;"></i>{{ sub.get('phone_number') }}</span>
+                            {% elif sub.get('telegram_id') and sub.get('telegram_id') > 0 %}
+                                <span class="font-monospace text-info"><i class="fab fa-telegram me-1" style="font-size: 0.7rem;"></i>{{ sub.get('telegram_id') }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
-                <span class="text-secondary small">پورتال هوشمند و اختصاصی اشتراک</span>
             </div>
 
             <!-- دکمه‌های فشرده کنار نام مشتری -->
@@ -2805,16 +2821,28 @@
                     <div class="bento-card">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <div class="d-flex align-items-center gap-2">
-                                <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
-                                {% if sub.get('status') == 'active' %}
-                                    <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
-                                {% elif sub.get('status') == 'expired' %}
-                                    <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
-                                {% elif sub.get('status') == 'disabled' %}
-                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
-                                {% elif sub.get('status') == 'limited' %}
-                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
-                                {% endif %}
+                                <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                                     alt="{{ sub.get('account_name') or 'کاربر' }}" 
+                                     class="rounded-circle border border-primary border-opacity-50 shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     onerror="this.onerror=null; this.src='/avatar/User';">
+                                <div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                                        {% if sub.get('status') == 'active' %}
+                                            <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
+                                        {% elif sub.get('status') == 'expired' %}
+                                            <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
+                                        {% elif sub.get('status') == 'disabled' %}
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
+                                        {% elif sub.get('status') == 'limited' %}
+                                            <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if sub.get('phone_number') or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                        <small class="text-secondary font-monospace d-block" style="font-size: 0.72rem;">{{ sub.get('phone_number') or ('آیدی: ' ~ sub.get('telegram_id')) }}</small>
+                                    {% endif %}
+                                </div>
                             </div>
                             <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
                         </div>
@@ -4117,7 +4145,7 @@ function onDebtPaymentMethodChange(radio) {
 // ═══════════════════════════════════════════════════════════════════════
 
 const PORTAL_TOKEN = "{{ token or '' }}";
-let CUSTOMER_AVATAR_URL = "{{ avatar_url(sub.telegram_id if sub.telegram_id else (sub.account_name if sub.account_name else sub.id)) }}";
+let CUSTOMER_AVATAR_URL = "{{ avatar_url(sub.get('telegram_id') if (sub.get('telegram_id') and sub.get('telegram_id')|int > 0) else (sub.get('account_name') if sub.get('account_name') else 'Customer')) }}";
 let SUPPORT_AVATAR_URL = "{{ avatar_url(('reseller_' ~ sub.reseller_id) if sub.reseller_id else 'support') }}";
 let chatActiveTicket = null;
 let chatLastMessageId = 0;

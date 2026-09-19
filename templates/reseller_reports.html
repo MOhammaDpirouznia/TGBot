@@ -343,7 +343,7 @@
                             <tr>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ avatar_url(a['account_name'] or 'Customer') }}" 
+                                        <img src="{{ avatar_url(a.get('telegram_id') or a.get('account_name') or 'Customer') }}" 
                                              alt="{{ a['account_name'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 32px; height: 32px; object-fit: cover;" 
@@ -472,7 +472,7 @@
                         <td class="ps-3">
                             <div class="d-flex align-items-center gap-2">
                                 {% if s['account_name'] and s['account_name'] != '-' %}
-                                    <img src="{{ avatar_url(s['account_name']) }}" 
+                                    <img src="{{ avatar_url(s.get('telegram_id') or s.get('account_name') or 'Customer') }}" 
                                          alt="{{ s['account_name'] }}" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 32px; height: 32px; object-fit: cover;" 

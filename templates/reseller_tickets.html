@@ -221,7 +221,7 @@
                                 </div>
                             {% else %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(ticket.get('customer_name') or ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                                    <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('customer_name') or ticket.get('username') or 'User') }}" 
                                          alt="Avatar" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 38px; height: 38px; object-fit: cover;" 
@@ -470,7 +470,7 @@
                         </div>
                     {% else %}
                         <div class="d-flex align-items-center gap-3">
-                            <img src="{{ avatar_url(ticket.get('customer_name') or ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                            <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('customer_name') or ticket.get('username') or 'User') }}" 
                                  alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
                             <div>
                                 <div class="fw-bold ticket-user-title fs-6">
