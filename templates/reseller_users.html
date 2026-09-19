@@ -373,9 +373,12 @@
                                 {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
                                 {% set rem_pct = 100 - pct %}
                                 {% if rem_pct < 0 %}{% set rem_pct = 0 %}{% endif %}
-                                <div class="progress mt-1 custom-usage-progress position-relative shadow-sm" style="width: 120px; height: 20px; border: 1px solid #475569; background-color: rgba(15, 23, 42, 0.45); border-radius: 6px; overflow: hidden;" title="باقی‌مانده: {{ rem_pct }}%">
-                                    <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%; height: 100%;"></div>
-                                    <span class="position-absolute w-100 text-center font-monospace fw-bold text-white" style="font-size: 11px; line-height: 18px; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 1px #000; left: 0; top: 0; pointer-events: none; z-index: 2;">{{ rem_pct }}%</span>
+                                <div class="progress mt-1 custom-usage-progress shadow-sm" style="width: 120px; height: 8px; border-radius: 999px;" title="باقی‌مانده: {{ rem_pct }}% (مصرف شده: {{ pct }}%)">
+                                    <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%; border-radius: 999px;"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-1 text-nowrap" style="width: 120px; font-size: 0.70rem; line-height: 1.1;">
+                                    <span class="text-muted" style="font-size: 0.67rem;">باقی‌مانده:</span>
+                                    <span class="fw-bold font-monospace {{ 'text-danger' if rem_pct <= 10 else ('text-warning' if rem_pct <= 30 else 'text-success') }}">{{ rem_pct }}%</span>
                                 </div>
                             </div>
                         </td>
