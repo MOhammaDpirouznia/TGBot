@@ -109,6 +109,17 @@
                                 </select>
                                 <div class="form-text small">پالت رنگی اعمال شده روی پورتال کاربری.</div>
                             </div>
+
+                            <div class="col-12 mt-3">
+                                <div class="form-check form-switch p-2 rounded bg-light border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="portal_buy_enabled" id="resellerPortalBuyEnabled" value="1"
+                                           {% if reseller.get('portal_buy_enabled') == 1 or reseller.get('portal_buy_enabled') == '1' %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold small text-primary" for="resellerPortalBuyEnabled">
+                                        <i class="fas fa-shopping-cart me-1"></i> فعال‌سازی خرید اشتراک جدید در پورتال مشتری
+                                    </label>
+                                    <div class="form-text small text-muted">با فعال‌سازی این گزینه، دکمه «خرید اشتراک» در بالای پورتال وب مشتریان شما نمایش داده شده و مشتریان می‌توانند پلن‌های شما را به صورت مستقیم خریداری نمایند.</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -150,7 +161,19 @@
                             </div>
                         </div>
 
-                        <!-- بخش ۲: صفحه لودینگ و اسپلش مینی‌اپ -->
+                        <!-- بخش ۲: فعال‌سازی خرید اشتراک در مینی‌اپ -->
+                        <div class="bg-white p-3 rounded-2 border mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="miniapp_buy_enabled" id="resellerMiniappBuyEnabled" value="1"
+                                       {% if reseller.get('miniapp_buy_enabled') == 1 or reseller.get('miniapp_buy_enabled') == '1' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold small text-success" for="resellerMiniappBuyEnabled">
+                                    <i class="fas fa-cart-plus me-1"></i> فعال‌سازی امکان خرید اشتراک جدید در مینی‌اپ تلگرام
+                                </label>
+                                <div class="form-text small text-muted">با فعال بودن این گزینه، دکمه «خرید اشتراک» در بالای مینی‌اپ تلگرام کاربران شما فعال شده و مشتریان می‌توانند پلن‌های شما را به صورت مستقیم خریداری نمایند.</div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ۳: صفحه لودینگ و اسپلش مینی‌اپ -->
                         <div class="bg-white p-3 rounded-2 border">
                             <div class="row g-3">
                                 <div class="col-12">

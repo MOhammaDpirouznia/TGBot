@@ -1729,7 +1729,7 @@
                 {% if enable_new_purchase and not is_new_customer %}
                 <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#newSubPurchaseModal" onclick="window.tgHaptic && window.tgHaptic('light');">
                     <i class="fas fa-cart-plus"></i>
-                    <span>خرید اشتراک جدید</span>
+                    <span>خرید اشتراک</span>
                 </button>
                 {% endif %}
             </div>
@@ -1789,11 +1789,6 @@
                     <i class="fas fa-layer-group text-primary"></i>
                     اشتراک‌های فعال شما ({{ user_subscriptions|length }} اشتراک)
                 </span>
-                {% if enable_new_purchase %}
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-0 fw-bold" style="font-size: 0.76rem; height: 26px;" data-bs-toggle="modal" data-bs-target="#newSubPurchaseModal" onclick="window.tgHaptic && window.tgHaptic('light');">
-                    <i class="fas fa-plus me-1"></i> خرید جدید
-                </button>
-                {% endif %}
             </div>
             <div class="portal-subs-scroll">
                 {% for usub in user_subscriptions %}
@@ -2410,14 +2405,15 @@
 
     {% macro macro_renewal_card() %}
     <!-- بخش انتخاب بسته تمدید یا خرید جدید -->
-    {% if portal_enable_renewal or is_new_customer %}
+    {% if (portal_enable_renewal and not is_new_customer) or (is_new_customer and enable_new_purchase) %}
     <div class="glass-card p-4 mb-4">
-        <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>{% if is_new_customer %}خرید اشتراک جدید{% else %}تمدید یا ارتقای اشتراک{% endif %}</h5>
+        <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>{% if is_new_customer %}خرید اشتراک{% else %}تمدید یا ارتقای اشتراک{% endif %}</h5>
         <p class="text-secondary small">{% if is_new_customer %}یک بسته را انتخاب کنید تا اشتراک اختصاصی شما صادر شود:{% else %}یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:{% endif %}</p>
 
         <form action="{% if is_new_customer or not token %}{{ url_for('customer_buy_new_plan') }}{% else %}{{ url_for('customer_create_invoice', token=token) }}{% endif %}" method="POST">
             <input type="hidden" name="reseller_id" value="{{ reseller_id or 0 }}">
             <input type="hidden" name="telegram_id" value="{{ telegram_id or 0 }}">
+            <input type="hidden" name="token" value="{{ token or '' }}">
             <input type="hidden" name="is_webapp" value="{% if is_webapp %}1{% else %}0{% endif %}">
             <div class="portal-plans-wrapper plan-style-{{ portal_plan_style or 'glass_classic' }}">
                 <div class="row g-3 mb-3">
@@ -2737,15 +2733,22 @@
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
     {% if is_new_customer %}
-        <!-- خوش‌آمدگویی و خرید اولین اشتراک در مینی‌اپ -->
+        <!-- خوش‌آمدگویی و خرید اولین اشتراک در مینی‌اپ یا پرتال -->
         <div class="glass-card p-4 mb-4 text-center shadow-sm">
             <div class="avatar-lg bg-primary bg-opacity-20 text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style="width: 72px; height: 72px;">
                 <i class="fas fa-rocket fa-2x"></i>
             </div>
-            <h4 class="fw-bold mb-2">خرید اشتراک جدید</h4>
+            {% if enable_new_purchase %}
+            <h4 class="fw-bold mb-2">خرید اشتراک</h4>
             <p class="text-secondary small mb-0" style="max-width: 540px; margin: 0 auto;">
                 به فروشگاه ما خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد.
             </p>
+            {% else %}
+            <h4 class="fw-bold mb-2">خوش آمدید</h4>
+            <p class="text-secondary small mb-0" style="max-width: 540px; margin: 0 auto;">
+                شما در حال حاضر هیچ اشتراک فعالی در این بخش ندارید. در صورت نیاز با پشتیبانی در ارتباط باشید.
+            </p>
+            {% endif %}
         </div>
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
@@ -3108,8 +3111,8 @@
                         <i class="fas fa-cart-plus fs-5"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0">خرید اشتراک جدید</h5>
-                        <small class="text-secondary">خرید یک اشتراک اختصاصی متصل به حساب تلگرام شما</small>
+                        <h5 class="modal-title fw-bold mb-0">خرید اشتراک</h5>
+                        <small class="text-secondary">خرید یک اشتراک اختصاصی پرسرعت</small>
                     </div>
                 </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -3119,7 +3122,8 @@
                 <form action="{{ url_for('customer_buy_new_plan') }}" method="POST" id="newSubPurchaseForm">
                     <input type="hidden" name="reseller_id" value="{{ reseller_id or 0 }}">
                     <input type="hidden" name="telegram_id" value="{{ telegram_id or 0 }}">
-                    <input type="hidden" name="is_webapp" value="1">
+                    <input type="hidden" name="token" value="{{ token or '' }}">
+                    <input type="hidden" name="is_webapp" value="{% if is_webapp %}1{% else %}0{% endif %}">
 
                     <!-- نام دلخواه برای این اشتراک (اختیاری) -->
                     <div class="mb-3">

@@ -13550,6 +13550,7 @@ def settings():
             support_phone = request.form.get("support_phone", "").strip()
             support_username = request.form.get("support_username", "").strip().lstrip("@")
             portal_enable_renewal = "1" if request.form.get("portal_enable_renewal") else "0"
+            portal_buy_enabled = "1" if request.form.get("portal_buy_enabled") else "0"
             portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
             portal_clock_check_enabled = "1" if request.form.get("portal_clock_check_enabled") else "0"
             portal_layout = request.form.get("portal_layout", "classic").strip().lower()
@@ -13562,6 +13563,7 @@ def settings():
             db.save_setting("support_phone", support_phone)
             db.save_setting("support_username", support_username)
             db.save_setting("portal_enable_renewal", portal_enable_renewal)
+            db.save_setting("portal_buy_enabled", portal_buy_enabled)
             db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
             db.save_setting("portal_clock_check_enabled", portal_clock_check_enabled)
             db.save_setting("portal_layout", portal_layout)
@@ -13664,6 +13666,7 @@ def settings():
         elif action == "save_mini_app_settings":
             btn_enabled = "1" if request.form.get("mini_app_menu_button_enabled") else "0"
             btn_text = request.form.get("mini_app_menu_button_text", "").strip() or "ورود به برنامه | HiddiPlus"
+            miniapp_buy_enabled = "1" if request.form.get("miniapp_buy_enabled") else "0"
             custom_url = request.form.get("mini_app_custom_url", "").strip()
 
             if custom_url:
@@ -13680,6 +13683,7 @@ def settings():
 
             db.save_setting("mini_app_menu_button_enabled", btn_enabled)
             db.save_setting("mini_app_menu_button_text", btn_text)
+            db.save_setting("miniapp_buy_enabled", miniapp_buy_enabled)
             db.save_setting("mini_app_custom_url", custom_url)
             db.save_setting("mini_app_splash_enabled", splash_enabled)
             db.save_setting("mini_app_splash_title", splash_title)
@@ -13756,6 +13760,7 @@ def settings():
         "support_phone": db.get_setting("support_phone", ""),
         "support_username": db.get_setting("support_username", ""),
         "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
+        "portal_buy_enabled": str(db.get_setting("portal_buy_enabled", "0")).lower() in ("1", "true"),
         "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true"),
         "portal_clock_check_enabled": str(db.get_setting("portal_clock_check_enabled", "1")).lower() in ("1", "true"),
         "server_status_mode": db.get_setting("server_status_mode", "smart"),
@@ -13781,6 +13786,7 @@ def settings():
     mini_app_config = {
         "menu_button_enabled": str(db.get_setting("mini_app_menu_button_enabled", "1")).lower() in ("1", "true"),
         "menu_button_text": db.get_setting("mini_app_menu_button_text", "ورود به برنامه | HiddiPlus") or "ورود به برنامه | HiddiPlus",
+        "miniapp_buy_enabled": str(db.get_setting("miniapp_buy_enabled", "0")).lower() in ("1", "true"),
         "custom_url": db.get_setting("mini_app_custom_url", ""),
         "splash_enabled": str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true"),
         "splash_title": db.get_setting("mini_app_splash_title", "HiddiPlus") or "HiddiPlus",
@@ -18542,6 +18548,8 @@ def reseller_branding():
         mini_app_menu_button_text = request.form.get("mini_app_menu_button_text", "").strip()
         mini_app_splash_enabled = 1 if request.form.get("mini_app_splash_enabled") else 0
         mini_app_menu_button_enabled = 1 if request.form.get("mini_app_menu_button_enabled") else 0
+        portal_buy_enabled = 1 if request.form.get("portal_buy_enabled") else 0
+        miniapp_buy_enabled = 1 if request.form.get("miniapp_buy_enabled") else 0
 
         # بررسی پاک‌سازی یا آپلود تصویر/لوگوی اسپلش مینی‌اپ
         mini_app_splash_image = ""
@@ -18577,7 +18585,9 @@ def reseller_branding():
             "mini_app_splash_subtitle": mini_app_splash_subtitle,
             "mini_app_splash_image": mini_app_splash_image,
             "mini_app_menu_button_enabled": mini_app_menu_button_enabled,
-            "mini_app_menu_button_text": mini_app_menu_button_text
+            "mini_app_menu_button_text": mini_app_menu_button_text,
+            "portal_buy_enabled": portal_buy_enabled,
+            "miniapp_buy_enabled": miniapp_buy_enabled
         }
 
         # فقط در صورتی که فیلد دامنه در فرم ارسال شده باشد آن را پردازش کن
@@ -21333,8 +21343,19 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     else:
         gw_cfg = db.get_admin_gateway()
 
-    # فعال بودن خرید اشتراک جدید منحصراً برای مینی‌اپ
-    enable_new_purchase = is_webapp or bool(request.args.get("tg_id")) or bool(request.path.startswith("/webapp"))
+    # فعال بودن خرید اشتراک جدید با تفکیک و ایزولاسیون کامل پرتال و مینی‌اپ برای مدیریت و نمایندگان
+    effective_r_id = sub.get("reseller_id") if sub else (reseller_id or 0)
+    if effective_r_id and int(effective_r_id) > 0:
+        r_info_buy = db.get_reseller(int(effective_r_id)) or {}
+        if is_webapp:
+            enable_new_purchase = bool(r_info_buy.get("miniapp_buy_enabled") in (1, "1", True, "true"))
+        else:
+            enable_new_purchase = bool(r_info_buy.get("portal_buy_enabled") in (1, "1", True, "true"))
+    else:
+        if is_webapp:
+            enable_new_purchase = str(db.get_setting("miniapp_buy_enabled", "0")).lower() in ("1", "true")
+        else:
+            enable_new_purchase = str(db.get_setting("portal_buy_enabled", "0")).lower() in ("1", "true")
 
     # تنظیمات صفحه لودینگ / اسپلش مینی‌اپ تلگرام با پشتیبانی از برندینگ مستقل نماینده
     if reseller_id and int(reseller_id) > 0:
@@ -22043,6 +22064,31 @@ def customer_buy_new_plan():
     payment_method = request.form.get("payment_method", "card_to_card").strip()
     reseller_id = int(request.form.get("reseller_id") or 0)
     telegram_id = int(request.form.get("telegram_id") or 0)
+    token = request.form.get("token", "").strip()
+    is_webapp_req = str(request.form.get("is_webapp", "1")).strip() in ("1", "true", "True")
+
+    if is_webapp_req:
+        target_return_url = url_for("telegram_webapp", tg_id=telegram_id, r=reseller_id) if telegram_id else url_for("telegram_webapp", r=reseller_id)
+    else:
+        target_return_url = url_for("customer_portal", token=token) if token else url_for("customer_portal")
+
+    # بررسی مجاز بودن خرید اشتراک جدید در پرتال یا مینی‌اپ با ایزولاسیون کامل بین مدیریت و نمایندگان
+    if reseller_id > 0:
+        r_info_chk = db.get_reseller(reseller_id) or {}
+        if is_webapp_req:
+            is_buy_allowed = bool(r_info_chk.get("miniapp_buy_enabled") in (1, "1", True, "true"))
+        else:
+            is_buy_allowed = bool(r_info_chk.get("portal_buy_enabled") in (1, "1", True, "true"))
+    else:
+        if is_webapp_req:
+            is_buy_allowed = str(db.get_setting("miniapp_buy_enabled", "0")).lower() in ("1", "true")
+        else:
+            is_buy_allowed = str(db.get_setting("portal_buy_enabled", "0")).lower() in ("1", "true")
+
+    if not is_buy_allowed:
+        flash("⚠️ در حال حاضر امکان خرید اشتراک جدید غیرفعال می‌باشد.", "danger")
+        return redirect(target_return_url)
+
     raw_discount_code = request.form.get("discount_code", "").strip().upper()
     account_name = request.form.get("account_name", "").strip()
     if not account_name:
@@ -22088,7 +22134,6 @@ def customer_buy_new_plan():
 
     now_iso = get_now_iso()
     order_id = f"BUY_{int(datetime.now().timestamp())}_{telegram_id or 'anon'}"
-    target_webapp_url = url_for("telegram_webapp", tg_id=telegram_id, r=reseller_id) if telegram_id else url_for("telegram_webapp", r=reseller_id)
 
     # ۱. حالت رایگان یا ۱۰۰٪ تخفیف
     if price <= 0:
@@ -22103,10 +22148,10 @@ def customer_buy_new_plan():
         conn.commit()
         conn.close()
 
-        fulfill_res = fulfill_approved_transaction(order_id, ref_id="رایگان", processed_by="تخفیف ۱۰۰٪ (مینی‌اپ)")
+        fulfill_res = fulfill_approved_transaction(order_id, ref_id="رایگان", processed_by="تخفیف ۱۰۰٪ (خرید اشتراک)")
         flash(f"🎉 تبریک! اشتراک جدید «{plan_name}» به صورت رایگان فعال شد.", "success")
-        sep = "&" if "?" in target_webapp_url else "?"
-        return redirect(f"{target_webapp_url}{sep}success_order={order_id}")
+        sep = "&" if "?" in target_return_url else "?"
+        return redirect(f"{target_return_url}{sep}success_order={order_id}")
 
     # ۲. پرداخت آنلاین
     if payment_method == "online_gateway":
@@ -22119,7 +22164,7 @@ def customer_buy_new_plan():
 
         if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
             flash("درگاه پرداخت آنلاین برای این فروشگاه فعال نیست. لطفاً از کارت به کارت استفاده فرمایید.", "warning")
-            return redirect(target_webapp_url)
+            return redirect(target_return_url)
 
         gw_type = gw_cfg.get("type", "zarinpal")
         gw_key = gw_cfg.get("key")
@@ -22130,7 +22175,10 @@ def customer_buy_new_plan():
         domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
         if not str(domain).startswith("http"):
             domain = f"https://{domain}"
-        callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?tg_id={telegram_id}&r={reseller_id}"
+        if is_webapp_req:
+            callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?tg_id={telegram_id}&r={reseller_id}"
+        else:
+            callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?token={token}&r={reseller_id}"
 
         conn = db.get_connection()
         conn.execute("""
@@ -22153,7 +22201,7 @@ def customer_buy_new_plan():
                     return redirect(res.get("payment_url"))
                 else:
                     flash(f"خطا در ایجاد تراکنش زرین‌پال: {res.get('error')}", "danger")
-                    return redirect(target_webapp_url)
+                    return redirect(target_return_url)
             elif gw_type == "idpay":
                 from payment import IDPay
                 idp = IDPay(api_key=gw_key, sandbox=sandbox)
@@ -22163,7 +22211,7 @@ def customer_buy_new_plan():
                     return redirect(res.get("payment_url"))
                 else:
                     flash(f"خطا در ایجاد تراکنش آیدی‌پی: {res.get('error')}", "danger")
-                    return redirect(target_webapp_url)
+                    return redirect(target_return_url)
             elif gw_type == "blupal":
                 from payment import BluPal
                 bp = BluPal(api_key=gw_key, sandbox=sandbox)
@@ -22176,30 +22224,30 @@ def customer_buy_new_plan():
                         return redirect(pay_target)
                     else:
                         flash("آدرس درگاه پرداخت ارسال نشد.", "danger")
-                        return redirect(target_webapp_url)
+                        return redirect(target_return_url)
                 else:
                     flash(f"خطا در ایجاد فاکتور بلوپال: {res.get('error')}", "danger")
-                    return redirect(target_webapp_url)
+                    return redirect(target_return_url)
         except Exception as e_gw:
             logger.error(f"Error creating online payment for new sub: {e_gw}")
             flash(f"خطا در اتصال به درگاه: {str(e_gw)}", "danger")
-            return redirect(target_webapp_url)
+            return redirect(target_return_url)
 
     # ۳. پرداخت از کیف پول
     elif payment_method == "wallet":
         if not telegram_id or telegram_id <= 0:
             flash("پرداخت از کیف پول نیازمند اتصال به حساب کاربری تلگرام است.", "warning")
-            return redirect(target_webapp_url)
+            return redirect(target_return_url)
 
         user_wallet = db.get_user_wallet_balance(telegram_id)
         if user_wallet < price:
             flash(f"موجودی کیف پول شما ({user_wallet:,} تومان) کافی نیست. کسری موجودی: {price - user_wallet:,} تومان.", "warning")
-            return redirect(target_webapp_url)
+            return redirect(target_return_url)
 
-        deduct_res = db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک جدید «{plan_name}» از مینی‌اپ")
+        deduct_res = db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک جدید «{plan_name}»")
         if not deduct_res.get("success"):
             flash(f"خطا در کسر از کیف پول: {deduct_res.get('error')}", "danger")
-            return redirect(target_webapp_url)
+            return redirect(target_return_url)
 
         order_id = f"WAL_BUY_{int(datetime.now().timestamp())}_{telegram_id}"
         conn = db.get_connection()
@@ -22213,10 +22261,10 @@ def customer_buy_new_plan():
         conn.commit()
         conn.close()
 
-        fulfill_res = fulfill_approved_transaction(order_id, ref_id="کسر از کیف پول", processed_by="کیف پول (مینی‌اپ)")
+        fulfill_res = fulfill_approved_transaction(order_id, ref_id="کسر از کیف پول", processed_by="کیف پول (خرید اشتراک)")
         flash(f"✅ مبلغ {price:,} تومان از کیف پول کسر و اشتراک جدید «{plan_name}» با موفقیت فعال شد.", "success")
-        sep = "&" if "?" in target_webapp_url else "?"
-        return redirect(f"{target_webapp_url}{sep}success_order={order_id}")
+        sep = "&" if "?" in target_return_url else "?"
+        return redirect(f"{target_return_url}{sep}success_order={order_id}")
 
     # ۴. کارت به کارت
     else:
@@ -22269,8 +22317,8 @@ def customer_buy_new_plan():
         conn.close()
 
         flash("فاکتور خرید اشتراک جدید صادر شد. لطفاً واریز را انجام و فیش یا مشخصات پرداخت را ثبت نمایید.", "info")
-        sep = "&" if "?" in target_webapp_url else "?"
-        return redirect(f"{target_webapp_url}{sep}order_id={order_id}")
+        sep = "&" if "?" in target_return_url else "?"
+        return redirect(f"{target_return_url}{sep}order_id={order_id}")
 
 
 @app.route("/renew/settle-debt/<token>", methods=["POST"])

@@ -1413,14 +1413,16 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های شخصی‌سازی مینی‌اپ تلگرام اختصاصی نماینده (Mini App White-Label Branding)
+        # ستون‌های شخصی‌سازی مینی‌اپ تلگرام اختصاصی نماینده (Mini App White-Label Branding) و امکان خرید اشتراک
         for r_app_col in [
             ("mini_app_splash_enabled", "INTEGER DEFAULT 1"),
             ("mini_app_splash_title", "TEXT DEFAULT NULL"),
             ("mini_app_splash_subtitle", "TEXT DEFAULT NULL"),
             ("mini_app_splash_image", "TEXT DEFAULT NULL"),
             ("mini_app_menu_button_enabled", "INTEGER DEFAULT 1"),
-            ("mini_app_menu_button_text", "TEXT DEFAULT NULL")
+            ("mini_app_menu_button_text", "TEXT DEFAULT NULL"),
+            ("portal_buy_enabled", "INTEGER DEFAULT 0"),
+            ("miniapp_buy_enabled", "INTEGER DEFAULT 0")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {r_app_col[0]} {r_app_col[1]}")
@@ -15686,6 +15688,7 @@ class Database:
                 "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette",
                 "mini_app_splash_enabled", "mini_app_splash_title", "mini_app_splash_subtitle",
                 "mini_app_splash_image", "mini_app_menu_button_enabled", "mini_app_menu_button_text",
+                "portal_buy_enabled", "miniapp_buy_enabled",
                 "updated_at"
             ]
             fields = []
