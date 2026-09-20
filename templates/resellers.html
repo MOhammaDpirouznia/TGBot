@@ -249,14 +249,29 @@
                                           title="{{ 'آنلاین' if r.get('is_online') else 'آفلاین' }}" style="width: 12px; height: 12px;"></span>
                                 </div>
                                 <div class="ms-2">
-                                    <div class="d-flex align-items-center gap-1">
+                                    <div class="d-flex align-items-center gap-1 flex-wrap">
                                         <span class="fw-bold text-dark reseller-title">
                                             {{ r['name'] }}
                                         </span>
                                         {% if r.get('is_online') %}
-                                            <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین</span>
+                                            <span class="badge bg-success-subtle text-success border border-success px-1.5 py-0.5 d-inline-flex align-items-center gap-1" style="font-size: 0.65rem;" title="آنلاین اکنون{% if r.get('last_activity_shamsi') and r['last_activity_shamsi'] != '-' %} (آخرین فعالیت: {{ r['last_activity_shamsi'] }}){% endif %}">
+                                                <i class="fas fa-circle me-1" style="font-size: 0.45rem;"></i>آنلاین
+                                            </span>
                                         {% else %}
-                                            <span class="badge bg-light text-muted border px-1 py-0" style="font-size: 0.65rem;">آفلاین</span>
+                                            <span class="badge bg-light text-muted border px-1.5 py-0.5 d-inline-flex align-items-center gap-1" style="font-size: 0.65rem;" title="آفلاین{% if r.get('last_activity_shamsi') and r['last_activity_shamsi'] != '-' %} (آخرین فعالیت: {{ r['last_activity_shamsi'] }}){% endif %}">آفلاین</span>
+                                        {% endif %}
+                                        {% if r.get('last_activity_ago') and r['last_activity_ago'] != 'بدون فعالیت' %}
+                                            <span class="badge bg-secondary-subtle text-secondary border px-1.5 py-0.5 d-inline-flex align-items-center gap-1 shadow-xs" 
+                                                  style="font-size: 0.65rem;" 
+                                                  title="آخرین فعالیت: {{ r.get('last_activity_shamsi') }} (به وقت تهران)">
+                                                <i class="fas fa-clock text-muted" style="font-size: 0.55rem;"></i>{{ r['last_activity_ago'] }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-light text-muted border px-1.5 py-0.5 d-inline-flex align-items-center gap-1 opacity-75" 
+                                                  style="font-size: 0.65rem;" 
+                                                  title="هیچ فعالیت ثبت‌شده‌ای در سامانه یافت نشد">
+                                                <i class="fas fa-clock text-muted" style="font-size: 0.55rem;"></i>بدون فعالیت
+                                            </span>
                                         {% endif %}
                                         {% if r.get('is_partner') %}
                                             <span class="badge bg-warning-subtle text-warning border border-warning px-1 py-0" style="font-size: 0.65rem;" title="نماینده شریک"><i class="fas fa-handshake me-1"></i>شریک</span>
@@ -661,6 +676,9 @@
                             {% else %}
                                 <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">آفلاین</span>
                             {% endif %}
+                            <span class="badge bg-light bg-opacity-10 text-white border border-white border-opacity-25 rounded-pill px-2 py-0.5" style="font-size: 0.65rem;" title="آخرین فعالیت: {{ r.get('last_activity_shamsi') }} (به وقت تهران)">
+                                <i class="fas fa-clock text-info me-1"></i>آخرین فعالیت: {{ r.get('last_activity_ago') or 'بدون فعالیت' }}
+                            </span>
                             {% if r.get('can_gift_traffic') %}
                                 <span class="badge bg-success-subtle text-success border border-success rounded-pill px-2" style="font-size: 0.65rem;" title="سهمیه باقیمانده حجم هدیه رایگان"><i class="fas fa-gift me-1"></i>سهمیه هدیه: {{ (r.get('gift_traffic_balance', 0.0) | float) | round(1) }} GB</span>
                             {% endif %}

@@ -4755,8 +4755,187 @@ class Database:
             conn.close()
 
     def is_reseller_online(self, reseller_id: int, threshold_minutes: int = 15) -> bool:
-        """بررسی آنلاین بودن نماینده فروش"""
-        return self.is_user_online("reseller", reseller_id, threshold_minutes)
+        """بررسی آنلاین بودن نماینده فروش (نشست وب پنل یا فعالیت اخیر تلگرام)"""
+        if self.is_user_online("reseller", reseller_id, threshold_minutes):
+            return True
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now_tehran = datetime.now(TEHRAN_TZ)
+            cursor.execute("""
+                SELECT last_active_at FROM telegram_activity
+                WHERE reseller_id = ?
+                ORDER BY last_active_at DESC LIMIT 1
+            """, (reseller_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                try:
+                    clean = str(row[0]).strip().replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(clean)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=TEHRAN_TZ)
+                    else:
+                        dt = dt.astimezone(TEHRAN_TZ)
+                    diff_seconds = abs((now_tehran - dt).total_seconds())
+                    return (diff_seconds / 60) <= threshold_minutes
+                except Exception:
+                    pass
+            return False
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
+    def get_all_resellers_last_activity(self) -> Dict[int, str]:
+        """
+        دریافت آخرین زمان فعالیت تمامی نمایندگان به صورت تجمیعی و فوق‌العاده بهینه (بدون کوئری N+1).
+        بررسی همزمان:
+        ۱. آخرین نشست یا فعالیت وب پنل در login_logs
+        ۲. آخرین فعالیت در ربات تلگرام در telegram_activity (شناسه نماینده و تلگرام آیدی)
+        ۳. آخرین صدور اشتراک توسط نماینده در subscriptions
+        ۴. آخرین تراکنش مالی یا فیش در reseller_transactions
+        ۵. آخرین پیام پشتیبانی ارسالی در ticket_messages
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        activity_map: Dict[int, str] = {}
+        
+        def _merge(r_id, dt_str):
+            if not r_id or not dt_str:
+                return
+            try:
+                r_id = int(r_id)
+            except (ValueError, TypeError):
+                return
+            dt_s = str(dt_str).strip()
+            curr = activity_map.get(r_id)
+            if curr is None or dt_s > curr:
+                activity_map[r_id] = dt_s
+
+        try:
+            # ۱. نشست‌ها و فعالیت وب پنل
+            cursor.execute("""
+                SELECT user_id, MAX(COALESCE(last_active_at, logout_at, login_at))
+                FROM login_logs
+                WHERE user_type = 'reseller' AND user_id IS NOT NULL
+                GROUP BY user_id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            # ۲. فعالیت تلگرام بر اساس reseller_id
+            cursor.execute("""
+                SELECT reseller_id, MAX(last_active_at)
+                FROM telegram_activity
+                WHERE reseller_id IS NOT NULL AND reseller_id > 0
+                GROUP BY reseller_id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            # ۳. فعالیت تلگرام بر اساس telegram_id تطبیق‌یافته در resellers
+            cursor.execute("""
+                SELECT r.id, MAX(t.last_active_at)
+                FROM resellers r
+                JOIN telegram_activity t ON r.telegram_id = t.telegram_id
+                WHERE r.telegram_id IS NOT NULL AND r.telegram_id > 0
+                GROUP BY r.id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            # ۴. صدور اشتراک توسط نماینده
+            cursor.execute("""
+                SELECT reseller_id, MAX(created_at)
+                FROM subscriptions
+                WHERE reseller_id IS NOT NULL AND reseller_id > 0
+                GROUP BY reseller_id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            # ۵. تراکنش‌های مالی نماینده
+            cursor.execute("""
+                SELECT reseller_id, MAX(created_at)
+                FROM reseller_transactions
+                WHERE reseller_id IS NOT NULL AND reseller_id > 0
+                GROUP BY reseller_id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            # ۶. ارسال پیام تیکت پشتیبانی توسط نماینده
+            cursor.execute("""
+                SELECT sender_id, MAX(created_at)
+                FROM ticket_messages
+                WHERE sender_type = 'reseller' AND sender_id IS NOT NULL AND sender_id > 0
+                GROUP BY sender_id
+            """)
+            for r_id, dt_str in cursor.fetchall():
+                _merge(r_id, dt_str)
+
+            return activity_map
+        except Exception as e:
+            logger.error(f"Error getting all resellers last activity: {e}")
+            return activity_map
+        finally:
+            conn.close()
+
+    def get_reseller_last_activity(self, reseller_id: int, telegram_id: Optional[int] = None) -> Optional[str]:
+        """
+        دریافت تاریخ و زمان آخرین فعالیت یک نماینده مشخص از تمامی منابع
+        """
+        if not reseller_id:
+            return None
+        all_map = self.get_all_resellers_last_activity()
+        if int(reseller_id) in all_map:
+            return all_map[int(reseller_id)]
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        candidates = []
+        try:
+            r_id = int(reseller_id)
+            cursor.execute("""
+                SELECT MAX(COALESCE(last_active_at, logout_at, login_at))
+                FROM login_logs WHERE user_type = 'reseller' AND user_id = ?
+            """, (r_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                candidates.append(str(row[0]))
+
+            cursor.execute("SELECT MAX(last_active_at) FROM telegram_activity WHERE reseller_id = ?", (r_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                candidates.append(str(row[0]))
+
+            if telegram_id:
+                cursor.execute("SELECT MAX(last_active_at) FROM telegram_activity WHERE telegram_id = ?", (telegram_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    candidates.append(str(row[0]))
+
+            cursor.execute("SELECT MAX(created_at) FROM subscriptions WHERE reseller_id = ?", (r_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                candidates.append(str(row[0]))
+
+            cursor.execute("SELECT MAX(created_at) FROM reseller_transactions WHERE reseller_id = ?", (r_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                candidates.append(str(row[0]))
+
+            cursor.execute("SELECT MAX(created_at) FROM ticket_messages WHERE sender_type = 'reseller' AND sender_id = ?", (r_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                candidates.append(str(row[0]))
+
+            return max(candidates) if candidates else None
+        except Exception as e:
+            logger.error(f"Error getting last activity for reseller {reseller_id}: {e}")
+            return None
+        finally:
+            conn.close()
 
     def is_subadmin_online(self, admin_id: int, threshold_minutes: int = 15) -> bool:
         """بررسی آنلاین بودن مدیر کمکی یا پشتیبان زیرمجموعه نماینده"""

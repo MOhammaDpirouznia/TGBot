@@ -187,6 +187,117 @@ def is_expired(expire_date: str) -> bool:
         return False
 
 
+def to_persian_digits(text: Union[str, int, float, None]) -> str:
+    """
+    تبدیل ارقام انگلیسی به فارسی
+    """
+    if text is None:
+        return ""
+    s = str(text)
+    mapping = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    return s.translate(mapping)
+
+
+def format_activity_time(date_input: Union[str, datetime, None]) -> dict:
+    """
+    محاسبه و فرمت‌بندی هوشمند زمان آخرین فعالیت بر اساس ساعت تهران و تبدیل به متن فارسی و تاریخ شمسی:
+    - خروجی: دیکشنری شامل:
+      - 'ago': متن زمان نسبی با ارقام فارسی (مثلاً «لحظاتی پیش»، «۱۵ دقیقه پیش»، «۲ ساعت پیش»، «دیروز ۱۶:۳۰»، «۴ روز پیش»)
+      - 'shamsi_full': تاریخ و ساعت کامل شمسی (مثلاً «۱۴۰۵/۰۶/۲۹ ۱۶:۳۵»)
+      - 'shamsi_date': تاریخ شمسی (مثلاً «۱۴۰۵/۰۶/۲۹»)
+      - 'has_activity': آیا فعالیتی ثبت شده است یا خیر (True/False)
+      - 'raw_iso': زمان خام دریافتی
+      - 'tooltip': متن راهنمای کامل جهت استفاده در ویژگی title
+    """
+    if not date_input or str(date_input).strip() in ("", "None", "null", "-", "0") or str(date_input).startswith("0001"):
+        return {
+            "ago": "بدون فعالیت",
+            "shamsi_full": "-",
+            "shamsi_date": "-",
+            "has_activity": False,
+            "raw_iso": None,
+            "tooltip": "هیچ فعالیت ثبت‌شده‌ای در سامانه یافت نشد"
+        }
+    
+    try:
+        clean = str(date_input).strip()
+        # پردازش رشته‌های تاریخ ایزو یا معمولی
+        if isinstance(date_input, datetime):
+            dt = date_input
+        else:
+            clean_fixed = clean.replace("Z", "+00:00")
+            if "+" in clean_fixed[10:] or "-" in clean_fixed[10:]:
+                dt = datetime.fromisoformat(clean_fixed)
+            else:
+                clean_no_milli = clean.split(".")[0].replace("T", " ")
+                if len(clean_no_milli) >= 19:
+                    dt = datetime.strptime(clean_no_milli[:19], "%Y-%m-%d %H:%M:%S")
+                elif len(clean_no_milli) >= 16:
+                    dt = datetime.strptime(clean_no_milli[:16], "%Y-%m-%d %H:%M")
+                elif len(clean_no_milli) >= 10:
+                    dt = datetime.strptime(clean_no_milli[:10], "%Y-%m-%d")
+                else:
+                    dt = datetime.fromisoformat(clean)
+
+        # اعمال دقیق منطقه زمانی تهران
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=TEHRAN_TZ)
+        else:
+            dt = dt.astimezone(TEHRAN_TZ)
+
+        now_tehran = datetime.now(TEHRAN_TZ)
+        diff_sec = int((now_tehran - dt).total_seconds())
+
+        shamsi_full_raw = gregorian_to_shamsi(dt, fmt="%Y/%m/%d %H:%M")
+        shamsi_date_raw = gregorian_to_shamsi(dt, fmt="%Y/%m/%d")
+        shamsi_full = to_persian_digits(shamsi_full_raw)
+        shamsi_date = to_persian_digits(shamsi_date_raw)
+
+        if diff_sec < 60:
+            ago = "لحظاتی پیش"
+        elif diff_sec < 3600:
+            mins = diff_sec // 60
+            ago = f"{to_persian_digits(mins)} دقیقه پیش"
+        elif diff_sec < 86400 and (now_tehran.date() == dt.date()):
+            hrs = diff_sec // 3600
+            ago = f"{to_persian_digits(hrs)} ساعت پیش"
+        elif diff_sec < 172800 or (now_tehran.date() - dt.date()).days == 1:
+            time_part = to_persian_digits(dt.strftime("%H:%M"))
+            ago = f"دیروز {time_part}"
+        else:
+            diff_days = (now_tehran.date() - dt.date()).days
+            days = max(1, diff_days if diff_days > 0 else (diff_sec // 86400))
+            if days < 30:
+                ago = f"{to_persian_digits(days)} روز پیش"
+            elif days < 365:
+                months = days // 30
+                ago = f"{to_persian_digits(months)} ماه پیش"
+            else:
+                years = days // 365
+                ago = f"{to_persian_digits(years)} سال پیش"
+
+        tooltip = f"آخرین فعالیت: {shamsi_full} (به وقت تهران)"
+
+        return {
+            "ago": ago,
+            "shamsi_full": shamsi_full,
+            "shamsi_date": shamsi_date,
+            "has_activity": True,
+            "raw_iso": clean,
+            "tooltip": tooltip
+        }
+    except Exception:
+        fallback_str = to_persian_digits(str(date_input)[:16].replace("T", " "))
+        return {
+            "ago": fallback_str,
+            "shamsi_full": fallback_str,
+            "shamsi_date": fallback_str[:10],
+            "has_activity": True,
+            "raw_iso": str(date_input),
+            "tooltip": f"آخرین فعالیت: {fallback_str}"
+        }
+
+
 def generate_qr_code_bytes(data: str) -> Optional[bytes]:
     """
     تولید تصویر QR Code به صورت بایت‌ها با حاشیه سفید عریض (Quiet Zone) جهت اسکن بدون اختلال در تم‌های تیره

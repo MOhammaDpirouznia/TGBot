@@ -37,7 +37,8 @@ from database import db
 from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
     format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ,
-    get_now, get_now_tehran, parse_to_tehran_dt, is_tehran_hour, is_in_quiet_hours
+    get_now, get_now_tehran, parse_to_tehran_dt, is_tehran_hour, is_in_quiet_hours,
+    to_persian_digits, format_activity_time
 )
 from admin_manager import (
     get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
@@ -1045,6 +1046,20 @@ def filter_last_connection_display(date_str):
             "time": "",
             "badge_class": "bg-light text-secondary border"
         }
+
+
+@app.template_filter("persian_digits")
+@app.template_global("to_persian_digits")
+def filter_persian_digits(val):
+    """تبدیل ارقام انگلیسی به فارسی در قالب‌های Jinja"""
+    return to_persian_digits(val)
+
+
+@app.template_filter("activity_time")
+@app.template_global("format_activity_time")
+def filter_activity_time(date_input):
+    """فرمت‌بندی زمان آخرین فعالیت به فارسی و ساعت تهران در قالب‌های Jinja"""
+    return format_activity_time(date_input)
 
 
 _hiddify_traffic_cache = {}
@@ -8270,10 +8285,17 @@ def admin_resellers():
         return redirect(url_for("admin_resellers"))
 
     raw_reseller_list = db.get_all_resellers()
+    last_activity_map = db.get_all_resellers_last_activity()
     reseller_list = []
     for r in raw_reseller_list:
         r_dict = dict(r)
         r_dict["is_online"] = db.is_reseller_online(r["id"])
+        last_act_iso = last_activity_map.get(r["id"])
+        act_info = format_activity_time(last_act_iso)
+        r_dict["last_activity_at"] = last_act_iso
+        r_dict["last_activity_ago"] = act_info["ago"]
+        r_dict["last_activity_shamsi"] = act_info["shamsi_full"]
+        r_dict["last_activity_info"] = act_info
         r_dict["security_logs"] = db.get_reseller_security_logs(r["id"], r["username"])
         r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
         r_dict["payment_history"] = db.get_reseller_full_payment_history(r["id"])
