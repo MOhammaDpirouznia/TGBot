@@ -37,7 +37,7 @@
                         <th class="sortable-th" data-column="1">مشخصات فنی</th>
                         <th class="sortable-th" data-column="2">قیمت پایه مدیر</th>
                         <th class="sortable-th" data-column="3">قیمت خرید عمده شما</th>
-                        <th class="sortable-th" data-column="4">نام نمایشی در ربات شما</th>
+                        <th class="sortable-th" data-column="4">نام و آیکون در ربات شما</th>
                         <th class="sortable-th" data-column="5">قیمت فروش به مشتری</th>
                         <th class="sortable-th" data-column="6">حاشیه سود شما (دستی)</th>
                         <th class="sortable-th text-center" data-column="7">وضعیت در ربات</th>
@@ -65,7 +65,7 @@
                                         <div class="fw-bold text-dark">{{ p['master_name'] }}</div>
                                         {% if not p.get('show_in_reseller_bot', True) %}
                                         <span class="badge bg-warning-subtle text-dark border border-warning px-1" style="font-size: 0.65rem;" title="فقط فروش دستی در پنل وب - مخفی از ربات تلگرام">
-                                            <i class="fas fa-gem text-warning me-1"></i>فقط پنل
+                                             <i class="fas fa-gem text-warning me-1"></i>فقط پنل
                                         </span>
                                         {% endif %}
                                     </div>
@@ -93,11 +93,49 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td data-value="{{ p['custom_name'] or p['master_name'] }}">
-                            <input type="text" class="form-control form-control-sm" name="custom_name" 
-                                   form="form_override_{{ p['plan_id'] }}"
-                                   value="{{ p['reseller_custom_name'] if p.get('is_reseller_modified') and p.get('reseller_custom_name') else '' }}" 
-                                   placeholder="{{ p['admin_custom_name'] or p['master_name'] }}">
+                        <td data-value="{{ p['custom_name'] or p['master_name'] }}" style="min-width: 220px;">
+                            {% set eff_icon = p.get('plan_icon') or p.get('master_plan_icon') or 'fas fa-shield-halved' %}
+                            {% set has_custom_icon = p.get('is_reseller_modified') and p.get('reseller_custom_icon') %}
+                            
+                            <div class="d-flex align-items-center gap-1 mb-1">
+                                <div class="input-group input-group-sm">
+                                    <button type="button" class="btn btn-outline-warning d-flex align-items-center justify-content-center px-2 shadow-sm" 
+                                            style="min-width: 38px; background-color: #fffbeb;"
+                                            onclick="openGlobalIconPicker('reseller_plan_icon_{{ p['plan_id'] }}', 'reseller_icon_preview_{{ p['plan_id'] }}', true, '{{ p.get('master_plan_icon') or '' }}')"
+                                            title="انتخاب و تغییر آیکون اختصاصی این بسته (ایزوله برای مشتریان شما)">
+                                        {% if eff_icon.startswith('fa') %}
+                                        <i class="{{ eff_icon }} text-warning" id="reseller_icon_preview_{{ p['plan_id'] }}"></i>
+                                        {% else %}
+                                        <span class="fs-6" id="reseller_icon_preview_{{ p['plan_id'] }}">{{ eff_icon }}</span>
+                                        {% endif %}
+                                    </button>
+                                    <input type="text" class="form-control form-control-sm" name="custom_name" 
+                                           form="form_override_{{ p['plan_id'] }}"
+                                           value="{{ p['reseller_custom_name'] if p.get('is_reseller_modified') and p.get('reseller_custom_name') else '' }}" 
+                                           placeholder="{{ p['admin_custom_name'] or p['master_name'] }}"
+                                           title="نام نمایشی اختصاصی در ربات تلگرام شما">
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 {% if not has_custom_icon %}d-none{% endif %}"
+                                        id="btn_reset_icon_{{ p['plan_id'] }}"
+                                        onclick="clearIconInput('reseller_plan_icon_{{ p['plan_id'] }}', 'reseller_icon_preview_{{ p['plan_id'] }}', '{{ p.get('master_plan_icon') or '' }}'); document.getElementById('custom_icon_badge_{{ p['plan_id'] }}').classList.add('d-none'); this.classList.add('d-none');"
+                                        title="بازگردانی به آیکون پیش‌فرض مدیریت">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            </div>
+                            <input type="hidden" name="plan_icon" id="reseller_plan_icon_{{ p['plan_id'] }}" 
+                                   form="form_override_{{ p['plan_id'] }}" 
+                                   value="{{ p['reseller_custom_icon'] or '' }}">
+                            <div class="d-flex align-items-center justify-content-between px-1">
+                                <span class="badge bg-warning-subtle text-dark border border-warning px-1 font-monospace {% if not has_custom_icon %}d-none{% endif %}" 
+                                      id="custom_icon_badge_{{ p['plan_id'] }}" 
+                                      style="font-size: 0.65rem;">
+                                    <i class="fas fa-star text-warning me-1"></i>آیکون اختصاصی
+                                </span>
+                                <a href="javascript:void(0)" class="text-decoration-none text-muted small" style="font-size: 0.72rem;" 
+                                   onclick="openGlobalIconPicker('reseller_plan_icon_{{ p['plan_id'] }}', 'reseller_icon_preview_{{ p['plan_id'] }}', true, '{{ p.get('master_plan_icon') or '' }}')">
+                                    <i class="fas fa-palette text-warning me-1"></i>تغییر آیکون
+                                </a>
+                            </div>
                         </td>
                         <td data-value="{{ selling }}" style="min-width: 175px;">
                             <div class="input-group input-group-sm">
@@ -249,4 +287,5 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 });
 </script>
+{% include "icon_picker_modal.html" %}
 {% endblock %}

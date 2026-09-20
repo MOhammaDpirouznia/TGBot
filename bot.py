@@ -10056,6 +10056,10 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
         elif b_id == "language":
             return await change_language_prompt(update, context)
 
+    # ۴. پاسخ پیش‌فرض و بازیابی خودکار منوی اصلی
+    user_lang = db.get_user_language(user.id) or "fa"
+    main_kb = get_main_keyboard(user.id, ADMIN_ID, user_lang)
+    await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.", reply_markup=main_kb)
     return CHOOSING
 
 

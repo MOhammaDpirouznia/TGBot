@@ -15931,6 +15931,7 @@ def reseller_plans():
             custom_name = request.form.get("custom_name", "").strip()
             custom_price_str = request.form.get("custom_price", "").strip()
             custom_profit_str = request.form.get("custom_profit", "").strip()
+            plan_icon = request.form.get("plan_icon")
             is_active = request.form.get("is_active") in ("on", "1", "true")
 
             plan = db.get_reseller_plan(reseller_id, plan_id)
@@ -15969,7 +15970,8 @@ def reseller_plans():
                 custom_price=custom_price,
                 is_active=is_active,
                 preserve_specs=True,
-                is_reseller=True
+                is_reseller=True,
+                custom_icon=plan_icon if plan_icon is not None else "__NO_CHANGE__"
             )
             if res.get("success"):
                 flash("تنظیمات بسته با موفقیت ذخیره شد.", "success")

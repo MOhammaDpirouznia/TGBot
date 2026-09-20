@@ -438,7 +438,7 @@ class ResellerBotInstance:
                     kb_list.insert(2, ref_btn_row)
             if is_reseller_admin:
                 kb_list.append([KeyboardButton("🔧 پنل مدیریت نماینده", style="danger")])
-            return ReplyKeyboardMarkup(kb_list, resize_keyboard=True)
+            return ReplyKeyboardMarkup(kb_list, resize_keyboard=True, is_persistent=True)
 
         async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """هندلر شروع و دستور /start در ربات نماینده"""
@@ -6088,8 +6088,11 @@ class ResellerBotInstance:
                     await update.message.reply_text("⚡ جهت دریافت اکانت تست رایگان، لطفاً با پشتیبانی در ارتباط باشید.")
                     return
 
-            # ۴. پاسخ پیش‌فرض
-            await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.")
+            # ۴. پاسخ پیش‌فرض و بازیابی خودکار منوی اصلی
+            is_adm = (user.id == r_admin_id) or (user.id in r_secondary_admins)
+            u_lang = db.get_user_language(user.id) or "fa"
+            main_kb = get_reseller_main_keyboard(lang=u_lang, is_reseller_admin=is_adm, user_id=user.id)
+            await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.", reply_markup=main_kb)
 
         # میان‌افزار ردگیری بلادرنگ فعالیت تلگرامی نماینده و ادمین‌های ربات نماینده
         async def reseller_track_activity_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):

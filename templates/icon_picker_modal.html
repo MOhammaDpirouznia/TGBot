@@ -1,0 +1,470 @@
+<!-- مودال سراسری انتخاب بصری آیکون‌ها از کاتالوگ بسته‌ها (پنل مدیریت و پنل نمایندگی) -->
+<div class="modal fade text-start" id="globalIconPickerModal" tabindex="-1" aria-labelledby="globalIconPickerModalLabel" aria-hidden="true" style="z-index: 1065;">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+            <!-- هدر مودال با تم سلطنتی و خط زرین -->
+            <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #1e1b4b 0%, #2e1065 50%, #3b0764 100%); border-bottom: 2px solid #f59e0b;">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm" style="width: 42px; height: 42px; background: rgba(245, 158, 11, 0.2); border: 2px solid #f59e0b; color: #fbbf24;">
+                        <i class="fas fa-crown fs-5"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-white" id="globalIconPickerModalLabel">
+                            پکیج آماده و کاتالوگ آیکون‌های بسته
+                        </h5>
+                        <small class="text-white-50" style="font-size: 0.8rem;">
+                            آیکون دلخواه خود را انتخاب کنید تا به صورت اختصاصی ثبت و در ربات و پورتال مشتری نمایش یابد
+                        </small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-3 p-md-4 bg-light bg-opacity-50">
+                <!-- کادر جستجوی بلادرنگ دوزبانه -->
+                <div class="mb-3">
+                    <div class="input-group shadow-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="fas fa-search"></i></span>
+                        <input type="text" id="iconSearchInput" class="form-control border-start-0 ps-1" placeholder="جستجو بین آیکون‌ها (الماس، تاج، جام، موشک، ستاره، اینترنت، سکه، سپر، crown, gold, star...)" oninput="filterIconCatalog(this.value)">
+                        <button class="btn btn-outline-secondary" type="button" onclick="clearIconSearch()" title="پاک کردن جستجو">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- تب‌های دسته‌بندی موضوعی با اولویت نشان‌های طلایی و لوکس -->
+                <ul class="nav nav-pills flex-nowrap overflow-x-auto pb-2 mb-3 gap-1" id="iconCategoryTabs" style="white-space: nowrap;">
+                    <li class="nav-item">
+                        <button class="nav-link active py-1.5 px-3 small fw-bold" onclick="filterIconCategory('all', this)">همه آیکون‌ها</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold text-dark border-warning" style="background: rgba(245, 158, 11, 0.15); color: #b45309 !important;" onclick="filterIconCategory('gold', this)">
+                            👑 نشان‌های طلایی و لوکس
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('badges', this)">🏆 نشان‌ها و رتبه‌ها</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('speed', this)">🚀 سرعت، قدرت و آتش</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('security', this)">🛡️ امنیت و شبکه</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('packages', this)">📦 بسته‌ها و زمان</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('devices', this)">📱 دستگاه‌ها و عمومی</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1.5 px-3 small fw-bold" onclick="filterIconCategory('emojis', this)">✨ ایموجی‌های تلگرام</button>
+                    </li>
+                </ul>
+
+                <!-- گرید نمایش آیکون‌ها -->
+                <div class="row row-cols-3 row-cols-sm-4 row-cols-md-6 g-2 p-1" id="iconPickerGrid" style="max-height: 400px; overflow-y: auto;">
+                    <!-- محتوا توسط جاوااسکریپت رندر می‌شود -->
+                </div>
+            </div>
+            
+            <div class="modal-footer bg-white py-2 px-4 d-flex justify-content-between align-items-center border-top">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="small text-muted">آیکون انتخابی فعلی:</span>
+                    <span class="badge bg-light text-dark border font-monospace px-2 py-1.5" id="currentSelectedIconBadge">خالی (پیش‌فرض)</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="iconPickerResetBtn" onclick="resetToSmartDetectionFromModal()">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i> بازگشت به آیکون پیش‌فرض
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary px-3" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.icon-card-btn {
+    border-color: #e2e8f0 !important;
+    background-color: #ffffff !important;
+    transition: all 0.22s ease-in-out !important;
+}
+.icon-card-btn:hover {
+    border-color: #f59e0b !important;
+    background-color: #fffdf5 !important;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(245, 158, 11, 0.22) !important;
+}
+.icon-card-btn:active {
+    transform: scale(0.96);
+}
+.icon-medal-badge {
+    transition: transform 0.2s ease;
+}
+.icon-card-btn:hover .icon-medal-badge {
+    transform: scale(1.1);
+}
+</style>
+
+<script>
+// کاتالوگ جامع و غنی آیکون‌های بسته‌ها با تمرکز بر نشان‌ها و پالت‌های رنگی طلایی و لوکس
+const ICON_CATALOG = [
+    // 👑 ۱. نشان‌ها، طرح‌ها و رنگ‌های طلایی و لوکس (Gold & Luxury)
+    { icon: 'fas fa-crown', name: 'تاج سلطنتی', en: 'crown king royal vip gold taj', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-star', name: 'ستاره طلایی', en: 'star rating favorite top gold setareh', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-trophy', name: 'جام قهرمانی', en: 'trophy champion winner cup gold jam', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-medal', name: 'مدال طلا برتر', en: 'medal gold first champion medal', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-award', name: 'نشان افتخار زرین', en: 'award honor ribbon neshan gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-gem', name: 'الماس و زمرد VIP', en: 'gem diamond emerald jewel zomorod almas', cat: 'gold', color: '#7c3aed', bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)', border: '#c084fc' },
+    { icon: 'fas fa-diamond', name: 'دیاموند زرین', en: 'diamond gem card jewel gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-coins', name: 'سکه‌های طلایی', en: 'coins gold money currency sekkeh', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-sack-dollar', name: 'کیسه طلا و ثروت', en: 'sack dollar wealth gold pool kisseh', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-ring', name: 'حلقه سلطنتی', en: 'ring jewel royal gold halgheh', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-sun', name: 'خورشید درخشان', en: 'sun bright golden solar khorshid', cat: 'gold', color: '#c2410c', bg: 'linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)', border: '#fb923c' },
+    { icon: 'fas fa-wand-magic-sparkles', name: 'عصای جادویی VIP', en: 'magic wand sparkles special jado jadoui gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-ribbon', name: 'روبان طلایی افتخار', en: 'ribbon gold honor rank neshan', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-certificate', name: 'گواهی اصالت زرین', en: 'certificate verified badge gold motabar', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-scroll', name: 'طومار سلطنتی', en: 'scroll royal document history toomar', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-shield', name: 'سپر زرین نگهبان', en: 'shield gold protector safe separ', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-key', name: 'کلید طلایی دسترسی', en: 'key access login secret kelid gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-feather-pointed', name: 'بال‌های زرین آزادی', en: 'wing feather gold freedom par', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-bolt', name: 'صاعقه زرین پرقدرت', en: 'bolt lightning zap gold fast bargh', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-fire', name: 'شعله آتشین زرین', en: 'fire flame gold hot energy atash', cat: 'gold', color: '#b91c1c', bg: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', border: '#f87171' },
+    { icon: 'fas fa-rocket', name: 'موشک طلایی اکسپرس', en: 'rocket speed turbo gold moshak', cat: 'gold', color: '#c2410c', bg: 'linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)', border: '#fb923c' },
+    { icon: 'fas fa-star-half-stroke', name: 'ستاره درخشان رتبه‌بندی', en: 'star rating rank gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-shield-cat', name: 'گارد اشرافی VIP', en: 'shield royal guard separ vip', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-bookmark', name: 'نشان طلایی برگزیده', en: 'bookmark favorite ribbon gold', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-flag-checkered', name: 'پرچم خط پایان قهرمان', en: 'flag checkered race winner parcham', cat: 'gold', color: '#1e293b', bg: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', border: '#94a3b8' },
+    { icon: 'fas fa-infinity', name: 'بینهایت زرین نامحدود', en: 'infinity unlimited endless gold namahdood', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-circle-check', name: 'تاییدیه طلایی VIP', en: 'check circle verified gold ok', cat: 'gold', color: '#15803d', bg: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '#4ade80' },
+    { icon: 'fas fa-thumbs-up', name: 'رضایت طلایی کاربران', en: 'thumbs up like best gold pasand', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-compass', name: 'قطب‌نمای طلایی ناوبری', en: 'compass direct navigate gold ghotb nama', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-lock', name: 'قفل طلایی امن', en: 'lock gold secure privacy ghofl', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+    { icon: 'fas fa-bell', name: 'زنگوله طلایی اعلان', en: 'bell alert gold ring zang', cat: 'gold', color: '#b45309', bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b' },
+
+    // 🏆 ۲. نشان‌ها و رتبه‌ها (Badges & Ranks)
+    { icon: 'fas fa-crown', name: 'تاج شاهنشاهی', en: 'crown king royal vip taj', cat: 'badges', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-gem', name: 'الماس / زمرد', en: 'gem diamond emerald jewel zomorod', cat: 'badges', color: '#6366f1', bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: 'fas fa-trophy', name: 'جام قهرمانی', en: 'trophy champion winner cup jam', cat: 'badges', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-award', name: 'نشان افتخار', en: 'award honor rank ribbon neshan', cat: 'badges', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-medal', name: 'مدال برتر', en: 'medal gold silver bronze', cat: 'badges', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-star', name: 'ستاره طلایی', en: 'star rating favorite top setareh', cat: 'badges', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-wand-magic-sparkles', name: 'جادویی و ویژه', en: 'magic sparkles special pro jadoui', cat: 'badges', color: '#7c3aed', bg: '#f3e8ff', border: '#d8b4fe' },
+    { icon: 'fas fa-certificate', name: 'گواهی اصالت', en: 'certificate verified badge motabar', cat: 'badges', color: '#0369a1', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-diamond', name: 'دیاموند / لوزی', en: 'diamond gem card', cat: 'badges', color: '#0284c7', bg: '#e0f2fe', border: '#38bdf8' },
+
+    // 🚀 ۳. سرعت، قدرت و آتش (Speed & Power)
+    { icon: 'fas fa-rocket', name: 'موشک پرسرعت', en: 'rocket speed fast turbo space moshak', cat: 'speed', color: '#ea580c', bg: '#ffedd5', border: '#fdba74' },
+    { icon: 'fas fa-bolt', name: 'رعد و برق', en: 'bolt zap lightning electricity energy raad bargh', cat: 'speed', color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
+    { icon: 'fas fa-fire-flame-curved', name: 'شعله آتش', en: 'fire flame hot burning pro atash', cat: 'speed', color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
+    { icon: 'fas fa-gauge-high', name: 'سرعت گیج بالا', en: 'gauge speed fast high meter turbo sorat', cat: 'speed', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+    { icon: 'fas fa-plane', name: 'پرواز اکسپرس', en: 'plane flight jet travel express parvaz', cat: 'speed', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-fighter-jet', name: 'جت مافوق صوت', en: 'fighter jet speed fast express jet', cat: 'speed', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: 'fas fa-wind', name: 'باد و طوفان', en: 'wind breeze air flow fast bad', cat: 'speed', color: '#0891b2', bg: '#cffafe', border: '#67e8f9' },
+    { icon: 'fas fa-tornado', name: 'تورنادو قدرتمند', en: 'tornado storm power fast toofan', cat: 'speed', color: '#4f46e5', bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: 'fas fa-plug-circle-bolt', name: 'اتصال پرقدرت', en: 'plug power energy electric etesal', cat: 'speed', color: '#d97706', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-motorcycle', name: 'شتاب موتوری', en: 'motorcycle bike speed fast shetab', cat: 'speed', color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
+
+    // 🛡️ ۴. امنیت و شبکه (Security & Network)
+    { icon: 'fas fa-shield-halved', name: 'سپر امنیتی', en: 'shield security safe protect vpn separ amniat', cat: 'security', color: '#0369a1', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-lock', name: 'قفل اختصاصی', en: 'lock encrypted secure privacy key ghofl', cat: 'security', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: 'fas fa-key', name: 'کلید دسترسی', en: 'key access login secret kelid', cat: 'security', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-wifi', name: 'وای‌فای و اتصال', en: 'wifi wireless connect internet network bi sim', cat: 'security', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+    { icon: 'fas fa-globe', name: 'شبکه بین‌الملل', en: 'globe world earth international web jahan koreh', cat: 'security', color: '#0d9488', bg: '#ccfbf1', border: '#5eead4' },
+    { icon: 'fas fa-server', name: 'سرور اختصاصی', en: 'server host datacenter cloud dedicated', cat: 'security', color: '#4f46e5', bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: 'fas fa-cloud', name: 'فضای ابری', en: 'cloud storage online sync abr abri', cat: 'security', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-network-wired', name: 'شبکه لن و کابل', en: 'network ethernet internet cable wire shabakeh', cat: 'security', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+    { icon: 'fas fa-fingerprint', name: 'اثر انگشت امن', en: 'fingerprint biometric security auth asar angosht', cat: 'security', color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
+    { icon: 'fas fa-user-shield', name: 'کاربر محافظت شده', en: 'user shield security account separ karbar', cat: 'security', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-tower-broadcast', name: 'آنتن مخابراتی 5G', en: 'tower broadcast antenna signal 5g dakal', cat: 'security', color: '#7c3aed', bg: '#f3e8ff', border: '#d8b4fe' },
+
+    // 📦 ۵. بسته‌ها و زمان (Packages & Time)
+    { icon: 'fas fa-cube', name: 'مکعب / پایه', en: 'cube box package basic starter mokaab paye', cat: 'packages', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: 'fas fa-box-open', name: 'جعبه باز', en: 'box open unbox product delivery jabeh', cat: 'packages', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-cubes', name: 'چند بسته', en: 'cubes multi bundle pack basteh', cat: 'packages', color: '#4f46e5', bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: 'fas fa-infinity', name: 'نامحدود بینهایت', en: 'infinity unlimited endless forever namahdood', cat: 'packages', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-gift', name: 'هدیه و آفر', en: 'gift present surprise offer bonus hedyeh', cat: 'packages', color: '#e11d48', bg: '#ffe4e6', border: '#fda4af' },
+    { icon: 'fas fa-tag', name: 'برچسب قیمت', en: 'tag discount label price promo takhfif', cat: 'packages', color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
+    { icon: 'fas fa-basket-shopping', name: 'سبد خرید', en: 'basket cart shopping store shop sabad', cat: 'packages', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-seedling', name: 'جوانه / استارتر', en: 'seedling plant grow start starter basic javaneh shoro', cat: 'packages', color: '#16a34a', bg: '#dcfce7', border: '#86efac' },
+    { icon: 'fas fa-hourglass-half', name: 'ساعت شنی / مهلت', en: 'hourglass time timer clock wait period saat', cat: 'packages', color: '#b45309', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-calendar-check', name: 'تقویم معتبر سالانه', en: 'calendar date day month check verified taghvim', cat: 'packages', color: '#0891b2', bg: '#cffafe', border: '#67e8f9' },
+    { icon: 'fas fa-clock', name: 'زمان‌دار دقیق', en: 'clock time timer saat daghigh', cat: 'packages', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+
+    // 📱 ۶. دستگاه‌ها و عمومی (Devices & General)
+    { icon: 'fas fa-mobile-screen', name: 'گوشی موبایل', en: 'mobile phone cell android iphone device gooshi', cat: 'devices', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+    { icon: 'fas fa-laptop', name: 'لپ‌تاپ و رایانه', en: 'laptop computer pc macbook desktop rayaneh', cat: 'devices', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: 'fab fa-apple', name: 'سیب اپل / iOS', en: 'apple ios iphone mac ipad sib', cat: 'devices', color: '#1e293b', bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: 'fab fa-android', name: 'اندروید گوگل', en: 'android google phone tablet', cat: 'devices', color: '#16a34a', bg: '#dcfce7', border: '#86efac' },
+    { icon: 'fab fa-windows', name: 'ویندوز پی‌سی', en: 'windows microsoft pc os', cat: 'devices', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-heart', name: 'قلب / محبوب', en: 'heart love like favorite popular ghalb', cat: 'devices', color: '#e11d48', bg: '#ffe4e6', border: '#fda4af' },
+    { icon: 'fas fa-thumbs-up', name: 'پسندیده / لایک', en: 'thumbs up like approve good best pasandideh', cat: 'devices', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+    { icon: 'fas fa-circle-check', name: 'تایید شده', en: 'check circle verified ok success pass taeid', cat: 'devices', color: '#16a34a', bg: '#dcfce7', border: '#86efac' },
+    { icon: 'fas fa-users', name: 'کاربران / خانوادگی', en: 'users group family team community multi karbaran', cat: 'devices', color: '#4f46e5', bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: 'fas fa-headset', name: 'پشتیبانی ۲۴ ساعته', en: 'headset support call center poshtibani', cat: 'devices', color: '#0284c7', bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: 'fas fa-signal', name: 'سیگنال پرقدرت', en: 'signal network bar antenna', cat: 'devices', color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
+    { icon: 'fas fa-compass', name: 'قطب‌نما / راهنما', en: 'compass navigation direct explore guide ghotb nama', cat: 'devices', color: '#d97706', bg: '#fef3c7', border: '#fde047' },
+    { icon: 'fas fa-bell', name: 'زنگوله / اعلان', en: 'bell notification alert ring zang', cat: 'devices', color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
+
+    // ✨ ۷. ایموجی‌های آماده تلگرام (Emojis)
+    { icon: '👑', name: 'ایموجی تاج شاهی', en: 'crown king emoji telegram taj gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🏆', name: 'ایموجی جام قهرمانی', en: 'trophy cup emoji telegram jam gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🥇', name: 'ایموجی مدال طلا', en: 'medal gold first emoji telegram', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '⭐', name: 'ایموجی ستاره طلایی', en: 'star emoji telegram setareh gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🌟', name: 'ایموجی ستاره درخشان', en: 'glowing star emoji telegram gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '💎', name: 'ایموجی الماس سلطنتی', en: 'diamond gem emoji telegram almas vip', cat: 'emojis', isEmoji: true, bg: '#f3e8ff', border: '#d8b4fe' },
+    { icon: '🪙', name: 'ایموجی سکه طلا', en: 'coin gold money emoji telegram sekkeh', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '💰', name: 'ایموجی کیسه پول و طلا', en: 'money bag dollar gold wealth emoji telegram', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🔥', name: 'ایموجی آتش داغ', en: 'fire flame emoji telegram atash', cat: 'emojis', isEmoji: true, bg: '#fee2e2', border: '#fca5a5' },
+    { icon: '🚀', name: 'ایموجی موشک پرسرعت', en: 'rocket speed emoji telegram moshak', cat: 'emojis', isEmoji: true, bg: '#ffedd5', border: '#fdba74' },
+    { icon: '⚡', name: 'ایموجی صاعقه و برق', en: 'bolt zap electric emoji telegram bargh', cat: 'emojis', isEmoji: true, bg: '#fef9c3', border: '#fde047' },
+    { icon: '🛡️', name: 'ایموجی سپر امنیتی', en: 'shield security emoji telegram separ', cat: 'emojis', isEmoji: true, bg: '#e0f2fe', border: '#7dd3fc' },
+    { icon: '✨', name: 'ایموجی درخشش جادویی', en: 'sparkles magic emoji telegram derakhshesh gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🎖️', name: 'ایموجی مدال افتخار', en: 'military medal honor emoji telegram neshan', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🎗️', name: 'ایموجی روبان زرین', en: 'ribbon gold honor emoji telegram', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '📜', name: 'ایموجی طومار شاهی', en: 'scroll document royal emoji telegram toomar', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '☀️', name: 'ایموجی خورشید', en: 'sun solar bright emoji telegram khorshid', cat: 'emojis', isEmoji: true, bg: '#ffedd5', border: '#fed7aa' },
+    { icon: '🔑', name: 'ایموجی کلید طلایی', en: 'key secret access emoji telegram kelid gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🔒', name: 'ایموجی قفل امنیتی', en: 'lock secure emoji telegram ghofl', cat: 'emojis', isEmoji: true, bg: '#f1f5f9', border: '#cbd5e1' },
+    { icon: '📦', name: 'ایموجی بسته پستی', en: 'box package emoji telegram basteh', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🌐', name: 'ایموجی کره زمین', en: 'globe earth web emoji telegram jahan', cat: 'emojis', isEmoji: true, bg: '#ccfbf1', border: '#5eead4' },
+    { icon: '♾️', name: 'ایموجی بینهایت', en: 'infinity unlimited emoji telegram namahdood', cat: 'emojis', isEmoji: true, bg: '#e0e7ff', border: '#a5b4fc' },
+    { icon: '🍏', name: 'ایموجی سیب اپل', en: 'apple green emoji telegram sib', cat: 'emojis', isEmoji: true, bg: '#dcfce7', border: '#86efac' },
+    { icon: '❤️', name: 'ایموجی قلب سرخ', en: 'heart love emoji telegram ghalb', cat: 'emojis', isEmoji: true, bg: '#ffe4e6', border: '#fda4af' },
+    { icon: '🎁', name: 'ایموجی کادو و هدیه', en: 'gift present emoji telegram hedyeh', cat: 'emojis', isEmoji: true, bg: '#ffe4e6', border: '#fda4af' },
+    { icon: '🌱', name: 'ایموجی جوانه رشد', en: 'seedling starter emoji telegram shoro', cat: 'emojis', isEmoji: true, bg: '#dcfce7', border: '#86efac' },
+    { icon: '📱', name: 'ایموجی موبایل', en: 'mobile phone emoji telegram gooshi', cat: 'emojis', isEmoji: true, bg: '#eff6ff', border: '#93c5fd' },
+    { icon: '💍', name: 'ایموجی انگشتر الماس', en: 'ring diamond jewelry emoji telegram gold', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+    { icon: '🪽', name: 'ایموجی بال زرین', en: 'wing feather freedom emoji telegram par', cat: 'emojis', isEmoji: true, bg: '#fef3c7', border: '#fde047' },
+];
+
+let activeTargetInputId = null;
+let activeTargetPreviewId = null;
+let currentCategoryFilter = 'all';
+let currentSearchQuery = '';
+let isResellerPickerMode = false;
+let defaultMasterIconForPicker = '';
+
+function openGlobalIconPicker(inputId, previewId, isReseller = false, defaultIcon = '') {
+    activeTargetInputId = inputId;
+    activeTargetPreviewId = previewId;
+    isResellerPickerMode = !!isReseller;
+    defaultMasterIconForPicker = defaultIcon || '';
+    
+    const inputEl = document.getElementById(inputId);
+    const currentVal = inputEl ? inputEl.value.trim() : '';
+    const badge = document.getElementById('currentSelectedIconBadge');
+    if (badge) {
+        if (currentVal) {
+            badge.textContent = currentVal;
+            badge.className = 'badge bg-warning-subtle text-dark border border-warning font-monospace px-2 py-1.5';
+        } else {
+            badge.textContent = isResellerPickerMode ? (defaultMasterIconForPicker ? `آیکون مدیریت (${defaultMasterIconForPicker})` : 'آیکون مدیریت (هوشمند)') : 'خالی (تشخیص هوشمند)';
+            badge.className = 'badge bg-light text-secondary border font-monospace px-2 py-1.5';
+        }
+    }
+
+    const resetBtn = document.getElementById('iconPickerResetBtn');
+    if (resetBtn) {
+        if (isResellerPickerMode) {
+            resetBtn.innerHTML = '<i class="fas fa-undo me-1"></i> بازگشت به آیکون پیش‌فرض مدیریت';
+        } else {
+            resetBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles me-1"></i> تنظیم روی تشخیص هوشمند';
+        }
+    }
+
+    renderIconGrid();
+    
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        let pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (!pickerModal) {
+            pickerModal = new bootstrap.Modal(modalEl);
+        }
+        pickerModal.show();
+    }
+}
+
+function selectIconFromPicker(iconVal, isEmoji = false) {
+    if (activeTargetInputId) {
+        const inputEl = document.getElementById(activeTargetInputId);
+        if (inputEl) {
+            inputEl.value = iconVal;
+            inputEl.dispatchEvent(new Event('change'));
+        }
+    }
+    if (activeTargetPreviewId) {
+        const prevEl = document.getElementById(activeTargetPreviewId);
+        if (prevEl) {
+            if (isEmoji || !iconVal.startsWith('fa')) {
+                prevEl.className = 'fs-5 text-warning';
+                prevEl.textContent = iconVal;
+            } else {
+                prevEl.textContent = '';
+                prevEl.className = iconVal + ' fs-5 text-warning';
+            }
+        }
+    }
+    
+    // اگر برچسب نشانگر اختصاصی بودن در صفحه نماینده وجود دارد
+    if (isResellerPickerMode && activeTargetInputId) {
+        const planId = activeTargetInputId.replace('reseller_plan_icon_', '');
+        const badgeEl = document.getElementById('custom_icon_badge_' + planId);
+        if (badgeEl) {
+            badgeEl.classList.remove('d-none');
+        }
+        const resetBtnEl = document.getElementById('btn_reset_icon_' + planId);
+        if (resetBtnEl) {
+            resetBtnEl.classList.remove('d-none');
+        }
+    }
+    
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        const pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (pickerModal) pickerModal.hide();
+    }
+}
+
+function clearIconInput(inputId, previewId, fallbackIcon = '') {
+    const inputEl = document.getElementById(inputId);
+    if (inputEl) {
+        inputEl.value = '';
+        inputEl.dispatchEvent(new Event('change'));
+    }
+    const prevEl = document.getElementById(previewId);
+    if (prevEl) {
+        const targetIcon = fallbackIcon || 'fas fa-shield-halved';
+        if (targetIcon.startsWith('fa')) {
+            prevEl.textContent = '';
+            prevEl.className = targetIcon + ' fs-5 text-primary';
+        } else {
+            prevEl.className = 'fs-5 text-primary';
+            prevEl.textContent = targetIcon;
+        }
+    }
+}
+
+function resetToSmartDetectionFromModal() {
+    if (activeTargetInputId && activeTargetPreviewId) {
+        clearIconInput(activeTargetInputId, activeTargetPreviewId, defaultMasterIconForPicker);
+        if (isResellerPickerMode) {
+            const planId = activeTargetInputId.replace('reseller_plan_icon_', '');
+            const badgeEl = document.getElementById('custom_icon_badge_' + planId);
+            if (badgeEl) badgeEl.classList.add('d-none');
+            const resetBtnEl = document.getElementById('btn_reset_icon_' + planId);
+            if (resetBtnEl) resetBtnEl.classList.add('d-none');
+        }
+    }
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        const pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (pickerModal) pickerModal.hide();
+    }
+}
+
+function liveUpdateIconPreview(inputId, previewId) {
+    const inputEl = document.getElementById(inputId);
+    const prevEl = document.getElementById(previewId);
+    if (!inputEl || !prevEl) return;
+    const val = inputEl.value.trim();
+    if (!val) {
+        prevEl.textContent = '';
+        prevEl.className = 'fas fa-shield-halved fs-5 text-primary';
+        return;
+    }
+    if (val.length <= 4 && !val.includes('fa')) {
+        prevEl.className = 'fs-5 text-warning';
+        prevEl.textContent = val;
+    } else {
+        prevEl.textContent = '';
+        let iconCls = val;
+        if (!iconCls.startsWith('fa') && !iconCls.startsWith('bi')) {
+            iconCls = 'fas fa-' + iconCls;
+        }
+        prevEl.className = iconCls + ' fs-5 text-primary';
+    }
+}
+
+function filterIconCategory(cat, tabEl) {
+    currentCategoryFilter = cat;
+    document.querySelectorAll('#iconCategoryTabs .nav-link').forEach(btn => btn.classList.remove('active'));
+    if (tabEl) tabEl.classList.add('active');
+    renderIconGrid();
+}
+
+function filterIconCatalog(query) {
+    currentSearchQuery = (query || '').toLowerCase().trim();
+    renderIconGrid();
+}
+
+function clearIconSearch() {
+    const sInput = document.getElementById('iconSearchInput');
+    if (sInput) sInput.value = '';
+    currentSearchQuery = '';
+    renderIconGrid();
+}
+
+function renderIconGrid() {
+    const grid = document.getElementById('iconPickerGrid');
+    if (!grid) return;
+    
+    let filtered = ICON_CATALOG.filter(item => {
+        if (currentCategoryFilter !== 'all' && item.cat !== currentCategoryFilter) {
+            return false;
+        }
+        if (currentSearchQuery) {
+            const matchName = item.name.toLowerCase().includes(currentSearchQuery);
+            const matchEn = (item.en || '').toLowerCase().includes(currentSearchQuery);
+            const matchIcon = item.icon.toLowerCase().includes(currentSearchQuery);
+            if (!matchName && !matchEn && !matchIcon) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `
+            <div class="col-12 text-center py-5 text-muted">
+                <i class="fas fa-search fs-2 mb-2 d-block opacity-50"></i>
+                <div>هیچ آیکونی با این مشخصات یافت نشد.</div>
+                <small>می‌توانید نام کلاس فونت‌آوسام یا ایموجی را مستقیماً در فرم وارد نمایید.</small>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(item => {
+        const isEmoji = !!item.isEmoji;
+        const iconRender = isEmoji 
+            ? `<span style="font-size: 1.55rem; line-height: 1;">${item.icon}</span>` 
+            : `<i class="${item.icon}"></i>`;
+        
+        const valueToPass = item.icon.replace(/'/g, "\\'");
+        const badgeBg = item.bg || 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+        const badgeColor = item.color || '#b45309';
+        const badgeBorder = item.border || '#f59e0b';
+        
+        html += `
+            <div class="col">
+                <button type="button" class="btn btn-outline-light border text-dark w-100 h-100 p-2 d-flex flex-column align-items-center justify-content-center icon-card-btn shadow-sm rounded-3" 
+                        style="transition: all 0.2s ease; min-height: 94px; background-color: #ffffff;" 
+                        onclick="selectIconFromPicker('${valueToPass}', ${isEmoji})"
+                        title="${item.name} (${item.icon})">
+                    <span class="icon-medal-badge d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm mb-1" 
+                          style="width: 42px; height: 42px; background: ${badgeBg}; color: ${badgeColor}; border: 1.5px solid ${badgeBorder}; font-size: 1.25rem;">
+                        ${iconRender}
+                    </span>
+                    <span class="small fw-bold text-truncate w-100 text-center mt-1 text-dark" style="font-size: 0.73rem;">${item.name}</span>
+                    <span class="badge bg-light text-secondary font-monospace mt-1 px-1 text-truncate w-100 text-center" style="font-size: 0.62rem;">
+                        ${isEmoji ? 'ایموجی' : item.icon.replace('fas fa-', '').replace('fab fa-', '')}
+                    </span>
+                </button>
+            </div>
+        `;
+    });
+
+    grid.innerHTML = html;
+}
+</script>

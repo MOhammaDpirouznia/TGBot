@@ -464,6 +464,32 @@ ICON_TO_TELEGRAM_EMOJI = {
     "thumbs-up": "👍",
     "bell": "🔔",
     "compass": "🧭",
+    "coins": "🪙",
+    "coin": "🪙",
+    "sack-dollar": "💰",
+    "dollar": "💰",
+    "money-bill": "💵",
+    "money": "💵",
+    "ring": "💍",
+    "ribbon": "🎗️",
+    "scroll": "📜",
+    "feather": "🪽",
+    "feather-pointed": "🪽",
+    "sun": "☀️",
+    "sun-bright": "☀️",
+    "shield-cat": "🛡️",
+    "user-shield": "🛡️",
+    "bookmark": "🔖",
+    "flag": "🚩",
+    "flag-checkered": "🏁",
+    "clock": "⏰",
+    "stopwatch": "⏱️",
+    "headset": "🎧",
+    "signal": "📶",
+    "tower-broadcast": "📡",
+    "jet-fighter": "✈️",
+    "fighter-jet": "✈️",
+    "motorcycle": "🏍️",
 }
 
 TIER_COLOR_CONFIG = {
@@ -524,9 +550,17 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         except Exception:
             pass
 
-    # استخراج آیکون سفارشی تعریف شده توسط مدیریت
+    # استخراج آیکون سفارشی
+    # اولویت ۱: تنظیم اختصاصی نماینده برای بسته‌اش (ایزوله برای خودش و مشتریانش)
+    # اولویت ۲: آیکون اختصاصی در دیکشنری پلن (اگر متفاوت از پلن مادر باشد)
+    # اولویت ۳: تنظیمات اختصاصی ثبت شده توسط ادمین برای این نماینده
+    # اولویت ۴: آیکون پلن مادر مدیریت
+    # اولویت ۵: سایر فیلدهای آیکون پلن
     custom_icon = (
-        master_plan.get("plan_icon")
+        plan_dict.get("reseller_custom_icon")
+        or (plan_dict.get("plan_icon") if plan_dict.get("plan_icon") and master_plan and plan_dict.get("plan_icon") != master_plan.get("plan_icon") else None)
+        or plan_dict.get("custom_icon")
+        or master_plan.get("plan_icon")
         or master_plan.get("icon")
         or plan_dict.get("plan_icon")
         or plan_dict.get("icon")
@@ -630,6 +664,25 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         rank_title = "پایه"
         tier = 1
         fallback_emoji = "📦"
+
+    # هماهنگی هوشمند رنگ و استایل بر اساس آیکون انتخابی (طلایی/سلطنتی، الماس، آتشین و...)
+    if custom_icon:
+        c_icon_lower = str(custom_icon).lower()
+        if any(k in c_icon_lower for k in ["crown", "trophy", "medal", "award", "star", "coins", "sack-dollar", "ring", "ribbon", "sun", "gold", "scroll"]):
+            if tier < 5 and c_name in ("secondary", "info"):
+                c_name = "warning"
+                badge_style = "background-color: #fef3c7; color: #b45309;"
+                tier = max(tier, 3)
+        elif any(k in c_icon_lower for k in ["gem", "diamond"]):
+            if tier < 6 and c_name in ("secondary", "info", "warning"):
+                c_name = "primary"
+                badge_style = "background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white;"
+                tier = max(tier, 6)
+        elif any(k in c_icon_lower for k in ["fire", "flame", "bolt", "rocket"]):
+            if tier < 4 and c_name in ("secondary", "info"):
+                c_name = "danger"
+                badge_style = "background-color: #fee2e2; color: #b91c1c;"
+                tier = max(tier, 4)
 
     final_icon = custom_icon or fallback_icon
 

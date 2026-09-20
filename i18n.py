@@ -678,7 +678,7 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
     if (is_admin_user or is_reseller_user) and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
         keyboard.append([KeyboardButton(t("btn_admin", lang), style="danger")])
 
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
 
 def get_all_lang_regex(key: str) -> str:

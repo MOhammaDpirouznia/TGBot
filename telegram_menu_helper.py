@@ -348,10 +348,35 @@ async def setup_telegram_chat_menu_button(
             await bot.set_chat_menu_button(chat_id=chat_id, menu_button=menu_btn)
         else:
             await bot.set_chat_menu_button(menu_button=menu_btn)
+            await setup_telegram_bot_commands(bot, reseller_id=reseller_id)
 
         return True
     except Exception as e:
         logger.warning(f"setup_telegram_chat_menu_button failed: {e}")
+        return False
+
+
+async def setup_telegram_bot_commands(bot, reseller_id: int = 0) -> bool:
+    """
+    تنظیم هوشمند منوی دستورات تلگرام (Bot Commands) برای دسترسی ۱-کلیکه کاربران به منوی اصلی و خدمات
+    """
+    try:
+        from telegram import BotCommand
+        commands = [
+            BotCommand("start", "🔄 منوی اصلی و شروع مجدد"),
+        ]
+        if reseller_id and int(reseller_id) > 0:
+            commands.append(BotCommand("plans", "🛍️ تعرفه‌ها و خرید اشتراک"))
+            commands.append(BotCommand("help", "📖 راهنمای اتصال و آموزش"))
+        else:
+            commands.append(BotCommand("status", "👤 استعلام وضعیت و اشتراک من"))
+            commands.append(BotCommand("help", "📖 راهنما و آموزش اتصال"))
+            commands.append(BotCommand("support", "🎧 پشتیبانی و تیکت"))
+
+        await bot.set_my_commands(commands)
+        return True
+    except Exception as e:
+        logger.warning(f"setup_telegram_bot_commands failed: {e}")
         return False
 
 

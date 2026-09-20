@@ -335,7 +335,7 @@ class Database:
             )
         """)
 
-        # جدول پلن‌های سفارشی نماینده (نام نمایشی، قیمت سفارشی، فعال/غیرفعال)
+        # جدول پلن‌های سفارشی نماینده (نام نمایشی، قیمت سفارشی، آیکون سفارشی، فعال/غیرفعال)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_plans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -343,6 +343,8 @@ class Database:
                 plan_id TEXT NOT NULL,
                 custom_name TEXT,
                 custom_price INTEGER,
+                custom_icon TEXT,
+                reseller_custom_icon TEXT,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT,
                 updated_at TEXT,
@@ -1286,12 +1288,14 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های شخصی‌سازی حجم، مدت، درصد تخفیف و قیمت عمده در پلن‌های نماینده
+        # ستون‌های شخصی‌سازی حجم، مدت، درصد تخفیف، قیمت عمده و آیکون اختصاصی در پلن‌های نماینده
         for col_def in [
             "custom_data_limit REAL DEFAULT NULL",
             "custom_duration INTEGER DEFAULT NULL",
             "custom_discount_percent REAL DEFAULT NULL",
             "custom_wholesale_price INTEGER DEFAULT NULL",
+            "custom_icon TEXT DEFAULT NULL",
+            "reseller_custom_icon TEXT DEFAULT NULL",
             "reseller_custom_name TEXT DEFAULT NULL",
             "reseller_custom_price INTEGER DEFAULT NULL",
             "reseller_is_active INTEGER DEFAULT NULL",
@@ -21997,7 +22001,8 @@ class Database:
             cursor.execute("""
                 SELECT plan_id, custom_name, custom_price, custom_data_limit, custom_duration, 
                        custom_discount_percent, custom_wholesale_price, is_active,
-                       reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified 
+                       reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified,
+                       custom_icon, reseller_custom_icon 
                 FROM reseller_plans WHERE reseller_id = ?
             """, (reseller_id,))
             for row in cursor.fetchall():
@@ -22013,6 +22018,8 @@ class Database:
                     "is_active": bool(row["is_active"]),
                     "reseller_custom_name": row["reseller_custom_name"] if ("reseller_custom_name" in r_keys and row["reseller_custom_name"] is not None) else None,
                     "reseller_custom_price": row["reseller_custom_price"] if ("reseller_custom_price" in r_keys and row["reseller_custom_price"] is not None) else None,
+                    "reseller_custom_icon": row["reseller_custom_icon"] if ("reseller_custom_icon" in r_keys and row["reseller_custom_icon"] is not None) else None,
+                    "custom_icon": row["custom_icon"] if ("custom_icon" in r_keys and row["custom_icon"] is not None) else None,
                     "reseller_is_active": bool(row["reseller_is_active"]) if ("reseller_is_active" in r_keys and row["reseller_is_active"] is not None) else None,
                     "is_reseller_modified": bool(row["is_reseller_modified"]) if ("is_reseller_modified" in r_keys and row["is_reseller_modified"] is not None) else False,
                 }
@@ -22088,6 +22095,16 @@ class Database:
 
             is_dedicated = bool(p.get("allowed_resellers")) or bool(p.get("is_exclusive_reseller"))
 
+            master_icon = p.get("plan_icon", "")
+            reseller_custom_icon = ov.get("reseller_custom_icon")
+            admin_custom_icon = ov.get("custom_icon")
+            if is_reseller_modified and reseller_custom_icon:
+                display_icon = reseller_custom_icon
+            elif admin_custom_icon:
+                display_icon = admin_custom_icon
+            else:
+                display_icon = master_icon
+
             result.append({
                 "plan_id": pid_str,
                 "name": display_name,
@@ -22118,7 +22135,10 @@ class Database:
                 "duration": display_duration,
                 "custom_duration": custom_duration,
                 "description": p.get("description", ""),
-                "plan_icon": p.get("plan_icon", ""),
+                "plan_icon": display_icon,
+                "master_plan_icon": master_icon,
+                "admin_custom_icon": admin_custom_icon,
+                "reseller_custom_icon": reseller_custom_icon,
                 "is_active": is_active,
                 "master_is_active": p.get("is_active", True),
                 "is_dedicated": is_dedicated,
@@ -22187,6 +22207,17 @@ class Database:
                 profit = max(0, display_price - wholesale_price)
                 has_custom_discount = bool(custom_wholesale_price is not None or custom_discount_percent is not None)
                 is_dedicated = bool(allowed) or bool(p_meta.get("is_exclusive_reseller"))
+
+                master_icon = p_meta.get("plan_icon", "") if p_meta else ""
+                reseller_custom_icon = ov.get("reseller_custom_icon")
+                admin_custom_icon = ov.get("custom_icon")
+                if is_reseller_modified and reseller_custom_icon:
+                    display_icon = reseller_custom_icon
+                elif admin_custom_icon:
+                    display_icon = admin_custom_icon
+                else:
+                    display_icon = master_icon
+
                 result.append({
                     "plan_id": pid_str,
                     "name": display_name,
@@ -22217,7 +22248,10 @@ class Database:
                     "duration": custom_duration,
                     "custom_duration": custom_duration,
                     "description": "",
-                    "plan_icon": p_meta.get("plan_icon", ""),
+                    "plan_icon": display_icon,
+                    "master_plan_icon": master_icon,
+                    "admin_custom_icon": admin_custom_icon,
+                    "reseller_custom_icon": reseller_custom_icon,
                     "is_active": is_active,
                     "master_is_active": master_is_active,
                     "is_dedicated": is_dedicated,
@@ -22254,8 +22288,8 @@ class Database:
                 return p
         return None
 
-    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, custom_discount_percent: float = None, custom_wholesale_price: int = None, is_active: bool = True, preserve_specs: bool = False, is_reseller: bool = False) -> dict:
-        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، تخفیف، قیمت عمده، وضعیت)"""
+    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, custom_discount_percent: float = None, custom_wholesale_price: int = None, is_active: bool = True, preserve_specs: bool = False, is_reseller: bool = False, custom_icon: any = "__NO_CHANGE__") -> dict:
+        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، تخفیف، قیمت عمده، آیکون، وضعیت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -22271,17 +22305,21 @@ class Database:
                 except Exception:
                     pass
 
+            update_icon = custom_icon != "__NO_CHANGE__"
+            icon_val = (custom_icon.strip() if custom_icon and str(custom_icon).strip() else None) if update_icon else None
+
             if is_reseller or preserve_specs:
                 cursor.execute("""
                     INSERT INTO reseller_plans (
                         reseller_id, plan_id, 
-                        reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified,
+                        reseller_custom_name, reseller_custom_price, reseller_custom_icon, reseller_is_active, is_reseller_modified,
                         is_active, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                     ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
                         reseller_custom_name = excluded.reseller_custom_name,
                         reseller_custom_price = excluded.reseller_custom_price,
+                        reseller_custom_icon = CASE WHEN ? = 1 THEN excluded.reseller_custom_icon ELSE reseller_plans.reseller_custom_icon END,
                         reseller_is_active = excluded.reseller_is_active,
                         is_reseller_modified = 1,
                         updated_at = excluded.updated_at
@@ -22290,21 +22328,23 @@ class Database:
                     str(plan_id), 
                     custom_name.strip() if custom_name else None, 
                     custom_price if (custom_price is not None and custom_price > 0) else None, 
+                    icon_val,
                     1 if is_active else 0,
                     1 if is_active else 0, 
                     now, 
-                    now
+                    now,
+                    1 if update_icon else 0
                 ))
             else:
                 cursor.execute("""
                     INSERT INTO reseller_plans (
                         reseller_id, plan_id, 
                         custom_name, custom_price, custom_data_limit, custom_duration, 
-                        custom_discount_percent, custom_wholesale_price, is_active, 
-                        reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified,
+                        custom_discount_percent, custom_wholesale_price, custom_icon, is_active, 
+                        reseller_custom_name, reseller_custom_price, reseller_custom_icon, reseller_is_active, is_reseller_modified,
                         created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 0, ?, ?)
                     ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
                         custom_name = excluded.custom_name,
                         custom_price = excluded.custom_price,
@@ -22312,9 +22352,11 @@ class Database:
                         custom_duration = excluded.custom_duration,
                         custom_discount_percent = excluded.custom_discount_percent,
                         custom_wholesale_price = excluded.custom_wholesale_price,
+                        custom_icon = CASE WHEN ? = 1 THEN excluded.custom_icon ELSE reseller_plans.custom_icon END,
                         is_active = excluded.is_active,
                         reseller_custom_name = NULL,
                         reseller_custom_price = NULL,
+                        reseller_custom_icon = NULL,
                         reseller_is_active = NULL,
                         is_reseller_modified = 0,
                         updated_at = excluded.updated_at
@@ -22327,9 +22369,11 @@ class Database:
                     custom_duration if (custom_duration is not None and custom_duration > 0) else None,
                     custom_discount_percent if (custom_discount_percent is not None and custom_discount_percent >= 0) else None,
                     custom_wholesale_price if (custom_wholesale_price is not None and custom_wholesale_price >= 0) else None,
+                    icon_val,
                     1 if is_active else 0, 
                     now, 
-                    now
+                    now,
+                    1 if update_icon else 0
                 ))
             conn.commit()
             try:
@@ -22352,7 +22396,7 @@ class Database:
             if by_reseller:
                 cursor.execute("""
                     SELECT custom_name, custom_price, custom_data_limit, custom_duration, 
-                           custom_discount_percent, custom_wholesale_price 
+                           custom_discount_percent, custom_wholesale_price, custom_icon 
                     FROM reseller_plans 
                     WHERE reseller_id = ? AND plan_id = ?
                 """, (reseller_id, plan_id))
@@ -22360,8 +22404,8 @@ class Database:
                 
                 has_admin_overrides = False
                 if row:
-                    for k in ["custom_name", "custom_price", "custom_data_limit", "custom_duration", "custom_discount_percent", "custom_wholesale_price"]:
-                        if row[k] is not None:
+                    for k in ["custom_name", "custom_price", "custom_data_limit", "custom_duration", "custom_discount_percent", "custom_wholesale_price", "custom_icon"]:
+                        if hasattr(row, "__getitem__") and k in row.keys() and row[k] is not None:
                             has_admin_overrides = True
                             break
                             
@@ -22370,6 +22414,7 @@ class Database:
                         UPDATE reseller_plans 
                         SET reseller_custom_name = NULL,
                             reseller_custom_price = NULL,
+                            reseller_custom_icon = NULL,
                             reseller_is_active = NULL,
                             is_reseller_modified = 0,
                             updated_at = ?
