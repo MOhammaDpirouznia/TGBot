@@ -1487,7 +1487,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS customer_referral_settings (
                     reseller_id INTEGER PRIMARY KEY,
-                    is_enabled INTEGER DEFAULT 0,
+                    is_enabled INTEGER DEFAULT 1,
                     reward_type TEXT DEFAULT 'fixed',
                     reward_amount INTEGER DEFAULT 10000,
                     min_purchase_amount INTEGER DEFAULT 50000,
@@ -8185,7 +8185,7 @@ class Database:
         cursor = conn.cursor()
         defaults = {
             "reseller_id": reseller_id,
-            "is_enabled": True if reseller_id == 0 else False,
+            "is_enabled": True,
             "reward_type": "fixed", # 'fixed' یا 'percent'
             "reward_amount": 10000,
             "min_purchase_amount": 50000,
