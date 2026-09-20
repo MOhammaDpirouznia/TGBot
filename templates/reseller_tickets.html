@@ -562,6 +562,13 @@
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
+                                        {% if msg.get('image_url') %}
+                                        <div class="mt-2">
+                                            <a href="{{ msg.get('image_url') }}" target="_blank">
+                                                <img src="{{ msg.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                            </a>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             {% else %}
@@ -576,6 +583,13 @@
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
+                                        {% if msg.get('image_url') %}
+                                        <div class="mt-2">
+                                            <a href="{{ msg.get('image_url') }}" target="_blank">
+                                                <img src="{{ msg.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                            </a>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             {% endif %}
@@ -588,6 +602,13 @@
                             </div>
                             <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                 <p class="mb-0">{{ ticket.get('message') }}</p>
+                                {% if ticket.get('image_url') %}
+                                <div class="mt-2">
+                                    <a href="{{ ticket.get('image_url') }}" target="_blank">
+                                        <img src="{{ ticket.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                    </a>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     {% endif %}
@@ -596,7 +617,7 @@
                 {% if is_admin_ticket %}
                     <!-- فرم ارسال پیام / ادامه گفتگو با مدیریت -->
                     <div class="p-3 ticket-reply-box">
-                        <form action="{{ url_for('reseller_ticket_reply_to_admin', ticket_id=ticket['id']) }}" method="POST">
+                        <form action="{{ url_for('reseller_ticket_reply_to_admin', ticket_id=ticket['id']) }}" method="POST" enctype="multipart/form-data">
                             <div class="mb-2">
                                 <textarea id="resellerAdminReplyArea{{ ticket['id'] }}" 
                                           name="reply_message" 
@@ -605,7 +626,15 @@
                                           placeholder="پیام یا توضیحات خود را برای مدیریت بنویسید..." 
                                           required></textarea>
                             </div>
-                            <div class="d-flex justify-content-end">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1" for="rAdminFile{{ ticket['id'] }}">
+                                        <i class="fas fa-paperclip text-warning"></i>
+                                        <span>پیوست تصویر</span>
+                                    </label>
+                                    <input type="file" id="rAdminFile{{ ticket['id'] }}" name="attachment" accept="image/*" class="d-none" onchange="const f=this.files[0]; const s=document.getElementById('rAdminFileLabel{{ ticket['id'] }}'); if(s && f){ s.innerText=f.name; }">
+                                    <span id="rAdminFileLabel{{ ticket['id'] }}" class="small text-muted text-truncate font-monospace" style="max-width: 140px;"></span>
+                                </div>
                                 <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
                                     <i class="fas fa-paper-plane me-1"></i> ارسال پیام به مدیریت
                                 </button>
@@ -638,7 +667,7 @@
 
                     <!-- فرم ارسال پاسخ به مشتری -->
                     <div class="p-3 ticket-reply-box">
-                        <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST">
+                        <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST" enctype="multipart/form-data">
                             <div class="mb-2">
                                 <textarea id="resellerReplyArea{{ ticket['id'] }}" 
                                           name="reply_message" 
@@ -652,6 +681,14 @@
                                     <div class="form-check form-switch mb-0">
                                         <input class="form-check-input" type="checkbox" name="close_ticket" id="rCloseCheck{{ ticket['id'] }}" value="1" {% if ticket.get('status') != 'closed' %}checked{% endif %}>
                                         <label class="form-check-label small text-muted" for="rCloseCheck{{ ticket['id'] }}">بستن تیکت پس از ارسال پاسخ</label>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1" for="rCustFile{{ ticket['id'] }}">
+                                            <i class="fas fa-paperclip text-info"></i>
+                                            <span>پیوست تصویر</span>
+                                        </label>
+                                        <input type="file" id="rCustFile{{ ticket['id'] }}" name="attachment" accept="image/*" class="d-none" onchange="const f=this.files[0]; const s=document.getElementById('rCustFileLabel{{ ticket['id'] }}'); if(s && f){ s.innerText=f.name; }">
+                                        <span id="rCustFileLabel{{ ticket['id'] }}" class="small text-muted text-truncate font-monospace" style="max-width: 140px;"></span>
                                     </div>
                                 </div>
                                 <div class="d-flex gap-2">

@@ -587,7 +587,7 @@
                                 <div class="d-flex flex-column align-items-start mb-3">
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         {% if msg.get('sender_type') == 'reseller' %}
-                                            <span class="badge bg-warning text-dark border border-warning"><i class="fas fa-user-tie me-1"></i>{{ msg.get('sender_name') or 'نماینده' }}</span>
+                                             <span class="badge bg-warning text-dark border border-warning"><i class="fas fa-user-tie me-1"></i>{{ msg.get('sender_name') or 'نماینده' }}</span>
                                         {% else %}
                                             <span class="badge bg-secondary-subtle text-secondary border">{{ msg.get('sender_name') or 'کاربر' }}</span>
                                         {% endif %}
@@ -595,6 +595,13 @@
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
+                                        {% if msg.get('image_url') %}
+                                        <div class="mt-2">
+                                            <a href="{{ msg.get('image_url') }}" target="_blank">
+                                                <img src="{{ msg.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                            </a>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             {% else %}
@@ -606,6 +613,13 @@
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
+                                        {% if msg.get('image_url') %}
+                                        <div class="mt-2">
+                                            <a href="{{ msg.get('image_url') }}" target="_blank">
+                                                <img src="{{ msg.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                            </a>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             {% endif %}
@@ -618,6 +632,13 @@
                             </div>
                             <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                 <p class="mb-0">{{ t.get('message') }}</p>
+                                {% if t.get('image_url') %}
+                                <div class="mt-2">
+                                    <a href="{{ t.get('image_url') }}" target="_blank">
+                                        <img src="{{ t.get('image_url') }}" class="img-fluid rounded border shadow-sm" style="max-height: 200px; max-width: 260px; object-fit: cover;" alt="پیوست تصویر">
+                                    </a>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     {% endif %}
@@ -659,7 +680,7 @@
 
                 <!-- فرم ارسال پاسخ -->
                 <div class="p-3 ticket-reply-box">
-                    <form action="{{ url_for('ticket_reply', ticket_id=t['id']) }}" method="POST">
+                    <form action="{{ url_for('ticket_reply', ticket_id=t['id']) }}" method="POST" enctype="multipart/form-data">
                         <div class="mb-2">
                             <textarea id="replyArea{{ t['id'] }}" 
                                       name="reply" 
@@ -673,6 +694,14 @@
                                 <div class="form-check form-switch mb-0">
                                     <input class="form-check-input" type="checkbox" name="close_ticket" id="closeCheck{{ t['id'] }}" value="1" {% if t.get('status') != 'closed' %}checked{% endif %}>
                                     <label class="form-check-label small text-muted" for="closeCheck{{ t['id'] }}">بستن تیکت پس از ارسال پاسخ</label>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <label class="btn btn-sm btn-outline-secondary mb-0 d-inline-flex align-items-center gap-1" for="ticketAttachment{{ t['id'] }}">
+                                        <i class="fas fa-paperclip text-info"></i>
+                                        <span>پیوست تصویر</span>
+                                    </label>
+                                    <input type="file" id="ticketAttachment{{ t['id'] }}" name="attachment" accept="image/*" class="d-none" onchange="const f=this.files[0]; const s=document.getElementById('ticketFileLabel{{ t['id'] }}'); if(s && f){ s.innerText=f.name; }">
+                                    <span id="ticketFileLabel{{ t['id'] }}" class="small text-muted text-truncate font-monospace" style="max-width: 140px;"></span>
                                 </div>
                             </div>
                             <div class="d-flex gap-2">

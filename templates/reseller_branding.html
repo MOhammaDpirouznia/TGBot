@@ -349,6 +349,291 @@
     </div>
 </div>
 
+<!-- بخش اختصاصی گردونه شانس و پاداش روزانه نماینده -->
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-dharmachakra text-warning me-2"></i> گردونه شانس و پاداش روزانه مشتریان شما</h5>
+                    <p class="text-muted small mb-0 mt-1">مدیریت جوایز، شانس‌ها و پاداش روزانه برای مشتریانی که از طریق ربات و پورتال اختصاصی شما متصل می‌شوند.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#resellerAddPrizeModal">
+                        <i class="fas fa-plus me-1"></i> افزودن جایزه اختصاصی
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-4">
+                <!-- سوئیچ فعال/غیرفعال گردونه توسط نماینده -->
+                <div class="p-3 bg-light rounded-3 border mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <h6 class="fw-bold text-dark mb-1">
+                            <i class="fas fa-power-off text-primary me-1"></i> وضعیت گردونه شانس مشتریان شما
+                        </h6>
+                        <div class="text-muted small">با غیرفعال‌سازی، آیکون گردونه شانس در پورتال و مینی‌اپ برای مشتریان شما پنهان خواهد شد.</div>
+                    </div>
+                    <form action="{{ url_for('reseller_lucky_wheel_toggle') }}" method="POST" class="m-0">
+                        <input type="hidden" name="enabled" value="{% if lucky_wheel_enabled %}0{% else %}1{% endif %}">
+                        <button type="submit" class="btn {% if lucky_wheel_enabled %}btn-success{% else %}btn-outline-secondary{% endif %} rounded-pill px-4 fw-bold">
+                            <i class="fas {% if lucky_wheel_enabled %}fa-check-circle{% else %}fa-circle-xmark{% endif %} me-1"></i>
+                            {% if lucky_wheel_enabled %}فعال (کلیک برای غیرفعال‌سازی){% else %}غیرفعال (کلیک برای فعال‌سازی){% endif %}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- توضیح نحوه کارکرد اختصاصی -->
+                <div class="alert alert-info py-2 px-3 small border mb-4 d-flex align-items-center gap-2">
+                    <i class="fas fa-info-circle text-info fs-5 flex-shrink-0"></i>
+                    <div>
+                        <strong>نحوه کارکرد جوایز اختصاصی:</strong>
+                        اگر جایزه‌ای تعریف نکنید، جوایز عمومی مدیریت نمایش داده می‌شود؛ به محض تعریف حداقل یک جایزه، منحصراً جوایز اختصاصی شما به مشتریانتان نمایش داده خواهد شد.
+                    </div>
+                </div>
+
+                <!-- جدول جوایز -->
+                <div class="table-responsive rounded-3 border mb-0">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>عنوان جایزه</th>
+                                <th>نوع جایزه</th>
+                                <th>مقدار / ارزش</th>
+                                <th>وزن شانس</th>
+                                <th>جامعه هدف</th>
+                                <th>رنگ و آیکون</th>
+                                <th>وضعیت</th>
+                                <th class="text-center">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if lucky_wheel_prizes %}
+                                {% for prize in lucky_wheel_prizes %}
+                                <tr>
+                                    <td><strong class="text-dark">{{ prize.title }}</strong></td>
+                                    <td>
+                                        {% if prize.prize_type == 'traffic' %}
+                                            <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="fas fa-wifi me-1"></i>حجم اینترنت</span>
+                                        {% elif prize.prize_type == 'plan' %}
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle"><i class="fas fa-box-open me-1"></i>اشتراک کامل</span>
+                                        {% elif prize.prize_type == 'discount' %}
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="fas fa-percent me-1"></i>کد تخفیف</span>
+                                        {% elif prize.prize_type == 'wallet' %}
+                                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="fas fa-wallet me-1"></i>کیف پول</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary-subtle text-secondary border"><i class="fas fa-circle-xmark me-1"></i>پوچ</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <code class="font-monospace text-dark fw-bold">{{ prize.prize_value or '-' }}</code>
+                                        <span class="small text-muted">
+                                            {% if prize.prize_type == 'traffic' %}گیگابایت{% elif prize.prize_type == 'wallet' %}تومان{% elif prize.prize_type == 'discount' %}درصد{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-dark text-white rounded-pill px-2 py-1 font-monospace">{{ prize.chance_weight }}x</span>
+                                    </td>
+                                    <td>
+                                        {% if prize.target_audience == 'active_only' %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-user-check me-1"></i>فقط مشترکین فعال</span>
+                                        {% else %}
+                                            <span class="badge bg-light text-dark border"><i class="fas fa-users me-1"></i>همه کاربران</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="rounded-circle d-inline-block border" style="width: 18px; height: 18px; background-color: {{ prize.slice_color or '#10b981' }};"></span>
+                                            <i class="fas {{ prize.slice_icon or 'fa-gift' }} text-muted"></i>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if prize.is_active %}
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle">فعال</span>
+                                        {% else %}
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">غیرفعال</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="d-flex justify-content-center gap-1">
+                                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#resellerEditPrizeModal{{ prize.id }}" title="ویرایش">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <form action="{{ url_for('reseller_lucky_wheel_prize_delete', prize_id=prize.id) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این جایزه اختصاصی اطمینان دارید؟');">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center py-4 text-muted">
+                                        <i class="fas fa-dharmachakra fs-3 d-block mb-2 text-warning opacity-50"></i>
+                                        شما هنوز جایزه اختصاصی تعریف نکرده‌اید.<br>
+                                        <span class="small">در حال حاضر جوایز عمومی مدیریت سامانه به مشتریان شما نمایش داده می‌شود. با افزودن اولین جایزه اختصاصی، منحصراً جوایز شما نمایش داده خواهند شد.</span>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مودال افزودن جایزه اختصاصی نماینده -->
+<div class="modal fade" id="resellerAddPrizeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ url_for('reseller_lucky_wheel_prize_add') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-gift text-primary me-1"></i> افزودن جایزه اختصاصی به گردونه شانس
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
+                        <input type="text" class="form-control" name="title" placeholder="مثال: ۱ گیگ اینترنت رایگان" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نوع جایزه:</label>
+                            <select class="form-select" name="prize_type">
+                                <option value="traffic">حجم اضافه (Traffic)</option>
+                                <option value="plan">اشتراک کامل (Subscription Plan)</option>
+                                <option value="discount">کد تخفیف (Discount Code)</option>
+                                <option value="wallet">شارژ کیف پول (Wallet Balance)</option>
+                                <option value="empty">پوچ / شانس بعدی (Empty)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">مقدار / ارزش:</label>
+                            <input type="text" class="form-control" name="prize_value" placeholder="مثال: 1 (گیگ) یا 20 (درصد)">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">وزن شانس (تکرار احتمال):</label>
+                            <input type="number" class="form-control" name="chance_weight" value="10" min="1" max="1000" required>
+                            <div class="form-text small text-muted">هرچه وزن بالاتر باشد احتمال برد بیشتر است.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">جامعه هدف جایزه:</label>
+                            <select class="form-select" name="target_audience">
+                                <option value="all">همه کاربران (عمومی)</option>
+                                <option value="active_only">فقط کاربران دارای اشتراک فعال</option>
+                            </select>
+                            <div class="form-text small text-muted">جوایز مخصوص اشتراک فعال تنها به دارندگان سرویس فعال تعلق می‌گیرد.</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
+                            <div class="input-group">
+                                <input type="color" class="form-control form-control-color" value="#10b981" onchange="document.getElementById('resellerAddSliceColorInput').value=this.value">
+                                <input type="text" class="form-control font-monospace" name="slice_color" id="resellerAddSliceColorInput" value="#10b981" dir="ltr">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
+                            <input type="text" class="form-control font-monospace" name="slice_icon" value="fa-gift" placeholder="fa-gift" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="form-check form-switch pt-2">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="resellerAddPrizeIsActive" value="1" checked>
+                        <label class="form-check-label fw-bold" for="resellerAddPrizeIsActive">جایزه در گردونه فعال باشد</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">افزودن جایزه</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال‌های ویرایش جوایز گردونه شانس نماینده -->
+{% if lucky_wheel_prizes %}
+    {% for prize in lucky_wheel_prizes %}
+    <div class="modal fade" id="resellerEditPrizeModal{{ prize.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form action="{{ url_for('reseller_lucky_wheel_prize_edit', prize_id=prize.id) }}" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold">
+                            <i class="fas fa-edit text-primary me-1"></i> ویرایش جایزه: {{ prize.title }}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
+                            <input type="text" class="form-control" name="title" value="{{ prize.title }}" required>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">نوع جایزه:</label>
+                                <select class="form-select" name="prize_type">
+                                    <option value="traffic" {% if prize.prize_type == 'traffic' %}selected{% endif %}>حجم اضافه (Traffic)</option>
+                                    <option value="plan" {% if prize.prize_type == 'plan' %}selected{% endif %}>اشتراک کامل (Subscription Plan)</option>
+                                    <option value="discount" {% if prize.prize_type == 'discount' %}selected{% endif %}>کد تخفیف (Discount Code)</option>
+                                    <option value="wallet" {% if prize.prize_type == 'wallet' %}selected{% endif %}>شارژ کیف پول (Wallet Balance)</option>
+                                    <option value="empty" {% if prize.prize_type == 'empty' %}selected{% endif %}>پوچ / شانس بعدی (Empty)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">مقدار / ارزش:</label>
+                                <input type="text" class="form-control" name="prize_value" value="{{ prize.prize_value or '' }}">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">وزن شانس (تکرار احتمال):</label>
+                                <input type="number" class="form-control" name="chance_weight" value="{{ prize.chance_weight }}" min="1" max="1000" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">جامعه هدف جایزه:</label>
+                                <select class="form-select" name="target_audience">
+                                    <option value="all" {% if prize.target_audience == 'all' %}selected{% endif %}>همه کاربران (عمومی)</option>
+                                    <option value="active_only" {% if prize.target_audience == 'active_only' %}selected{% endif %}>فقط کاربران دارای اشتراک فعال</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
+                                <div class="input-group">
+                                    <input type="color" class="form-control form-control-color" value="{{ prize.slice_color or '#10b981' }}" onchange="document.getElementById('resellerEditSliceColorInput{{ prize.id }}').value=this.value">
+                                    <input type="text" class="form-control font-monospace" name="slice_color" id="resellerEditSliceColorInput{{ prize.id }}" value="{{ prize.slice_color or '#10b981' }}" dir="ltr">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
+                                <input type="text" class="form-control font-monospace" name="slice_icon" value="{{ prize.slice_icon or 'fa-gift' }}" dir="ltr">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch pt-2">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="resellerEditPrizeIsActive{{ prize.id }}" value="1" {% if prize.is_active %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="resellerEditPrizeIsActive{{ prize.id }}">جایزه در گردونه فعال باشد</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
+                        <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">ذخیره تغییرات</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const btnSync = document.getElementById("btnSyncResellerMenu");

@@ -14,6 +14,20 @@
     {% elif branding.get('logo_url') %}
     <link rel="icon" href="{{ branding.get('logo_url') }}">
     {% endif %}
+
+    <!-- PWA Web App Manifest & Meta Tags -->
+    {% if session.get('role') == 'reseller' %}
+    <link rel="manifest" href="{{ url_for('pwa_reseller_manifest') }}">
+    {% else %}
+    <link rel="manifest" href="{{ url_for('pwa_admin_manifest') }}">
+    {% endif %}
+    <meta name="theme-color" content="{{ branding.get('primary_color') or '#4f46e5' }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ branding.get('brand_title') or 'VPN Panel' }}">
+    {% if branding.get('logo_url') %}
+    <link rel="apple-touch-icon" href="{{ branding.get('logo_url') }}">
+    {% endif %}
     <style>
         {% if palette_css %}
         {{ palette_css|safe }}
@@ -1517,9 +1531,14 @@
             {% endif %}
             <span class="small">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</span>
         </div>
-        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
-            <i class="fas fa-circle-half-stroke"></i>
-        </button>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary px-2 py-1" id="baseMobilePwaInstallBtn" onclick="handleBasePwaInstall()" style="display: none;" title="نصب وب‌اپلیکیشن">
+                <i class="fas fa-download me-1"></i> <span class="small">نصب اپ</span>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
+                <i class="fas fa-circle-half-stroke"></i>
+            </button>
+        </div>
     </div>
 
     <!-- Sidebar Backdrop for Mobile -->
@@ -1931,6 +1950,9 @@
                     {% endif %}
                 </div>
             </a>
+            <button type="button" class="btn btn-sm btn-outline-primary w-100 mb-2 align-items-center justify-content-center gap-2" id="baseSidebarPwaInstallBtn" onclick="handleBasePwaInstall()" style="display: none;">
+                <i class="fas fa-download"></i> <span>نصب وب‌اپلیکیشن (PWA)</span>
+            </button>
             <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
                 <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
             </button>
@@ -3360,6 +3382,61 @@
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره یادداشت';
                 alert('خطا در برقراری ارتباط با سرور');
+            });
+        }
+    </script>
+
+    <!-- PWA Service Worker Registration & Installation Prompt Handler -->
+    <script>
+        let baseDeferredPrompt = null;
+        const baseMobilePwaBtn = document.getElementById('baseMobilePwaInstallBtn');
+        const baseSidebarPwaBtn = document.getElementById('baseSidebarPwaInstallBtn');
+
+        function updateBasePwaButtons(show) {
+            const displayVal = show ? 'inline-flex' : 'none';
+            if (baseMobilePwaBtn) baseMobilePwaBtn.style.display = displayVal;
+            if (baseSidebarPwaBtn) baseSidebarPwaBtn.style.display = displayVal;
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            baseDeferredPrompt = e;
+            updateBasePwaButtons(true);
+        });
+
+        window.addEventListener('appinstalled', () => {
+            baseDeferredPrompt = null;
+            updateBasePwaButtons(false);
+            console.log('PWA application installed successfully.');
+        });
+
+        async function handleBasePwaInstall() {
+            if (!baseDeferredPrompt) {
+                const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIos) {
+                    alert('برای نصب این برنامه در آیفون/آیپد: دکمه Share (اشتراک‌گذاری در پایین سافاری) را لمس کرده و گزینه "Add to Home Screen" (افزودن به صفحه اصلی) را انتخاب نمایید.');
+                } else {
+                    alert('این برنامه قابلیت نصب مستقیم روی دستگاه شما را داراست. لطفاً از طریق منوی مرورگر (سه نقطه)، گزینه Install App یا Add to Home screen را انتخاب نمایید.');
+                }
+                return;
+            }
+            baseDeferredPrompt.prompt();
+            const { outcome } = await baseDeferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                baseDeferredPrompt = null;
+                updateBasePwaButtons(false);
+            }
+        }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => {
+                        console.log('PWA Service Worker registered with scope:', reg.scope);
+                    })
+                    .catch(err => {
+                        console.warn('PWA Service Worker registration skipped/failed:', err);
+                    });
             });
         }
     </script>

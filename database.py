@@ -307,8 +307,45 @@ class Database:
                 sender_id INTEGER,
                 sender_name TEXT,
                 message TEXT NOT NULL,
+                image_url TEXT,
                 created_at TEXT,
                 FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
+            )
+        """)
+
+        # جدول جوایز گردونه شانس (Lucky Wheel Prizes)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lucky_wheel_prizes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER DEFAULT 0,
+                title TEXT NOT NULL,
+                prize_type TEXT NOT NULL, -- 'traffic', 'plan', 'discount', 'wallet', 'empty'
+                prize_value TEXT DEFAULT '0',
+                chance_weight INTEGER DEFAULT 10,
+                target_audience TEXT DEFAULT 'all', -- 'all', 'active_only'
+                slice_color TEXT DEFAULT '#3b82f6',
+                slice_icon TEXT DEFAULT 'gift',
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول سابقه چرخش‌های گردونه شانس (Lucky Wheel Spins)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lucky_wheel_spins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER DEFAULT 0,
+                user_ident TEXT NOT NULL,
+                subscription_id INTEGER,
+                prize_id INTEGER NOT NULL,
+                prize_type TEXT NOT NULL,
+                prize_title TEXT NOT NULL,
+                prize_value TEXT,
+                status TEXT DEFAULT 'claimed', -- 'claimed', 'pending_choice'
+                assigned_subscription_id INTEGER,
+                created_at TEXT,
+                FOREIGN KEY (prize_id) REFERENCES lucky_wheel_prizes(id)
             )
         """)
 
@@ -1297,10 +1334,19 @@ class Database:
             "subscription_id INTEGER DEFAULT NULL",
             "customer_name TEXT DEFAULT NULL",
             "customer_phone TEXT DEFAULT NULL",
-            "portal_token TEXT DEFAULT NULL"
+            "portal_token TEXT DEFAULT NULL",
+            "image_url TEXT DEFAULT NULL"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE support_tickets ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        for col_def in [
+            "image_url TEXT DEFAULT NULL"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE ticket_messages ADD COLUMN {col_def}")
             except Exception:
                 pass
 
@@ -1944,6 +1990,12 @@ class Database:
             self._migrate_button_titles_and_terms()
         except Exception as e:
             logger.warning(f"Initial _migrate_button_titles_and_terms check: {e}")
+
+        # درج و اطمینان از وجود جوایز پیش‌فرض گردونه شانس
+        try:
+            self.ensure_default_lucky_wheel_prizes()
+        except Exception as e:
+            logger.warning(f"Initial ensure_default_lucky_wheel_prizes check: {e}")
 
     def _migrate_button_titles_and_terms(self):
         """اصلاح خودکار عناوین قدیمی دکمه‌ها و تغییر اصطلاح پلن به بسته در تنظیمات ذخیره شده"""
@@ -6944,8 +6996,8 @@ class Database:
     # مدیریت تیکت‌های پشتیبانی و پیام‌های گفتگو
     # ═══════════════════════════════════════════════════════════════
 
-    def create_ticket(self, telegram_id=None, subject="پیام کاربر", message="", reseller_id=None, user_id=None, **kwargs):
-        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و درج اولین پیام گفتگو"""
+    def create_ticket(self, telegram_id=None, subject="پیام کاربر", message="", reseller_id=None, user_id=None, image_url=None, **kwargs):
+        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و درج اولین پیام گفتگو همراه با پشتیبانی از پیوست تصویر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6956,17 +7008,17 @@ class Database:
             target_role = kwargs.get("target_role") or ('reseller' if reseller_id and int(reseller_id) > 0 else 'admin')
             ticket_type = kwargs.get("ticket_type") or "general"
             cursor.execute("""
-                INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, target_role, ticket_type, created_at, updated_at)
-                VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?)
-            """, (tg_id, subject, message, reseller_id, target_role, ticket_type, now, now))
+                INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, target_role, ticket_type, image_url, created_at, updated_at)
+                VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)
+            """, (tg_id, subject, message, reseller_id, target_role, ticket_type, image_url, now, now))
             ticket_id = cursor.lastrowid
 
-            if message:
+            if message or image_url:
                 sender_name = kwargs.get("username") or kwargs.get("first_name") or "کاربر"
                 cursor.execute("""
-                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
-                    VALUES (?, 'user', ?, ?, ?, ?)
-                """, (ticket_id, tg_id, sender_name, message, now))
+                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, image_url, created_at)
+                    VALUES (?, 'user', ?, ?, ?, ?, ?)
+                """, (ticket_id, tg_id, sender_name, message or "", image_url, now))
 
             conn.commit()
             return {"success": True, "ticket_id": ticket_id}
@@ -6976,16 +7028,16 @@ class Database:
         finally:
             conn.close()
 
-    def add_ticket_message(self, ticket_id, sender_type, message, sender_id=None, sender_name=None, new_status=None):
-        """افزودن پیام به زنجیره گفتگوی تیکت و بروزرسانی وضعیت تیکت"""
+    def add_ticket_message(self, ticket_id, sender_type, message, sender_id=None, sender_name=None, new_status=None, image_url=None):
+        """افزودن پیام به زنجیره گفتگوی تیکت و بروزرسانی وضعیت تیکت با پشتیبانی از پیوست تصویر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("""
-                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (ticket_id, sender_type, sender_id, sender_name, message, now))
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, image_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (ticket_id, sender_type, sender_id, sender_name, message or "", image_url, now))
 
             if new_status:
                 status_val = new_status
@@ -6999,7 +7051,7 @@ class Database:
                     UPDATE support_tickets 
                     SET admin_reply = ?, status = ?, updated_at = ?
                     WHERE id = ?
-                """, (message, status_val, now, ticket_id))
+                """, (message or ("📷 تصویر پیوست" if image_url else ""), status_val, now, ticket_id))
             else:
                 cursor.execute("""
                     UPDATE support_tickets 
@@ -7015,13 +7067,13 @@ class Database:
         finally:
             conn.close()
 
-    def add_ticket_reply(self, ticket_id, sender_type="admin", sender_id=None, sender_name=None, message=""):
-        """ثبت پاسخ ادمین یا نماینده به تیکت"""
-        return self.add_ticket_message(ticket_id, sender_type=sender_type, message=message, sender_id=sender_id, sender_name=sender_name)
+    def add_ticket_reply(self, ticket_id, sender_type="admin", sender_id=None, sender_name=None, message="", image_url=None):
+        """ثبت پاسخ ادمین یا نماینده به تیکت با امکان پیوست تصویر"""
+        return self.add_ticket_message(ticket_id, sender_type=sender_type, message=message, sender_id=sender_id, sender_name=sender_name, image_url=image_url)
 
-    def reply_ticket(self, ticket_id, admin_reply, sender_name="پشتیبانی"):
-        """پاسخ ادمین یا نماینده به تیکت"""
-        return self.add_ticket_message(ticket_id, sender_type="admin", message=admin_reply, sender_name=sender_name, new_status="replied")
+    def reply_ticket(self, ticket_id, admin_reply, sender_name="پشتیبانی", image_url=None):
+        """پاسخ ادمین یا نماینده به تیکت با امکان پیوست تصویر"""
+        return self.add_ticket_message(ticket_id, sender_type="admin", message=admin_reply, sender_name=sender_name, new_status="replied", image_url=image_url)
 
     def update_ticket_status(self, ticket_id, status):
         """بروزرسانی وضعیت تیکت (open, in_progress, replied, closed)"""
@@ -7122,8 +7174,8 @@ class Database:
         finally:
             conn.close()
 
-    def create_portal_chat_ticket(self, subscription_id: int, customer_name: str, customer_phone: str, subject: str, initial_message: str, portal_token: str = None, reseller_id: int = None, telegram_id: int = None):
-        """ایجاد تیکت گفتگوی آنلاین مشتری از پورتال وب با ثبت مشخصات و پیام اولیه"""
+    def create_portal_chat_ticket(self, subscription_id: int, customer_name: str, customer_phone: str, subject: str, initial_message: str, portal_token: str = None, reseller_id: int = None, telegram_id: int = None, image_url: str = None):
+        """ایجاد تیکت گفتگوی آنلاین مشتری از پورتال وب با ثبت مشخصات و پیام اولیه و پشتیبانی از تصویر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -7133,17 +7185,17 @@ class Database:
             cursor.execute("""
                 INSERT INTO support_tickets (
                     telegram_id, subscription_id, customer_name, customer_phone, portal_token,
-                    subject, message, status, reseller_id, target_role, ticket_type, created_at, updated_at
+                    subject, message, status, reseller_id, target_role, ticket_type, image_url, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 'portal_chat', ?, ?)
-            """, (tg_id, subscription_id, customer_name, customer_phone, portal_token, subject, initial_message, reseller_id, target_role, now, now))
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 'portal_chat', ?, ?, ?)
+            """, (tg_id, subscription_id, customer_name, customer_phone, portal_token, subject, initial_message, reseller_id, target_role, image_url, now, now))
             ticket_id = cursor.lastrowid
 
-            if initial_message:
+            if initial_message or image_url:
                 cursor.execute("""
-                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
-                    VALUES (?, 'user', ?, ?, ?, ?)
-                """, (ticket_id, tg_id, customer_name or "مشتری", initial_message, now))
+                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, image_url, created_at)
+                    VALUES (?, 'user', ?, ?, ?, ?, ?)
+                """, (ticket_id, tg_id, customer_name or "مشتری", initial_message or "", image_url, now))
 
             conn.commit()
             return {"success": True, "ticket_id": ticket_id}
@@ -7170,9 +7222,10 @@ class Database:
             where_sql = " OR ".join(conds)
             cursor.execute(f"""
                 SELECT id, subscription_id, customer_name, customer_phone, subject, message,
-                       status, admin_reply, created_at, updated_at, reseller_id,
+                       status, admin_reply, image_url, created_at, updated_at, reseller_id,
                        (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = support_tickets.id) as messages_count,
                        (SELECT message FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_message_text,
+                       (SELECT image_url FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_message_image,
                        (SELECT created_at FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_message_time,
                        (SELECT sender_type FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_sender_type
                 FROM support_tickets
@@ -7209,8 +7262,8 @@ class Database:
         finally:
             conn.close()
 
-    def add_portal_user_message(self, ticket_id: int, subscription_id: int, message: str, customer_name: str = None):
-        """افزودن پیام جدید مشتری به گفتگوی آنلاین و تغییر وضعیت تیکت به open"""
+    def add_portal_user_message(self, ticket_id: int, subscription_id: int, message: str, customer_name: str = None, image_url: str = None):
+        """افزودن پیام جدید مشتری به گفتگوی آنلاین و تغییر وضعیت تیکت به open با پشتیبانی از تصویر"""
         t = self.get_portal_ticket(ticket_id, subscription_id=subscription_id)
         if not t:
             return {"success": False, "error": "گفتگوی مورد نظر یافت نشد یا دسترسی نامعتبر است."}
@@ -7221,9 +7274,9 @@ class Database:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
-                VALUES (?, 'user', ?, ?, ?, ?)
-            """, (ticket_id, subscription_id, sender_name, message, now))
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, image_url, created_at)
+                VALUES (?, 'user', ?, ?, ?, ?, ?)
+            """, (ticket_id, subscription_id, sender_name, message or "", image_url, now))
             msg_id = cursor.lastrowid
 
             cursor.execute("""
@@ -23948,5 +24001,283 @@ class Database:
         except Exception as e:
             logger.error(f"Error in get_failover_logs: {e}")
             return []
+
+    # ══════════════════════════════════════════════════════════════════
+    # 🎡 سیستم گردونه شانس و پاداش روزانه (Lucky Wheel & Daily Rewards)
+    # ══════════════════════════════════════════════════════════════════
+
+    def ensure_default_lucky_wheel_prizes(self):
+        """درج جوایز پیش‌فرض گردونه شانس برای مدیریت در صورت خالی بودن جدول"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM lucky_wheel_prizes WHERE reseller_id = 0")
+            count = cursor.fetchone()[0]
+            if count == 0:
+                defaults = [
+                    (0, "۵۰۰ مگابایت اینترنت هدیه", "traffic", "0.5", 30, "active_only", "#3b82f6", "bolt", 1, now, now),
+                    (0, "۱ گیگابایت اینترنت هدیه", "traffic", "1", 20, "active_only", "#10b981", "wifi", 1, now, now),
+                    (0, "۲ گیگابایت اینترنت هدیه", "traffic", "2", 10, "active_only", "#8b5cf6", "rocket", 1, now, now),
+                    (0, "۲۰٪ تخفیف خرید و تمدید", "discount", "20", 15, "all", "#f59e0b", "percent", 1, now, now),
+                    (0, "۳۰,۰۰۰ تومان شارژ کیف پول", "wallet", "30000", 5, "all", "#ec4899", "wallet", 1, now, now),
+                    (0, "اشتراک ۱ ماهه ۳۰ گیگ", "plan", "30GB_30D", 2, "all", "#e11d48", "crown", 1, now, now),
+                    (0, "پوچ (فردا دوباره بچرخون)", "empty", "0", 18, "all", "#64748b", "redo", 1, now, now),
+                ]
+                cursor.executemany("""
+                    INSERT INTO lucky_wheel_prizes 
+                    (reseller_id, title, prize_type, prize_value, chance_weight, target_audience, slice_color, slice_icon, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, defaults)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error ensuring default lucky wheel prizes: {e}")
+        finally:
+            conn.close()
+
+    def get_lucky_wheel_prizes(self, reseller_id: int = 0, active_only: bool = True, has_active_sub: bool = None, include_fallback: bool = True) -> list:
+        """دریافت جوایز گردونه شانس با تفکیک نماینده، وضعیت فعال بودن و جامعه هدف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            r_id = int(reseller_id or 0)
+            conds = ["reseller_id = ?"]
+            params = [r_id]
+
+            if active_only:
+                conds.append("is_active = 1")
+            if has_active_sub is False:
+                conds.append("target_audience = 'all'")
+
+            where_sql = " AND ".join(conds)
+            cursor.execute(f"SELECT * FROM lucky_wheel_prizes WHERE {where_sql} ORDER BY id ASC", params)
+            prizes = [dict(r) for r in cursor.fetchall()]
+
+            # اگر نماینده است و جوایز اختصاصی تعریف نکرده، از جوایز عمومی مدیریت ارث‌بری شود
+            if not prizes and r_id > 0 and include_fallback:
+                fallback_conds = ["reseller_id = 0"]
+                if active_only:
+                    fallback_conds.append("is_active = 1")
+                if has_active_sub is False:
+                    fallback_conds.append("target_audience = 'all'")
+                where_fb = " AND ".join(fallback_conds)
+                cursor.execute(f"SELECT * FROM lucky_wheel_prizes WHERE {where_fb} ORDER BY id ASC")
+                prizes = [dict(r) for r in cursor.fetchall()]
+
+            return prizes
+        except Exception as e:
+            logger.error(f"Error getting lucky wheel prizes: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def add_lucky_wheel_prize(self, reseller_id: int, title: str, prize_type: str, prize_value: str,
+                              chance_weight: int = 10, target_audience: str = 'all',
+                              slice_color: str = '#3b82f6', slice_icon: str = 'gift', is_active: int = 1) -> dict:
+        """افزودن جایزه جدید به گردونه شانس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO lucky_wheel_prizes 
+                (reseller_id, title, prize_type, prize_value, chance_weight, target_audience, slice_color, slice_icon, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (int(reseller_id or 0), title.strip(), prize_type, str(prize_value).strip(),
+                  int(chance_weight or 1), target_audience, slice_color, slice_icon, int(is_active), now, now))
+            conn.commit()
+            return {"success": True, "prize_id": cursor.lastrowid}
+        except Exception as e:
+            logger.error(f"Error adding lucky wheel prize: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_lucky_wheel_prize(self, prize_id: int, reseller_id: int = None, **kwargs) -> dict:
+        """ویرایش اطلاعات جایزه گردونه شانس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        allowed = {"title", "prize_type", "prize_value", "chance_weight", "target_audience", "slice_color", "slice_icon", "is_active"}
+        updates = []
+        params = []
+        for k, v in kwargs.items():
+            if k in allowed:
+                updates.append(f"{k} = ?")
+                params.append(v)
+        if not updates:
+            return {"success": False, "error": "داده‌ای برای تغییر ارسال نشده است."}
+
+        updates.append("updated_at = ?")
+        params.append(now)
+
+        try:
+            where_sql = "WHERE id = ?"
+            params.append(prize_id)
+            if reseller_id is not None:
+                where_sql += " AND reseller_id = ?"
+                params.append(int(reseller_id))
+
+            cursor.execute(f"UPDATE lucky_wheel_prizes SET {', '.join(updates)} {where_sql}", params)
+            conn.commit()
+            return {"success": cursor.rowcount > 0}
+        except Exception as e:
+            logger.error(f"Error updating lucky wheel prize {prize_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_lucky_wheel_prize(self, prize_id: int, reseller_id: int = None) -> dict:
+        """حذف جایزه از گردونه شانس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            where_sql = "WHERE id = ?"
+            params = [prize_id]
+            if reseller_id is not None:
+                where_sql += " AND reseller_id = ?"
+                params.append(int(reseller_id))
+            cursor.execute(f"DELETE FROM lucky_wheel_prizes {where_sql}", params)
+            conn.commit()
+            return {"success": cursor.rowcount > 0}
+        except Exception as e:
+            logger.error(f"Error deleting lucky wheel prize {prize_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def can_user_spin_wheel(self, user_ident: str, reseller_id: int = 0, cooldown_hours: int = 24) -> tuple:
+        """بررسی مجاز بودن کاربر برای چرخاندن گردونه با توجه به زمان کول‌داون روزانه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT created_at FROM lucky_wheel_spins 
+                WHERE user_ident = ? 
+                ORDER BY created_at DESC LIMIT 1
+            """, (str(user_ident),))
+            row = cursor.fetchone()
+            if not row:
+                return (True, None, 0)
+
+            last_spin_time_str = row[0]
+            try:
+                last_dt = datetime.fromisoformat(last_spin_time_str.replace("Z", "+00:00"))
+            except Exception:
+                return (True, None, 0)
+
+            now_dt = datetime.now(timezone.utc)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+
+            diff = now_dt - last_dt
+            cooldown_delta = timedelta(hours=cooldown_hours)
+
+            if diff < cooldown_delta:
+                remaining = cooldown_delta - diff
+                rem_seconds = int(remaining.total_seconds())
+                rem_hours = rem_seconds // 3600
+                rem_minutes = (rem_seconds % 3600) // 60
+                time_str = f"{rem_hours} ساعت و {rem_minutes} دقیقه" if rem_hours > 0 else f"{rem_minutes} دقیقه"
+                return (False, time_str, rem_seconds)
+
+            return (True, None, 0)
+        except Exception as e:
+            logger.error(f"Error checking user spin cooldown: {e}")
+            return (True, None, 0)
+        finally:
+            conn.close()
+
+    def record_wheel_spin(self, user_ident: str, prize: dict, reseller_id: int = 0,
+                          subscription_id: int = None, status: str = 'claimed',
+                          assigned_subscription_id: int = None) -> int:
+        """ثبت چرخش گردونه شانس و جایزه تعلق گرفته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO lucky_wheel_spins 
+                (reseller_id, user_ident, subscription_id, prize_id, prize_type, prize_title, prize_value, status, assigned_subscription_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (int(reseller_id or 0), str(user_ident), subscription_id,
+                  prize["id"], prize["prize_type"], prize["title"],
+                  str(prize.get("prize_value", "")), status, assigned_subscription_id, now))
+            conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Error recording wheel spin: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def claim_traffic_prize_for_subscription(self, spin_id: int, sub_id: int, user_ident: str = None) -> dict:
+        """اعمال حجم برنده شده به اشتراک انتخابی کاربر پس از برنده شدن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM lucky_wheel_spins WHERE id = ?", (spin_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "رکورد چرخش یافت نشد."}
+            spin = dict(row)
+
+            if user_ident and str(spin.get("user_ident")) != str(user_ident):
+                return {"success": False, "error": "دسترسی نامعتبر است."}
+
+            if spin.get("status") == "claimed" and spin.get("assigned_subscription_id"):
+                return {"success": False, "error": "این جایزه قبلاً به اشتراک اعمال شده است."}
+
+            if spin.get("prize_type") != "traffic":
+                return {"success": False, "error": "نوع این جایزه ترافیک حجمی نیست."}
+
+            try:
+                extra_gb = float(spin.get("prize_value") or 0)
+            except ValueError:
+                extra_gb = 0
+
+            if extra_gb <= 0:
+                return {"success": False, "error": "مقدار حجم جایزه نامعتبر است."}
+
+            res = self.add_traffic_to_subscription(sub_id, extra_gb)
+            if not res.get("success"):
+                return res
+
+            cursor.execute("""
+                UPDATE lucky_wheel_spins 
+                SET status = 'claimed', assigned_subscription_id = ? 
+                WHERE id = ?
+            """, (sub_id, spin_id))
+            conn.commit()
+
+            return {"success": True, "added_gb": extra_gb, "sub_id": sub_id}
+        except Exception as e:
+            logger.error(f"Error claiming traffic prize: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_lucky_wheel_history(self, user_ident: str = None, reseller_id: int = None, limit: int = 50) -> list:
+        """دریافت تاریخچه چرخش‌های گردونه شانس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            conds = []
+            params = []
+            if user_ident:
+                conds.append("user_ident = ?")
+                params.append(str(user_ident))
+            if reseller_id is not None:
+                conds.append("reseller_id = ?")
+                params.append(int(reseller_id))
+
+            where_sql = f"WHERE {' AND '.join(conds)}" if conds else ""
+            cursor.execute(f"SELECT * FROM lucky_wheel_spins {where_sql} ORDER BY id DESC LIMIT ?", params + [limit])
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting lucky wheel history: {e}")
+            return []
+        finally:
+            conn.close()
 
 db = Database()

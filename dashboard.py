@@ -66,6 +66,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.getenv("DASHBOARD_SECRET", "hiddibot-super-secret-key-2026")
 
+# پوشه ذخیره‌سازی پیوست‌های چت و تیکت پشتیبانی
+ATTACHMENTS_DIR = Path("data/attachments")
+ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # ─── بنرهای موقتی اطلاعیه پنل نمایندگان (In-Memory Temporary Banners) ───
 RESELLER_PANEL_BANNERS: List[Dict[str, Any]] = []
@@ -1391,6 +1395,101 @@ def send_telegram_poll(chat_id, question: str, options: list, is_anonymous: bool
             return resp.status == 200
     except Exception as e:
         logger.error(f"Error sending telegram poll to {chat_id}: {e}")
+        return False
+
+def send_telegram_photo(chat_id: int, photo_path_or_url: str, caption: str = "", reply_markup=None, parse_mode: str = "HTML", bot_token: str = None) -> bool:
+    """ارسال تصویر به تلگرام به صورت همگام با پشتیبانی از URL یا فایل محلی و مالتی‌پارت"""
+    active_token = (bot_token or "").strip() or get_bot_token()
+    if not active_token or not chat_id or not photo_path_or_url:
+        return False
+
+    url = f"https://api.telegram.org/bot{active_token}/sendPhoto"
+
+    # ۱. در صورتی که آدرس اینترنتی وب باشد
+    if str(photo_path_or_url).startswith("http://") or str(photo_path_or_url).startswith("https://"):
+        payload = {
+            "chat_id": chat_id,
+            "photo": photo_path_or_url,
+            "caption": caption[:1024] if caption else "",
+            "parse_mode": parse_mode
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.status == 200
+        except Exception as e:
+            logger.warning(f"Error sending telegram photo URL to {chat_id}: {e}")
+
+    # ۲. در صورتی که فایل محلی روی سرور باشد
+    file_path = None
+    if os.path.exists(str(photo_path_or_url)):
+        file_path = Path(photo_path_or_url)
+    elif str(photo_path_or_url).startswith("/chat/attachments/"):
+        fname = str(photo_path_or_url).replace("/chat/attachments/", "")
+        candidate = ATTACHMENTS_DIR / fname
+        if candidate.exists():
+            file_path = candidate
+    elif str(photo_path_or_url).startswith("/avatars/"):
+        fname = str(photo_path_or_url).replace("/avatars/", "")
+        candidate = Path("data/avatars") / fname
+        if candidate.exists():
+            file_path = candidate
+
+    if file_path and file_path.is_file():
+        try:
+            boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
+            body = bytearray()
+
+            def add_field(name, value):
+                body.extend(f"--{boundary}\r\n".encode("utf-8"))
+                body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+                body.extend(str(value).encode("utf-8"))
+                body.extend(b"\r\n")
+
+            add_field("chat_id", str(chat_id))
+            if caption:
+                add_field("caption", caption[:1024])
+                add_field("parse_mode", parse_mode)
+            if reply_markup:
+                add_field("reply_markup", json.dumps(reply_markup))
+
+            content_type = "image/jpeg"
+            ext = file_path.suffix.lower()
+            if ext == ".png":
+                content_type = "image/png"
+            elif ext == ".webp":
+                content_type = "image/webp"
+            elif ext == ".gif":
+                content_type = "image/gif"
+
+            filename = file_path.name
+            body.extend(f"--{boundary}\r\n".encode("utf-8"))
+            body.extend(f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode("utf-8"))
+            body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+            with open(file_path, "rb") as f:
+                body.extend(f.read())
+            body.extend(b"\r\n")
+            body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+            req = urllib.request.Request(
+                url,
+                data=bytes(body),
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "Content-Length": str(len(body))
+                }
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return resp.status == 200
+        except Exception as e:
+            logger.warning(f"Error sending multipart photo to {chat_id}: {e}")
+
+    fallback_text = caption or "📎 تصویر پیوست ارسال شده است."
+    return send_telegram_msg(chat_id, fallback_text, reply_markup=reply_markup, parse_mode=parse_mode, bot_token=active_token)
+
 def send_reseller_telegram_notification(reseller_id: int, telegram_id: int, text: str, reply_markup=None, parse_mode: str = "HTML") -> dict:
     """
     ارسال پیام/اعلان تلگرامی به نماینده از طریق:
@@ -10451,13 +10550,23 @@ def tickets():
 @app.route("/ticket/reply/<int:ticket_id>", methods=["POST"])
 @permission_required("tickets")
 def ticket_reply(ticket_id):
-    """ارسال پاسخ به تیکت از پنل وب مستقیم به تلگرام کاربر و درج در زنجیره گفتگو"""
+    """ارسال پاسخ به تیکت از پنل وب مستقیم به تلگرام کاربر و درج در زنجیره گفتگو همراه با پشتیبانی از پیوست تصویر"""
     reply_text = request.form.get("reply", "").strip()
     close_ticket = bool(request.form.get("close_ticket"))
     new_status = "closed" if close_ticket else request.form.get("status", "replied")
 
-    if not reply_text:
-        flash("متن پاسخ نمی‌تواند خالی باشد.", "danger")
+    attachment_file = request.files.get("attachment")
+    image_url = request.form.get("image_url")
+    if attachment_file and attachment_file.filename:
+        sec_fn = secure_filename(attachment_file.filename)
+        ext = Path(sec_fn).suffix.lower()
+        if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            fn = f"ticket_adm_{ticket_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
+            attachment_file.save(ATTACHMENTS_DIR / fn)
+            image_url = f"/chat/attachments/{fn}"
+
+    if not reply_text and not image_url:
+        flash("متن پاسخ یا تصویر پیوست نمی‌تواند خالی باشد.", "danger")
         return redirect(url_for("tickets"))
 
     ticket = db.get_ticket(ticket_id)
@@ -10466,14 +10575,18 @@ def ticket_reply(ticket_id):
         db.add_ticket_message(
             ticket_id=ticket_id,
             sender_type="admin",
-            message=reply_text,
+            message=reply_text or "📷 تصویر پیوست",
             sender_id=session.get("admin_id", 0),
             sender_name=sender_name,
-            new_status=new_status
+            new_status=new_status,
+            image_url=image_url
         )
         user_id = ticket.get("telegram_id") or ticket.get("user_id")
-        msg = f"🔔 <b>پاسخ پشتیبانی به تیکت #{ticket_id}:</b>\n\n{reply_text}\n\n──────────────\nدر صورت نیاز به پیام مجدد از دکمه «💬 پشتیبانی» استفاده فرمایید."
-        send_telegram_msg(user_id, msg)
+        msg = f"🔔 <b>پاسخ پشتیبانی به تیکت #{ticket_id}:</b>\n\n{reply_text or '📎 یک تصویر از سمت پشتیبانی ارسال شده است.'}\n\n──────────────\nدر صورت نیاز به پیام مجدد از دکمه «💬 پشتیبانی» استفاده فرمایید."
+        if image_url:
+            send_telegram_photo(user_id, image_url, caption=msg)
+        else:
+            send_telegram_msg(user_id, msg)
         status_msg = " و تیکت بسته شد" if new_status == "closed" else ""
         flash(f"پاسخ به تیکت #{ticket_id} با موفقیت به تلگرام کاربر ارسال شد{status_msg}!", "success")
 
@@ -13804,6 +13917,23 @@ def settings():
                 flash(f"خطا در همگام‌سازی دکمه تلگرام: {e_s}", "danger")
             return redirect(url_for("settings"))
 
+        elif action == "save_pwa_settings":
+            pwa_enabled = "1" if request.form.get("pwa_enabled") else "0"
+            pwa_app_name = request.form.get("pwa_app_name", "").strip()
+            pwa_short_name = request.form.get("pwa_short_name", "").strip()
+            pwa_theme_color = request.form.get("pwa_theme_color", "").strip()
+
+            db.save_setting("pwa_enabled", pwa_enabled)
+            if pwa_app_name:
+                db.save_setting("pwa_app_name", pwa_app_name)
+            if pwa_short_name:
+                db.save_setting("pwa_short_name", pwa_short_name)
+            if pwa_theme_color:
+                db.save_setting("pwa_theme_color", pwa_theme_color)
+
+            flash("تنظیمات وب‌اپلیکیشن پیش‌رونده (PWA) با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings", active_tab="portals"))
+
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
     conn.close()
@@ -13817,6 +13947,14 @@ def settings():
     vip_settings = db.get_vip_settings()
     refund_settings = db.get_refund_settings()
     all_resellers = db.get_all_resellers()
+    lucky_wheel_enabled = db.get_setting("lucky_wheel_enabled", "1") == "1"
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=0, active_only=False)
+    pwa_config = {
+        "enabled": db.get_setting("pwa_enabled", "1") == "1",
+        "app_name": db.get_setting("pwa_app_name", "پنل کاربری"),
+        "short_name": db.get_setting("pwa_short_name", "VPN"),
+        "theme_color": db.get_setting("pwa_theme_color", "#2563eb")
+    }
     store_branding_config = {
         "store_name": db.get_setting("store_name", "سامانه هوشمند اینترنت پرو"),
         "store_version": db.get_setting("store_version", "v0.0.1 Beta"),
@@ -13919,6 +14057,9 @@ def settings():
         vip_settings=vip_settings,
         refund_settings=refund_settings,
         all_resellers=all_resellers,
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_prizes=lucky_wheel_prizes,
+        pwa_config=pwa_config,
         store_branding_config=store_branding_config,
         customer_portal_config=customer_portal_config,
         login_security_config=login_security_config,
@@ -18194,24 +18335,35 @@ def reseller_ticket_reply_to_admin(ticket_id):
 @app.route("/reseller/ticket/<int:ticket_id>/reply", methods=["POST"])
 @reseller_required
 def reseller_ticket_reply(ticket_id):
-    """ارسال پاسخ به تیکت مشتری توسط نماینده، درج در زنجیره گفتگو و ارسال در تلگرام"""
+    """ارسال پاسخ به تیکت مشتری توسط نماینده، درج در زنجیره گفتگو و ارسال در تلگرام همراه با پیوست تصویر"""
     reseller_id = session.get("reseller_id")
     reply_msg = request.form.get("reply_message", "").strip()
     close_after = bool(request.form.get("close_ticket"))
     new_status = "closed" if close_after else request.form.get("status", "replied")
 
-    if not reply_msg:
-        flash("متن پاسخ نمی‌تواند خالی باشد.", "warning")
+    attachment_file = request.files.get("attachment")
+    image_url = request.form.get("image_url")
+    if attachment_file and attachment_file.filename:
+        sec_fn = secure_filename(attachment_file.filename)
+        ext = Path(sec_fn).suffix.lower()
+        if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            fn = f"ticket_res_{ticket_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
+            attachment_file.save(ATTACHMENTS_DIR / fn)
+            image_url = f"/chat/attachments/{fn}"
+
+    if not reply_msg and not image_url:
+        flash("متن پاسخ یا تصویر پیوست نمی‌تواند خالی باشد.", "warning")
         return redirect(url_for("reseller_tickets"))
 
     sender_name = session.get("display_name") or session.get("name") or session.get("username") or "پشتیبانی نماینده"
     db.add_ticket_message(
         ticket_id=ticket_id,
         sender_type="reseller",
-        message=reply_msg,
+        message=reply_msg or "📷 تصویر پیوست",
         sender_id=reseller_id,
         sender_name=sender_name,
-        new_status=new_status
+        new_status=new_status,
+        image_url=image_url
     )
 
     # ارسال پاسخ در تلگرام برای مشتری با توکن ربات اختصاصی نماینده
@@ -18222,11 +18374,13 @@ def reseller_ticket_reply(ticket_id):
         bot_tok = reseller_data.get("bot_token") if reseller_data else None
         brand = (reseller_data.get("brand_name") if reseller_data else None) or "پشتیبانی"
 
-        notif = f"💬 **پاسخ پشتیبانی {brand} به تیکت #{ticket_id}:**\n\n"
-        notif += f"{reply_msg}\n\n"
+        notif = f"💬 <b>پاسخ پشتیبانی {brand} به تیکت #{ticket_id}:</b>\n\n"
+        notif += f"{reply_msg or '📎 یک تصویر از سمت پشتیبانی ارسال شد.'}\n\n"
         notif += "──────────────\nجهت ارسال پاسخ مجدد، پیام خود را با `تیکت: متن پیام` ارسال کنید."
 
-        if bot_tok:
+        if image_url:
+            send_telegram_photo(user_tg, image_url, caption=notif, bot_token=bot_tok)
+        elif bot_tok:
             send_telegram_msg(user_tg, notif, bot_token=bot_tok)
         else:
             send_telegram_msg(user_tg, notif)
@@ -18707,7 +18861,15 @@ def reseller_branding():
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))
 
-    return render_template("reseller_branding.html", reseller=reseller, available_palettes=get_all_palettes())
+    lucky_wheel_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") == "1"
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=False)
+    return render_template(
+        "reseller_branding.html", 
+        reseller=reseller, 
+        available_palettes=get_all_palettes(),
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_prizes=lucky_wheel_prizes
+    )
 
 
 @app.route("/reseller/sync-menu-button", methods=["POST"])
@@ -23083,9 +23245,89 @@ def api_portal_chat_messages(token: str, ticket_id: int):
     })
 
 
+@app.route("/chat/attachments/<path:filename>")
+def serve_chat_attachment(filename):
+    """سرو ایمن فایل‌های پیوست چت و تیکت پشتیبانی"""
+    base_name = Path(filename).name
+    p = ATTACHMENTS_DIR / base_name
+    if p.exists() and p.is_file():
+        ext = p.suffix.lower()
+        mtype = "image/jpeg"
+        if ext == ".png":
+            mtype = "image/png"
+        elif ext == ".webp":
+            mtype = "image/webp"
+        elif ext == ".gif":
+            mtype = "image/gif"
+        with open(p, "rb") as f:
+            return Response(f.read(), mimetype=mtype)
+    abort(404)
+
+
+@app.route("/api/portal/<token>/chat/upload", methods=["POST"])
+def api_portal_chat_upload(token: str):
+    """آپلود تصویر پیوست یا اسکرین‌شات از سمت پرتال مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT id FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    file = request.files.get("file") or request.files.get("image")
+    if not file or not file.filename:
+        data = request.get_json(silent=True) or {}
+        b64_data = data.get("image_base64")
+        if b64_data and "," in b64_data:
+            try:
+                header, encoded = b64_data.split(",", 1)
+                file_bytes = base64.b64decode(encoded)
+                fn = f"chat_{sub_row[0]}_{int(time.time())}_{uuid.uuid4().hex[:6]}.png"
+                (ATTACHMENTS_DIR / fn).write_bytes(file_bytes)
+                return jsonify({"success": True, "image_url": f"/chat/attachments/{fn}", "filename": fn})
+            except Exception as e:
+                return jsonify({"success": False, "error": f"خطا در پردازش تصویر: {e}"}), 400
+        return jsonify({"success": False, "error": "هیچ تصویری دریافت نشد"}), 400
+
+    sec_fn = secure_filename(file.filename)
+    ext = Path(sec_fn).suffix.lower() or ".png"
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        return jsonify({"success": False, "error": "فرمت فایل نامعتبر است (فقط JPG, PNG, WEBP, GIF)"}), 400
+
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    if size > 10 * 1024 * 1024:
+        return jsonify({"success": False, "error": "حجم تصویر نباید بیشتر از ۱۰ مگابایت باشد"}), 400
+
+    fn = f"chat_{sub_row[0]}_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
+    file.save(ATTACHMENTS_DIR / fn)
+    return jsonify({"success": True, "image_url": f"/chat/attachments/{fn}", "filename": fn})
+
+
+@app.route("/chat/upload", methods=["POST"])
+def admin_reseller_chat_upload():
+    """آپلود تصویر پیوست توسط مدیر یا نماینده برای پاسخ به تیکت"""
+    if not session.get("logged_in") and session.get("role") not in ("admin", "reseller"):
+        return jsonify({"success": False, "error": "عدم دسترسی"}), 403
+
+    file = request.files.get("file") or request.files.get("image") or request.files.get("attachment")
+    if not file or not file.filename:
+        return jsonify({"success": False, "error": "هیچ تصویری دریافت نشد"}), 400
+
+    sec_fn = secure_filename(file.filename)
+    ext = Path(sec_fn).suffix.lower() or ".png"
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        return jsonify({"success": False, "error": "فرمت فایل مجاز نیست"}), 400
+
+    role = session.get("role") or "staff"
+    fn = f"chat_{role}_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
+    file.save(ATTACHMENTS_DIR / fn)
+    return jsonify({"success": True, "image_url": f"/chat/attachments/{fn}", "filename": fn})
+
+
 @app.route("/api/portal/<token>/chat/start", methods=["POST"])
 def api_portal_chat_start(token: str):
-    """شروع گفتگوی جدید آنلاین توسط مشتری با انتخاب موضوع، نام و شماره تماس"""
+    """شروع گفتگوی جدید آنلاین توسط مشتری با انتخاب موضوع، نام و شماره تماس و امکان ارسال تصویر"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -23099,9 +23341,13 @@ def api_portal_chat_start(token: str):
     name = (data.get("name") or sub.get("account_name") or f"مشتری #{sub['id']}").strip()
     phone = (data.get("phone") or sub.get("phone_number") or "").strip()
     message_text = (data.get("message") or "").strip()
+    image_url = (data.get("image_url") or "").strip()
 
-    if not message_text:
-        return jsonify({"success": False, "error": "لطفاً متن پیام خود را وارد نمایید."}), 400
+    if not message_text and image_url:
+        message_text = "📷 تصویر پیوست"
+
+    if not message_text and not image_url:
+        return jsonify({"success": False, "error": "لطفاً متن پیام یا تصویر خود را وارد نمایید."}), 400
 
     sub_id = sub["id"]
     reseller_id = sub.get("reseller_id") or 0
@@ -23124,7 +23370,8 @@ def api_portal_chat_start(token: str):
         initial_message=message_text,
         portal_token=token,
         reseller_id=reseller_id,
-        telegram_id=tg_id
+        telegram_id=tg_id,
+        image_url=image_url
     )
 
     if not res.get("success"):
@@ -23159,7 +23406,10 @@ def api_portal_chat_start(token: str):
                         ]
                     ]
                 }
-                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+                if image_url:
+                    send_telegram_photo(r_tg, image_url, caption=notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+                else:
+                    send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
         else:
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
@@ -23174,7 +23424,10 @@ def api_portal_chat_start(token: str):
                         ]
                     ]
                 }
-                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
+                if image_url:
+                    send_telegram_photo(int(admin_tg), image_url, caption=notif_msg, reply_markup=adm_kb)
+                else:
+                    send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
     except Exception as e_notif:
         logger.warning(f"Failed to notify of new portal chat: {e_notif}")
 
@@ -23202,7 +23455,7 @@ def api_portal_chat_start(token: str):
 
 @app.route("/api/portal/<token>/chat/send", methods=["POST"])
 def api_portal_chat_send(token: str):
-    """ارسال پیام بعدی توسط مشتری در گفتگوی جاری"""
+    """ارسال پیام بعدی توسط مشتری در گفتگوی جاری با پشتیبانی از پیوست تصویر"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -23215,11 +23468,16 @@ def api_portal_chat_send(token: str):
     ticket_id = data.get("ticket_id")
     message_text = (data.get("message") or "").strip()
     name = (data.get("name") or sub.get("account_name") or "مشتری").strip()
+    image_url = (data.get("image_url") or "").strip()
 
     if not ticket_id:
         return jsonify({"success": False, "error": "شناسه گفتگو الزامی است."}), 400
-    if not message_text:
-        return jsonify({"success": False, "error": "متن پیام نمی‌تواند خالی باشد."}), 400
+
+    if not message_text and image_url:
+        message_text = "📷 تصویر پیوست"
+
+    if not message_text and not image_url:
+        return jsonify({"success": False, "error": "متن پیام یا تصویر نمی‌تواند خالی باشد."}), 400
 
     try:
         ticket_id = int(ticket_id)
@@ -23231,7 +23489,8 @@ def api_portal_chat_send(token: str):
         ticket_id=ticket_id,
         subscription_id=sub_id,
         message=message_text,
-        customer_name=name
+        customer_name=name,
+        image_url=image_url
     )
 
     if not res.get("success"):
@@ -23262,7 +23521,10 @@ def api_portal_chat_send(token: str):
                         ]
                     ]
                 }
-                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+                if image_url:
+                    send_telegram_photo(r_tg, image_url, caption=notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+                else:
+                    send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
         else:
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
@@ -23277,7 +23539,10 @@ def api_portal_chat_send(token: str):
                         ]
                     ]
                 }
-                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
+                if image_url:
+                    send_telegram_photo(int(admin_tg), image_url, caption=notif_msg, reply_markup=adm_kb)
+                else:
+                    send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
     except Exception as e_notif:
         logger.warning(f"Failed to notify of chat user message: {e_notif}")
 
@@ -23361,6 +23626,512 @@ def api_portal_chat_poll(token: str):
 def api_portal_support_message(token: str):
     """سازگاری با ای‌پی‌آی قدیمی ثبت پیام با ارجاع به شروع گفتگوی آنلاین"""
     return api_portal_chat_start(token)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🎡 سیستم گردونه شانس و پاداش روزانه (Lucky Wheel & Daily Rewards)
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/portal/<token>/lucky-wheel/prizes", methods=["GET"])
+def api_portal_lucky_wheel_prizes(token: str):
+    """دریافت جوایز گردونه شانس و وضعیت مجاز بودن کاربر برای چرخاندن"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    reseller_id = sub.get("reseller_id") or 0
+
+    # بررسی فعال بودن سراسری گردونه
+    global_enabled = db.get_setting("lucky_wheel_enabled", "1") != "0"
+    if not global_enabled:
+        return jsonify({"success": False, "enabled": False, "error": "گردونه شانس در حال حاضر غیرفعال است."})
+
+    # بررسی فعال بودن اختصاصی گردونه برای نماینده
+    if reseller_id > 0:
+        reseller_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") != "0"
+        if not reseller_enabled:
+            return jsonify({"success": False, "enabled": False, "error": "گردونه شانس برای اشتراک‌های این نماینده غیرفعال است."})
+
+    has_active_sub = (sub.get("status") == "active")
+    prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=True, has_active_sub=has_active_sub)
+
+    if not prizes:
+        return jsonify({"success": False, "enabled": False, "error": "هیچ جایزه‌ای برای گردونه تنظیم نشده است."})
+
+    user_ident = sub.get("telegram_id") or sub.get("phone_number") or token
+    can_spin, remaining_time, rem_seconds = db.can_user_spin_wheel(user_ident, reseller_id=reseller_id)
+
+    # دریافت اشتراک‌های فعال کاربر برای امکان انتخاب در صورت برنده شدن حجم
+    user_tg = sub.get("telegram_id")
+    user_active_subs = []
+    if user_tg and int(user_tg) > 0:
+        all_subs = db.get_user_subscriptions(int(user_tg))
+        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}", "uuid": s.get("hidify_uuid")} for s in all_subs if s.get("status") == "active"]
+    if not user_active_subs:
+        user_active_subs = [{"id": sub["id"], "name": sub.get("account_name") or f"اشتراک #{sub['id']}", "uuid": sub.get("hidify_uuid")}]
+
+    return jsonify({
+        "success": True,
+        "enabled": True,
+        "can_spin": can_spin,
+        "remaining_time": remaining_time,
+        "rem_seconds": rem_seconds,
+        "prizes": prizes,
+        "has_active_sub": has_active_sub,
+        "user_subscriptions": user_active_subs
+    })
+
+
+@app.route("/api/portal/<token>/lucky-wheel/spin", methods=["POST"])
+def api_portal_lucky_wheel_spin(token: str):
+    """محاسبه ۱۰۰٪ سمت سرور برنده گردونه شانس با الگوریتم وزن‌دهی احتمالات"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    reseller_id = sub.get("reseller_id") or 0
+
+    global_enabled = db.get_setting("lucky_wheel_enabled", "1") != "0"
+    if not global_enabled:
+        return jsonify({"success": False, "error": "گردونه شانس در حال حاضر غیرفعال است."}), 400
+
+    if reseller_id > 0:
+        reseller_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") != "0"
+        if not reseller_enabled:
+            return jsonify({"success": False, "error": "گردونه شانس برای این نماینده غیرفعال است."}), 400
+
+    user_ident = sub.get("telegram_id") or sub.get("phone_number") or token
+    can_spin, remaining_time, rem_seconds = db.can_user_spin_wheel(user_ident, reseller_id=reseller_id)
+    if not can_spin:
+        return jsonify({"success": False, "error": f"شما امروز شانس خود را استفاده کرده‌اید. زمان باقی‌مانده: {remaining_time}"}), 400
+
+    has_active_sub = (sub.get("status") == "active")
+    prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=True, has_active_sub=has_active_sub)
+    if not prizes:
+        return jsonify({"success": False, "error": "هیچ جایزه فعالی وجود ندارد."}), 400
+
+    weights = [max(1, int(p.get("chance_weight") or 1)) for p in prizes]
+    chosen_prize = random.choices(prizes, weights=weights, k=1)[0]
+    prize_index = prizes.index(chosen_prize)
+
+    prize_type = chosen_prize.get("prize_type")
+    prize_val = chosen_prize.get("prize_value", "")
+    prize_title = chosen_prize.get("title")
+
+    user_tg = sub.get("telegram_id")
+    user_active_subs = []
+    if user_tg and int(user_tg) > 0:
+        all_subs = db.get_user_subscriptions(int(user_tg))
+        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}"} for s in all_subs if s.get("status") == "active"]
+    if not user_active_subs:
+        user_active_subs = [{"id": sub["id"], "name": sub.get("account_name") or f"اشتراک #{sub['id']}"}]
+
+    needs_sub_choice = False
+    reward_message = ""
+    status = "claimed"
+    assigned_sub_id = None
+
+    if prize_type == "traffic":
+        try:
+            extra_gb = float(prize_val or 0)
+        except ValueError:
+            extra_gb = 0
+
+        if len(user_active_subs) > 1:
+            needs_sub_choice = True
+            status = "pending_choice"
+            reward_message = f"تبریک! شما برنده {prize_title} شدید. لطفاً اشتراک مورد نظر جهت شارژ را انتخاب نمایید."
+        else:
+            assigned_sub_id = sub["id"]
+            if extra_gb > 0:
+                db.add_traffic_to_subscription(sub["id"], extra_gb)
+            reward_message = f"تبریک! {extra_gb} گیگابایت حجم هدیه مستقیماً به اشتراک شما اضافه شد. 🎉"
+
+    elif prize_type == "wallet":
+        try:
+            amount = int(prize_val or 0)
+        except ValueError:
+            amount = 0
+        if user_tg and amount > 0:
+            db.add_wallet_balance(int(user_tg), amount, f"پاداش گردونه شانس: {prize_title}")
+            reward_message = f"تبریک! مبلغ {amount:,} تومان به کیف پول کاربری شما افزوده شد."
+        else:
+            reward_message = f"تبریک! شما برنده {prize_title} شدید."
+
+    elif prize_type == "discount":
+        code_str = f"LUCKY-{random.randint(1000, 9999)}"
+        try:
+            pct = int(prize_val or 20)
+            db.create_discount_code(code_str, discount_percent=pct, max_uses=1)
+            reward_message = f"تبریک! کد تخفیف {pct}٪ اختصاصی شما: {code_str}"
+        except Exception:
+            reward_message = f"تبریک! شما برنده {prize_title} شدید."
+
+    elif prize_type == "plan":
+        reward_message = f"فوق‌العاده است! شما برنده جایزه ویژه «{prize_title}» شدید! پشتیبانی سیستم به زودی این اشتراک را برای شما فعال خواهد کرد."
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                send_telegram_msg(int(admin_tg), f"👑 <b>برنده جایزه بزرگ اشتراک در گردونه شانس!</b>\n\n👤 مشتری: #{sub['id']}\n🎁 جایزه: {prize_title}")
+        except Exception:
+            pass
+
+    else:
+        reward_message = "متأسفانه در این دور برنده نشدید. فردا دوباره شانس خود را امتحان کنید!"
+
+    spin_id = db.record_wheel_spin(
+        user_ident=user_ident,
+        prize=chosen_prize,
+        reseller_id=reseller_id,
+        subscription_id=sub["id"],
+        status=status,
+        assigned_subscription_id=assigned_sub_id
+    )
+
+    return jsonify({
+        "success": True,
+        "spin_id": spin_id,
+        "prize": chosen_prize,
+        "prize_index": prize_index,
+        "needs_sub_choice": needs_sub_choice,
+        "user_subscriptions": user_active_subs if needs_sub_choice else [],
+        "reward_message": reward_message
+    })
+
+
+@app.route("/api/portal/<token>/lucky-wheel/assign-traffic", methods=["POST"])
+def api_portal_lucky_wheel_assign_traffic(token: str):
+    """تخصیص حجم برنده شده به اشتراک انتخابی کاربر"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    spin_id = int(data.get("spin_id") or 0)
+    target_sub_id = int(data.get("subscription_id") or 0)
+
+    if not spin_id or not target_sub_id:
+        return jsonify({"success": False, "error": "اطلاعات انتخاب اشتراک ناقص است."}), 400
+
+    user_ident = sub.get("telegram_id") or sub.get("phone_number") or token
+    res = db.claim_traffic_prize_for_subscription(spin_id, target_sub_id, user_ident=user_ident)
+    if not res.get("success"):
+        return jsonify(res), 400
+
+    return jsonify({
+        "success": True,
+        "message": f"حجم {res.get('added_gb')} گیگابایت با موفقیت به اشتراک #{target_sub_id} اضافه گردید! 🎉"
+    })
+
+
+# ─── مدیریت جوایز و تنظیمات گردونه شانس توسط ادمین ───
+
+@app.route("/admin/lucky-wheel/toggle", methods=["POST"])
+@permission_required("settings")
+def admin_lucky_wheel_toggle():
+    """فعال یا غیرفعالسازی سراسری گردونه شانس توسط مدیریت"""
+    enabled = request.form.get("enabled", "0")
+    db.set_setting("lucky_wheel_enabled", enabled)
+    flash("تنظیمات وضعیت گردونه شانس با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("settings", tab="lucky_wheel"))
+
+@app.route("/admin/lucky-wheel/prize/add", methods=["POST"])
+@permission_required("settings")
+def admin_lucky_wheel_prize_add():
+    """افزودن جایزه جدید به گردونه توسط ادمین"""
+    title = request.form.get("title", "").strip()
+    prize_type = request.form.get("prize_type", "traffic")
+    prize_value = request.form.get("prize_value", "1").strip()
+    chance_weight = int(request.form.get("chance_weight") or 10)
+    target_audience = request.form.get("target_audience", "all")
+    slice_color = request.form.get("slice_color", "#3b82f6")
+    slice_icon = request.form.get("slice_icon", "gift")
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+
+    if not title:
+        flash("عنوان جایزه الزامی است.", "danger")
+        return redirect(url_for("settings", tab="lucky_wheel"))
+
+    res = db.add_lucky_wheel_prize(
+        reseller_id=0,
+        title=title,
+        prize_type=prize_type,
+        prize_value=prize_value,
+        chance_weight=chance_weight,
+        target_audience=target_audience,
+        slice_color=slice_color,
+        slice_icon=slice_icon,
+        is_active=is_active
+    )
+    if res.get("success"):
+        flash("جایزه جدید با موفقیت به گردونه شانس افزوده شد.", "success")
+    else:
+        flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
+    return redirect(url_for("settings", tab="lucky_wheel"))
+
+@app.route("/admin/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
+@permission_required("settings")
+def admin_lucky_wheel_prize_edit(prize_id: int):
+    """ویرایش جایزه گردونه توسط ادمین"""
+    title = request.form.get("title", "").strip()
+    prize_type = request.form.get("prize_type", "traffic")
+    prize_value = request.form.get("prize_value", "1").strip()
+    chance_weight = int(request.form.get("chance_weight") or 10)
+    target_audience = request.form.get("target_audience", "all")
+    slice_color = request.form.get("slice_color", "#3b82f6")
+    slice_icon = request.form.get("slice_icon", "gift")
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+
+    res = db.update_lucky_wheel_prize(
+        prize_id=prize_id,
+        reseller_id=0,
+        title=title,
+        prize_type=prize_type,
+        prize_value=prize_value,
+        chance_weight=chance_weight,
+        target_audience=target_audience,
+        slice_color=slice_color,
+        slice_icon=slice_icon,
+        is_active=is_active
+    )
+    if res.get("success"):
+        flash("جایزه با موفقیت ویرایش شد.", "success")
+    else:
+        flash("خطا در ویرایش جایزه.", "danger")
+    return redirect(url_for("settings", tab="lucky_wheel"))
+
+@app.route("/admin/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
+@permission_required("settings")
+def admin_lucky_wheel_prize_delete(prize_id: int):
+    """حذف جایزه گردونه توسط ادمین"""
+    res = db.delete_lucky_wheel_prize(prize_id=prize_id, reseller_id=0)
+    if res.get("success"):
+        flash("جایزه با موفقیت حذف گردید.", "info")
+    else:
+        flash("خطا در حذف جایزه.", "danger")
+    return redirect(url_for("settings", tab="lucky_wheel"))
+
+# ─── مدیریت جوایز و تنظیمات گردونه شانس توسط نماینده ───
+
+@app.route("/reseller/lucky-wheel/toggle", methods=["POST"])
+@reseller_required
+def reseller_lucky_wheel_toggle():
+    """فعال یا غیرفعال کردن گردونه برای مشتریان این نماینده"""
+    reseller_id = session.get("reseller_id")
+    enabled = request.form.get("enabled", "0")
+    db.set_setting(f"lucky_wheel_enabled_r_{reseller_id}", enabled)
+    flash("وضعیت گردونه شانس مشتریان شما با موفقیت بروز شد.", "success")
+    return redirect(url_for("reseller_branding"))
+
+@app.route("/reseller/lucky-wheel/prize/add", methods=["POST"])
+@reseller_required
+def reseller_lucky_wheel_prize_add():
+    """افزودن جایزه اختصاصی توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    title = request.form.get("title", "").strip()
+    prize_type = request.form.get("prize_type", "traffic")
+    prize_value = request.form.get("prize_value", "1").strip()
+    chance_weight = int(request.form.get("chance_weight") or 10)
+    target_audience = request.form.get("target_audience", "all")
+    slice_color = request.form.get("slice_color", "#10b981")
+    slice_icon = request.form.get("slice_icon", "gift")
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+
+    if not title:
+        flash("عنوان جایزه الزامی است.", "danger")
+        return redirect(url_for("reseller_branding"))
+
+    res = db.add_lucky_wheel_prize(
+        reseller_id=reseller_id,
+        title=title,
+        prize_type=prize_type,
+        prize_value=prize_value,
+        chance_weight=chance_weight,
+        target_audience=target_audience,
+        slice_color=slice_color,
+        slice_icon=slice_icon,
+        is_active=is_active
+    )
+    if res.get("success"):
+        flash("جایزه اختصاصی شما با موفقیت اضافه شد.", "success")
+    else:
+        flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_branding"))
+
+@app.route("/reseller/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
+@reseller_required
+def reseller_lucky_wheel_prize_edit(prize_id: int):
+    """ویرایش جایزه اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    title = request.form.get("title", "").strip()
+    prize_type = request.form.get("prize_type", "traffic")
+    prize_value = request.form.get("prize_value", "1").strip()
+    chance_weight = int(request.form.get("chance_weight") or 10)
+    target_audience = request.form.get("target_audience", "all")
+    slice_color = request.form.get("slice_color", "#10b981")
+    slice_icon = request.form.get("slice_icon", "gift")
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+
+    res = db.update_lucky_wheel_prize(
+        prize_id=prize_id,
+        reseller_id=reseller_id,
+        title=title,
+        prize_type=prize_type,
+        prize_value=prize_value,
+        chance_weight=chance_weight,
+        target_audience=target_audience,
+        slice_color=slice_color,
+        slice_icon=slice_icon,
+        is_active=is_active
+    )
+    if res.get("success"):
+        flash("جایزه اختصاصی با موفقیت ویرایش شد.", "success")
+    else:
+        flash("خطا در ویرایش جایزه.", "danger")
+    return redirect(url_for("reseller_branding"))
+
+@app.route("/reseller/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
+@reseller_required
+def reseller_lucky_wheel_prize_delete(prize_id: int):
+    """حذف جایزه اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    res = db.delete_lucky_wheel_prize(prize_id=prize_id, reseller_id=reseller_id)
+    if res.get("success"):
+        flash("جایزه اختصاصی با موفقیت حذف شد.", "info")
+    else:
+        flash("خطا در حذف جایزه.", "danger")
+    return redirect(url_for("reseller_branding"))
+
+
+# ─── وب‌اپلیکیشن پیش‌رونده قابل نصب (PWA Core) ───
+
+@app.route("/sw.js")
+def serve_service_worker():
+    """ارائه سرویس‌ورکر در روت دامنه برای کنترل کامل دامنه"""
+    sw_path = Path("static/sw.js")
+    if sw_path.exists():
+        with open(sw_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return Response(content, mimetype="application/javascript", headers={"Service-Worker-Allowed": "/"})
+    return abort(404)
+
+@app.route("/manifest.json")
+@app.route("/pwa/portal/manifest.json")
+def pwa_portal_manifest():
+    """مانیفست داینامیک پرتال مشتریان با پشتیبانی از برندینگ و لوگوی نماینده/سیستم"""
+    reseller_id = request.args.get("r")
+    r_info = None
+    if reseller_id and str(reseller_id).isdigit():
+        r_info = db.get_reseller(int(reseller_id))
+
+    store_name = (r_info.get("brand_name") if r_info else None) or db.get_setting("store_name") or "پرتال اشتراک هوشمند"
+    short_name = (r_info.get("brand_name") if r_info else None) or db.get_setting("store_name") or "پرتال اشتراک"
+    theme_color = (r_info.get("theme_color") if r_info else None) or db.get_setting("pwa_theme_color") or "#3b82f6"
+    bg_color = db.get_setting("pwa_bg_color") or "#0f172a"
+    icon_src = (r_info.get("logo_url") if r_info else None) or db.get_setting("store_logo") or "/avatars/Logo.webp"
+
+    manifest = {
+        "name": store_name,
+        "short_name": short_name[:12],
+        "description": f"وب‌اپلیکیشن اختصاصی {store_name}",
+        "start_url": f"/?source=pwa{f'&r={reseller_id}' if reseller_id else ''}",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": bg_color,
+        "theme_color": theme_color,
+        "dir": "rtl",
+        "lang": "fa-IR",
+        "icons": [
+            {
+                "src": icon_src,
+                "sizes": "192x192",
+                "type": "image/webp" if icon_src.endswith(".webp") else "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": icon_src,
+                "sizes": "512x512",
+                "type": "image/webp" if icon_src.endswith(".webp") else "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return jsonify(manifest)
+
+@app.route("/pwa/admin/manifest.json")
+def pwa_admin_manifest():
+    """مانیفست وب‌اپلیکیشن پنل مدیریت"""
+    store_name = db.get_setting("store_name") or "سامانه هوشمند"
+    manifest = {
+        "name": f"مدیریت {store_name}",
+        "short_name": "پنل مدیریت",
+        "description": "پنل کنترل و مدیریت سامانه",
+        "start_url": "/dashboard?source=pwa",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#0f172a",
+        "theme_color": "#6366f1",
+        "dir": "rtl",
+        "lang": "fa-IR",
+        "icons": [
+            {
+                "src": db.get_setting("store_logo") or "/avatars/Logo.webp",
+                "sizes": "192x192",
+                "type": "image/webp",
+                "purpose": "any maskable"
+            },
+            {
+                "src": db.get_setting("store_logo") or "/avatars/Logo.webp",
+                "sizes": "512x512",
+                "type": "image/webp",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return jsonify(manifest)
+
+@app.route("/pwa/reseller/manifest.json")
+def pwa_reseller_manifest():
+    """مانیفست وب‌اپلیکیشن پنل نمایندگان"""
+    manifest = {
+        "name": "پنل همکاران و نمایندگان",
+        "short_name": "پنل همکار",
+        "description": "میز کار اختصاصی نمایندگان فروش",
+        "start_url": "/reseller/dashboard?source=pwa",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#0f172a",
+        "theme_color": "#10b981",
+        "dir": "rtl",
+        "lang": "fa-IR",
+        "icons": [
+            {
+                "src": "/avatars/Logo.webp",
+                "sizes": "192x192",
+                "type": "image/webp",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/avatars/Logo.webp",
+                "sizes": "512x512",
+                "type": "image/webp",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return jsonify(manifest)
 
 
 @app.route("/admin/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])

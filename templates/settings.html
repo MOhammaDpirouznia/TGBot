@@ -2754,6 +2754,205 @@ function escapeHtml(str) {
     </div>
 </div>
 
+<!-- کارت ۹: گردونه شانس و پاداش روزانه مشتریان (Lucky Wheel & Daily Rewards) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-lucky-wheel">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-dharmachakra text-warning me-2"></i> گردونه شانس و پاداش روزانه مشتریان (Lucky Wheel)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-warning text-dark"><i class="fas fa-gift me-1"></i>پاداش و وفاداری</span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted">
+            سیستم گردونه شانس به کاربران امکان می‌دهد هر ۲۴ ساعت یک‌بار برای برنده شدن حجم هدیه، اشتراک کامل، کد تخفیف یا موجودی کیف پول شانس خود را امتحان کنند. شانس برنده شدن هر آیتم با وزن احتمالات سرور کنترل می‌شود.
+        </p>
+
+        <!-- سوئیچ فعال/غیرفعال سراسری -->
+        <div class="p-3 bg-light rounded-3 border mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <h6 class="fw-bold text-dark mb-1">
+                    <i class="fas fa-power-off text-primary me-1"></i> وضعیت سراسری گردونه شانس
+                </h6>
+                <div class="text-muted small">در صورت غیرفعال بودن، گردونه شانس برای تمامی پورتال‌ها و مینی‌اپ‌ها پنهان خواهد شد.</div>
+            </div>
+            <form action="{{ url_for('admin_lucky_wheel_toggle') }}" method="POST" class="m-0">
+                <input type="hidden" name="enabled" value="{% if lucky_wheel_enabled %}0{% else %}1{% endif %}">
+                <button type="submit" class="btn {% if lucky_wheel_enabled %}btn-success{% else %}btn-outline-secondary{% endif %} rounded-pill px-4 fw-bold">
+                    <i class="fas {% if lucky_wheel_enabled %}fa-check-circle{% else %}fa-circle-xmark{% endif %} me-1"></i>
+                    {% if lucky_wheel_enabled %}فعال (کلیک برای غیرفعال‌سازی){% else %}غیرفعال (کلیک برای فعال‌سازی){% endif %}
+                </button>
+            </form>
+        </div>
+
+        <!-- جدول جوایز فعال -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h6 class="fw-bold mb-0 text-dark">
+                <i class="fas fa-list-check text-primary me-1"></i> لیست جوایز و اوزان شانس برنده شدن
+            </h6>
+            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#adminAddPrizeModal">
+                <i class="fas fa-plus me-1"></i> افزودن جایزه جدید
+            </button>
+        </div>
+
+        <div class="table-responsive rounded-3 border mb-3">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>عنوان جایزه</th>
+                        <th>نوع جایزه</th>
+                        <th>مقدار / ارزش</th>
+                        <th>وزن شانس</th>
+                        <th>جامعه هدف</th>
+                        <th>رنگ و آیکون</th>
+                        <th>وضعیت</th>
+                        <th class="text-center">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if lucky_wheel_prizes %}
+                        {% for prize in lucky_wheel_prizes %}
+                        <tr>
+                            <td>
+                                <strong class="text-dark">{{ prize.title }}</strong>
+                            </td>
+                            <td>
+                                {% if prize.prize_type == 'traffic' %}
+                                    <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="fas fa-wifi me-1"></i>حجم اینترنت</span>
+                                {% elif prize.prize_type == 'plan' %}
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle"><i class="fas fa-box-open me-1"></i>اشتراک کامل</span>
+                                {% elif prize.prize_type == 'discount' %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="fas fa-percent me-1"></i>کد تخفیف</span>
+                                {% elif prize.prize_type == 'wallet' %}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="fas fa-wallet me-1"></i>کیف پول</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-subtle text-secondary border"><i class="fas fa-circle-xmark me-1"></i>پوچ</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <code class="font-monospace text-dark fw-bold">{{ prize.prize_value or '-' }}</code>
+                                <span class="small text-muted">
+                                    {% if prize.prize_type == 'traffic' %}گیگابایت{% elif prize.prize_type == 'wallet' %}تومان{% elif prize.prize_type == 'discount' %}درصد{% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-dark text-white rounded-pill px-2 py-1 font-monospace">{{ prize.chance_weight }}x</span>
+                            </td>
+                            <td>
+                                {% if prize.target_audience == 'active_only' %}
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-user-check me-1"></i>فقط مشترکین فعال</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border"><i class="fas fa-users me-1"></i>همه کاربران</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="rounded-circle d-inline-block border" style="width: 18px; height: 18px; background-color: {{ prize.slice_color or '#3b82f6' }};"></span>
+                                    <i class="fas {{ prize.slice_icon or 'fa-gift' }} text-muted"></i>
+                                </div>
+                            </td>
+                            <td>
+                                {% if prize.is_active %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">فعال</span>
+                                {% else %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">غیرفعال</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex justify-content-center gap-1">
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#adminEditPrizeModal{{ prize.id }}" title="ویرایش">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <form action="{{ url_for('admin_lucky_wheel_prize_delete', prize_id=prize.id) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این جایزه اطمینان دارید؟');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                <i class="fas fa-gift fs-3 d-block mb-2 opacity-50"></i>
+                                هیچ جایزه‌ای تعریف نشده است.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- کارت ۱۰: وب‌اپلیکیشن پیش‌رونده قابل نصب (Full PWA Support) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-pwa-settings">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-mobile-screen-button text-info me-2"></i> وب‌اپلیکیشن پیش‌رونده قابل نصب (Full PWA Support)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-info text-dark"><i class="fas fa-download me-1"></i>PWA Ready</span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted">
+            با فناوری PWA، پورتال مشتریان، پنل مدیریت و پنل همکاران به عنوان یک اپلیکیشن مستقل در صفحه اصلی گوشی‌های موبایل (اندروید، آیفون) و کامپیوترها قابل نصب هستند بدون اینکه نیازی به نصب اپ از گوگل‌پلی یا اپ‌استور باشد.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_pwa_settings">
+            
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="form-check form-switch pt-2">
+                        <input class="form-check-input" type="checkbox" name="pwa_enabled" id="pwa_enabled" {% if pwa_config.enabled %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="pwa_enabled">
+                            فعال‌سازی دکمه نصب PWA در هدر صفحات
+                        </label>
+                        <div class="form-text text-muted">نمایش دکمه «نصب اپلیکیشن» در نوار بالای پورتال مشتریان.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">نام نمایشی اپلیکیشن (PWA App Name):</label>
+                    <input type="text" class="form-control" name="pwa_app_name" value="{{ pwa_config.app_name }}" placeholder="مثال: پرتال اختصاصی اینترنت آزاد">
+                    <div class="form-text text-muted">نامی که در زیر آیکون اپلیکیشن پس از نصب نمایش داده می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">نام کوتاه اپلیکیشن (Short Name):</label>
+                    <input type="text" class="form-control" name="pwa_short_name" value="{{ pwa_config.short_name }}" placeholder="مثال: VPN">
+                    <div class="form-text text-muted">نام مختصر برای دستگاه‌های با نمایشگر کوچک.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">رنگ تم نوار وضعیت مرورگر (Theme Color):</label>
+                    <div class="input-group">
+                        <input type="color" class="form-control form-control-color" id="pwa_theme_color_picker" value="{{ pwa_config.theme_color or '#2563eb' }}" onchange="document.getElementById('pwa_theme_color').value=this.value">
+                        <input type="text" class="form-control font-monospace" name="pwa_theme_color" id="pwa_theme_color" value="{{ pwa_config.theme_color or '#2563eb' }}" dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">رنگ نوار بالای مرورگر و هدر سیستم‌عامل در حالت تمام‌صفحه.</div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 pt-2">
+                <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات PWA
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- ═══ بخش ۳: امنیت و شبکه ═══ -->
 <!-- کارت ۸: امنیت و آدرس ورود -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-login-security">
@@ -4570,6 +4769,156 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(updateTehranLiveClock, 1000);
 });
 </script>
+
+<!-- مودال افزودن جایزه جدید به گردونه شانس -->
+<div class="modal fade" id="adminAddPrizeModal" tabindex="-1" aria-labelledby="adminAddPrizeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ url_for('admin_lucky_wheel_prize_add') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="adminAddPrizeModalLabel">
+                        <i class="fas fa-plus-circle text-primary me-1"></i> افزودن جایزه جدید به گردونه
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
+                        <input type="text" class="form-control" name="title" placeholder="مثال: ۱ گیگ اینترنت رایگان" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نوع جایزه:</label>
+                            <select class="form-select" name="prize_type" id="addPrizeTypeSelect" onchange="const v=this.value; const l=document.getElementById('addPrizeValLabel'); if(v==='traffic') l.innerText='حجم به گیگابایت:'; else if(v==='wallet') l.innerText='مبلغ به تومان:'; else if(v==='discount') l.innerText='درصد تخفیف:'; else if(v==='plan') l.innerText='عنوان اشتراک هدیه:'; else l.innerText='مقدار / ارزش:';">
+                                <option value="traffic" selected>حجم اضافه (Traffic)</option>
+                                <option value="plan">اشتراک کامل (Subscription Plan)</option>
+                                <option value="discount">کد تخفیف (Discount Code)</option>
+                                <option value="wallet">شارژ کیف پول (Wallet Balance)</option>
+                                <option value="empty">پوچ / شانس بعدی (Empty)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold" id="addPrizeValLabel">حجم به گیگابایت:</label>
+                            <input type="text" class="form-control" name="prize_value" placeholder="مثال: 1 یا 20 یا 30000" value="1">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">وزن شانس (تکرار احتمال):</label>
+                            <input type="number" class="form-control" name="chance_weight" value="10" min="1" max="1000" required>
+                            <div class="form-text small text-muted">هرچه این عدد بیشتر باشد، شانس برنده شدن بالاتر است.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">جامعه هدف جایزه:</label>
+                            <select class="form-select" name="target_audience">
+                                <option value="all" selected>همه کاربران (عمومی)</option>
+                                <option value="active_only">فقط کاربران دارای اشتراک فعال</option>
+                            </select>
+                            <div class="form-text small text-muted">جوایز مخصوص اشتراک فعال تنها به دارندگان سرویس فعال تعلق می‌گیرد.</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
+                            <div class="input-group">
+                                <input type="color" class="form-control form-control-color" value="#3b82f6" onchange="document.getElementById('addSliceColorInput').value=this.value">
+                                <input type="text" class="form-control font-monospace" name="slice_color" id="addSliceColorInput" value="#3b82f6" dir="ltr">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
+                            <input type="text" class="form-control font-monospace" name="slice_icon" value="fa-wifi" placeholder="fa-gift" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="form-check form-switch pt-2">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="addPrizeIsActive" value="1" checked>
+                        <label class="form-check-label fw-bold" for="addPrizeIsActive">جایزه در گردونه فعال باشد</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">افزودن جایزه</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال‌های ویرایش جوایز گردونه شانس -->
+{% if lucky_wheel_prizes %}
+    {% for prize in lucky_wheel_prizes %}
+    <div class="modal fade" id="adminEditPrizeModal{{ prize.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form action="{{ url_for('admin_lucky_wheel_prize_edit', prize_id=prize.id) }}" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold">
+                            <i class="fas fa-edit text-primary me-1"></i> ویرایش جایزه: {{ prize.title }}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
+                            <input type="text" class="form-control" name="title" value="{{ prize.title }}" required>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">نوع جایزه:</label>
+                                <select class="form-select" name="prize_type">
+                                    <option value="traffic" {% if prize.prize_type == 'traffic' %}selected{% endif %}>حجم اضافه (Traffic)</option>
+                                    <option value="plan" {% if prize.prize_type == 'plan' %}selected{% endif %}>اشتراک کامل (Subscription Plan)</option>
+                                    <option value="discount" {% if prize.prize_type == 'discount' %}selected{% endif %}>کد تخفیف (Discount Code)</option>
+                                    <option value="wallet" {% if prize.prize_type == 'wallet' %}selected{% endif %}>شارژ کیف پول (Wallet Balance)</option>
+                                    <option value="empty" {% if prize.prize_type == 'empty' %}selected{% endif %}>پوچ / شانس بعدی (Empty)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">مقدار / ارزش:</label>
+                                <input type="text" class="form-control" name="prize_value" value="{{ prize.prize_value or '' }}">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">وزن شانس (تکرار احتمال):</label>
+                                <input type="number" class="form-control" name="chance_weight" value="{{ prize.chance_weight }}" min="1" max="1000" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">جامعه هدف جایزه:</label>
+                                <select class="form-select" name="target_audience">
+                                    <option value="all" {% if prize.target_audience == 'all' %}selected{% endif %}>همه کاربران (عمومی)</option>
+                                    <option value="active_only" {% if prize.target_audience == 'active_only' %}selected{% endif %}>فقط کاربران دارای اشتراک فعال</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
+                                <div class="input-group">
+                                    <input type="color" class="form-control form-control-color" value="{{ prize.slice_color or '#3b82f6' }}" onchange="document.getElementById('editSliceColorInput{{ prize.id }}').value=this.value">
+                                    <input type="text" class="form-control font-monospace" name="slice_color" id="editSliceColorInput{{ prize.id }}" value="{{ prize.slice_color or '#3b82f6' }}" dir="ltr">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
+                                <input type="text" class="form-control font-monospace" name="slice_icon" value="{{ prize.slice_icon or 'fa-gift' }}" dir="ltr">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch pt-2">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="editPrizeIsActive{{ prize.id }}" value="1" {% if prize.is_active %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="editPrizeIsActive{{ prize.id }}">جایزه در گردونه فعال باشد</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
+                        <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">ذخیره تغییرات</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
 
 {% include "hiddify_sync_modal.html" %}
 {% endblock %}

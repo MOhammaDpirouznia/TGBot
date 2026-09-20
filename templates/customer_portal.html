@@ -7,6 +7,13 @@
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ favicon_url or '/avatars/favicon.ico' }}">
     <link rel="shortcut icon" type="image/x-icon" href="{{ favicon_url or '/avatars/favicon.ico' }}">
+    <!-- PWA Settings & Manifest -->
+    <link rel="manifest" href="/pwa/portal/manifest.json{% if sub and sub.reseller_id %}?r={{ sub.reseller_id }}{% endif %}">
+    <meta name="theme-color" content="{{ theme_color or '#3b82f6' }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ brand_title or 'پرتال اشتراک' }}">
+    <link rel="apple-touch-icon" href="{{ logo_url or '/avatars/Logo.webp' }}">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -1726,15 +1733,25 @@
     </div>
 
     <div class="container portal-container">
-        <!-- نوار بالایی هدر: دکمه خرید جدید، دکمه‌های تم و پشتیبانی -->
-        <div class="d-flex justify-content-between align-items-center mb-4 px-1 gap-2">
-            <div>
+        <!-- نوار بالایی هدر: دکمه خرید جدید، گردونه شانس، نصب PWA، تم و پشتیبانی -->
+        <div class="d-flex justify-content-between align-items-center mb-4 px-1 gap-2 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
                 {% if enable_new_purchase and not is_new_customer %}
                 <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#newSubPurchaseModal" onclick="window.tgHaptic && window.tgHaptic('light');">
                     <i class="fas fa-cart-plus"></i>
                     <span>خرید اشتراک</span>
                 </button>
                 {% endif %}
+                <!-- دکمه گردونه شانس -->
+                <button type="button" class="btn btn-sm text-dark rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold lucky-wheel-btn" id="openLuckyWheelBtn" onclick="openLuckyWheelModal()" style="font-size: 0.82rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none; box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);">
+                    <i class="fas fa-dharmachakra fa-spin-pulse" style="--fa-animation-duration: 4s;"></i>
+                    <span>گردونه شانس 🎁</span>
+                </button>
+                <!-- دکمه نصب اپلیکیشن PWA -->
+                <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-3 py-1 shadow-sm d-none align-items-center gap-1 fw-bold" id="portalPwaInstallBtn" onclick="handlePortalPwaInstall()" style="font-size: 0.82rem;">
+                    <i class="fas fa-download"></i>
+                    <span>نصب اپلیکیشن</span>
+                </button>
             </div>
             <div class="d-flex align-items-center gap-2">
                 {% if support_username %}
@@ -3766,6 +3783,25 @@
                                 </div>
                             </div>
 
+                            <!-- پیش‌نمایش تصویر پیوست شده در شروع گفتگو -->
+                            <div id="preFormAttachmentPreview" class="d-none mb-2 p-2 bg-black bg-opacity-40 rounded-3 border border-secondary border-opacity-25 d-flex align-items-center gap-2">
+                                <img id="preFormAttachmentThumb" src="" alt="preview" style="max-height: 48px; max-width: 60px; object-fit: cover; border-radius: 6px;">
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div id="preFormAttachmentFilename" class="small text-truncate text-white font-monospace"></div>
+                                    <div id="preFormAttachmentFilesize" class="text-secondary" style="font-size: 0.7rem;"></div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-danger rounded-circle p-1" style="width: 24px; height: 24px; line-height: 1;" onclick="clearPreFormAttachment()" title="حذف تصویر">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 d-inline-flex align-items-center gap-1" onclick="document.getElementById('preFormFileInput').click()">
+                                    <i class="fas fa-paperclip text-info"></i>
+                                    <span>پیوست تصویر یا فیش واریزی (اختیاری)</span>
+                                </button>
+                                <input type="file" id="preFormFileInput" accept="image/png,image/jpeg,image/webp,image/gif" class="d-none" onchange="handlePreFormFileSelect(event)">
+                            </div>
+
                             <div id="portalChatFeedback" class="mb-2 d-none"></div>
 
                             <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-bold shadow" id="portalStartChatBtn">
@@ -3821,12 +3857,27 @@
 
                     <!-- کادر ورودی و ارسال پیام پیام‌رسان -->
                     <div class="pt-2">
+                        <!-- پیش‌نمایش عکس پیوست شده قبل از ارسال -->
+                        <div id="chatAttachmentPreviewContainer" class="d-none mb-2 p-2 bg-black bg-opacity-40 rounded-3 border border-secondary border-opacity-25 d-flex align-items-center gap-2">
+                            <img id="chatAttachmentThumb" src="" alt="preview" style="max-height: 48px; max-width: 60px; object-fit: cover; border-radius: 6px;">
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div id="chatAttachmentFilename" class="small text-truncate text-white font-monospace"></div>
+                                <div id="chatAttachmentFilesize" class="text-secondary" style="font-size: 0.7rem;"></div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger rounded-circle p-1" style="width: 24px; height: 24px; line-height: 1;" onclick="clearChatAttachment()" title="حذف تصویر">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                         <form id="portalSendMsgForm" onsubmit="sendPortalChatMessage(event)">
                             <div class="input-group">
-                                <textarea class="form-control form-control-sm chat-theme-input rounded-end-4" 
+                                <button type="button" class="btn btn-outline-secondary border-secondary border-opacity-50 rounded-end-4 px-3" onclick="document.getElementById('chatMsgFileInput').click()" title="ارسال عکس / اسکرین‌شات (یا Paste با Ctrl+V)">
+                                    <i class="fas fa-paperclip text-info"></i>
+                                </button>
+                                <input type="file" id="chatMsgFileInput" accept="image/png,image/jpeg,image/webp,image/gif" class="d-none" onchange="handleChatMessageFileSelect(event)">
+                                <textarea class="form-control form-control-sm chat-theme-input" 
                                           id="portalChatMessageInput" 
                                           rows="1" 
-                                          placeholder="پیام خود را بنویسید... (Enter برای ارسال)" 
+                                          placeholder="پیام خود را بنویسید... (Enter برای ارسال / Ctrl+V برای عکس)" 
                                           onkeydown="handleChatInputKey(event)" 
                                           required></textarea>
                                 <button type="submit" class="btn btn-primary rounded-start-4 px-3 shadow" id="portalChatSendBtn" title="ارسال پیام">
@@ -3835,7 +3886,7 @@
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-1 px-2">
                                 <small class="text-secondary" style="font-size: 0.7rem;">
-                                    <i class="fas fa-bell text-warning me-1"></i>پاسخ پشتیبانی به همراه هشدار صوتی و پنجره اعلان اعلام می‌شود.
+                                    <i class="fas fa-image text-info me-1"></i>امکان پیوست عکس با کشیدن، دکمه گیره یا Ctrl+V
                                 </small>
                                 <small class="text-secondary" style="font-size: 0.7rem;">Shift+Enter برای خط جدید</small>
                             </div>
@@ -3909,6 +3960,158 @@
             <button type="button" class="btn btn-success w-100 py-2 fw-bold rounded-pill shadow" onclick="window.location.reload();">
                 <i class="fas fa-rotate me-1"></i> مشاهده اطلاعات به‌روزرسانی‌شده اشتراک
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- 🎡 مودال پیشرفته گردونه شانس و پاداش روزانه (Lucky Wheel Modal) -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="luckyWheelModal" tabindex="-1" aria-labelledby="luckyWheelModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content glass-card border-warning border-opacity-50 text-white shadow-lg position-relative overflow-hidden" style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(25px); border-radius: 24px;">
+            <div class="modal-header border-secondary border-opacity-25 py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-warning bg-opacity-25 d-flex align-items-center justify-content-center text-warning" style="width: 40px; height: 40px;">
+                        <i class="fas fa-dharmachakra fs-5 fa-spin-pulse" style="--fa-animation-duration: 6s;"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-warning mb-0" id="luckyWheelModalLabel">گردونه شانس و پاداش روزانه</h5>
+                        <small class="text-secondary" style="font-size: 0.75rem;">هر ۲۴ ساعت یک‌بار شانس خود را برای جوایز ارزشمند امتحان کنید!</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-3 p-md-4 text-center">
+                <!-- پیام وضعیت / لودینگ -->
+                <div id="luckyWheelLoading" class="py-4">
+                    <div class="spinner-border text-warning mb-2" role="status"></div>
+                    <div class="text-secondary small">در حال بارگذاری جوایز گردونه...</div>
+                </div>
+
+                <div id="luckyWheelContainer" class="d-none">
+                    <!-- پیام خطا یا غیرفعال بودن -->
+                    <div id="luckyWheelDisabledAlert" class="alert alert-warning border-warning border-opacity-25 bg-warning bg-opacity-10 text-white rounded-3 small d-none mb-3"></div>
+
+                    <!-- بخش کانتینر گردونه با اشاره‌گر فیزیکی -->
+                    <div class="position-relative d-inline-block mx-auto mb-3" style="width: 320px; height: 320px;">
+                        <!-- نشانگر / عقربه بالای گردونه -->
+                        <div class="lucky-wheel-pointer" style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 20; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));">
+                            <i class="fas fa-location-pin text-warning fs-1" style="transform: rotate(180deg); color: #fbbf24 !important;"></i>
+                        </div>
+
+                        <!-- المان Canvas گردونه -->
+                        <canvas id="luckyWheelCanvas" width="320" height="320" style="width: 320px; height: 320px; border-radius: 50%; box-shadow: 0 0 30px rgba(245, 158, 11, 0.25), inset 0 0 15px rgba(0,0,0,0.6); border: 5px solid rgba(251, 191, 36, 0.4);"></canvas>
+
+                        <!-- دکمه وسط گردونه (Center Hub) -->
+                        <div class="lucky-wheel-center-hub position-absolute top-50 start-50 translate-middle rounded-circle shadow-lg d-flex align-items-center justify-content-center" style="width: 68px; height: 68px; background: radial-gradient(circle, #fbbf24, #d97706); border: 3px solid #fff; cursor: pointer; z-index: 10;" onclick="spinLuckyWheel()">
+                            <i class="fas fa-gift text-dark fs-4"></i>
+                        </div>
+                    </div>
+
+                    <!-- دکمه چرخش اصلی و تایمر معکوس -->
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-warning text-dark fw-bold rounded-pill px-5 py-2 shadow-lg fs-6" id="btnDoSpinWheel" onclick="spinLuckyWheel()" style="background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none;">
+                            <i class="fas fa-play me-1"></i> چرخاندن گردونه
+                        </button>
+                        <div id="luckyWheelCooldownText" class="text-secondary small mt-2 d-none">
+                            <i class="fas fa-hourglass-half text-warning me-1"></i>
+                            <span>زمان تا شانس بعدی: </span>
+                            <span id="luckyWheelCountdown" class="text-warning fw-bold font-monospace">--:--:--</span>
+                        </div>
+                    </div>
+
+                    <!-- بخش انتخاب اشتراک مقصد در صورت داشتن چند اشتراک فعال و برنده شدن حجم -->
+                    <div id="luckyWheelSubChoiceBox" class="p-3 bg-black bg-opacity-40 rounded-3 border border-warning border-opacity-50 text-start d-none mb-3">
+                        <div class="fw-bold text-warning small mb-2 d-flex align-items-center gap-2">
+                            <i class="fas fa-check-circle"></i>
+                            <span>حجم هدیه به کدام اشتراک شما اضافه شود؟</span>
+                        </div>
+                        <p class="text-secondary small mb-2" style="font-size: 0.75rem;">شما بیش از یک اشتراک فعال دارید. لطفاً یکی از اشتراک‌های زیر را انتخاب فرمایید:</p>
+                        <select class="form-select form-select-sm bg-dark text-white border-secondary mb-2" id="luckyWheelSubSelect"></select>
+                        <button type="button" class="btn btn-sm btn-success rounded-pill px-4 fw-bold" id="btnConfirmSubChoice" onclick="confirmSubTrafficChoice()">
+                            <i class="fas fa-plus me-1"></i> شارژ حجم روی اشتراک انتخابی
+                        </button>
+                    </div>
+
+                    <!-- پیام یا نتیجه نهایی جایزه -->
+                    <div id="luckyWheelResultAlert" class="alert d-none rounded-3 small p-3 text-start"></div>
+
+                    <!-- لیست نمادین جوایز گردونه -->
+                    <div class="mt-3 pt-3 border-top border-secondary border-opacity-25 text-start">
+                        <div class="text-secondary small fw-bold mb-2"><i class="fas fa-trophy text-warning me-1"></i>جوایز شگفت‌انگیز این گردونه:</div>
+                        <div class="row g-2" id="luckyWheelPrizesGrid"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-secondary border-opacity-25 py-2 justify-content-between">
+                <small class="text-secondary" style="font-size: 0.72rem;">
+                    <i class="fas fa-shield-alt text-success me-1"></i>محاسبه عادلانه شانس ۱۰۰٪ سمت سرور
+                </small>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- 🔍 مودال لایت‌باکس بزرگ‌نمایی عکس چت و تیکت (Chat Lightbox)     -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="chatImageLightboxModal" tabindex="-1" aria-hidden="true" style="z-index: 1085;">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-transparent border-0 text-center position-relative">
+            <div class="d-flex justify-content-end mb-2 pe-2">
+                <button type="button" class="btn btn-close btn-close-white shadow" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="position-relative d-inline-block mx-auto">
+                <img id="chatLightboxImg" src="" class="img-fluid rounded-4 shadow-lg border border-secondary border-opacity-50" style="max-height: 80vh; max-width: 95vw; object-fit: contain;">
+                <div class="position-absolute bottom-0 start-50 translate-middle-x mb-3 d-flex gap-2">
+                    <a id="chatLightboxDownloadBtn" href="" download class="btn btn-sm btn-dark bg-opacity-75 rounded-pill px-3 shadow text-white border border-secondary">
+                        <i class="fas fa-download me-1"></i> دانلود تصویر
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- 📱 مودال راهنمای نصب وب‌اپلیکیشن در آیفون (iOS Safari PWA Guide)  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="iosPwaGuideModal" tabindex="-1" aria-labelledby="iosPwaGuideModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-info border-opacity-50 text-white shadow-lg rounded-4" style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(25px);">
+            <div class="modal-header border-secondary border-opacity-25 py-3">
+                <h5 class="modal-title fw-bold text-info mb-0 d-flex align-items-center gap-2" id="iosPwaGuideModalLabel">
+                    <i class="fab fa-apple fs-4"></i>
+                    <span>راهنمای نصب در آیفون و آیپد (iOS)</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4 text-start">
+                <p class="small text-light mb-3">برای نصب این پرتال به عنوان یک اپلیکیشن مستقل در صفحه اصلی گوشی، مراحل ۲ مرحله‌ای زیر را در مرورگر <strong>Safari</strong> انجام دهید:</p>
+                <div class="d-flex flex-column gap-3">
+                    <div class="d-flex align-items-center gap-3 p-3 bg-black bg-opacity-30 rounded-3 border border-secondary border-opacity-25">
+                        <div class="rounded-circle bg-primary bg-opacity-25 d-flex align-items-center justify-content-center text-primary fw-bold" style="width: 36px; height: 36px; min-width: 36px;">1</div>
+                        <div>
+                            <div class="small fw-bold text-white mb-1">دکمه اشتراک‌گذاری را لمس کنید</div>
+                            <div class="text-secondary small" style="font-size: 0.75rem;">در پایین صفحه مرورگر سافاری روی آیکون <strong>Share <i class="fas fa-arrow-up-from-bracket text-info"></i></strong> بزنید.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 p-3 bg-black bg-opacity-30 rounded-3 border border-secondary border-opacity-25">
+                        <div class="rounded-circle bg-success bg-opacity-25 d-flex align-items-center justify-content-center text-success fw-bold" style="width: 36px; height: 36px; min-width: 36px;">2</div>
+                        <div>
+                            <div class="small fw-bold text-white mb-1">گزینه «Add to Home Screen» را بزنید</div>
+                            <div class="text-secondary small" style="font-size: 0.75rem;">منو را به پایین اسکرول کرده و روی گزینه <strong>Add to Home Screen <i class="fas fa-plus-square text-success"></i></strong> یا «افزودن به صفحه اصلی» ضربه بزنید.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25 py-2">
+                <button type="button" class="btn btn-sm btn-primary rounded-pill px-4 w-100" data-bs-dismiss="modal">متوجه شدم</button>
+            </div>
         </div>
     </div>
 </div>
@@ -4734,6 +4937,113 @@ function formatPersianChatDate(dateInput) {
 }
 
 // درج حباب پیام در جریان چت
+// پیوست تصویر و فایل در چت و فرم
+let stagedChatFile = null;
+let stagedPreFormFile = null;
+
+function stageChatAttachment(file) {
+    if (!file || !file.type.startsWith('image/')) {
+        alert('لطفاً فقط فایل تصویری (PNG, JPG, WebP) انتخاب فرمایید.');
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        alert('حداکثر حجم مجاز تصویر ۱۰ مگابایت است.');
+        return;
+    }
+    stagedChatFile = file;
+    const container = document.getElementById("chatAttachmentPreviewContainer");
+    const thumb = document.getElementById("chatAttachmentThumb");
+    const nameEl = document.getElementById("chatAttachmentFilename");
+    const sizeEl = document.getElementById("chatAttachmentFilesize");
+    if (container && thumb && nameEl && sizeEl) {
+        nameEl.innerText = file.name || 'screenshot.png';
+        sizeEl.innerText = (file.size / 1024).toFixed(1) + ' KB';
+        const reader = new FileReader();
+        reader.onload = (e) => { thumb.src = e.target.result; };
+        reader.readAsDataURL(file);
+        container.classList.remove("d-none");
+    }
+}
+
+function clearChatAttachment() {
+    stagedChatFile = null;
+    const container = document.getElementById("chatAttachmentPreviewContainer");
+    if (container) container.classList.add("d-none");
+    const fileInput = document.getElementById("chatMsgFileInput");
+    if (fileInput) fileInput.value = "";
+}
+
+function handleChatMessageFileSelect(e) {
+    if (e.target.files && e.target.files[0]) {
+        stageChatAttachment(e.target.files[0]);
+    }
+}
+
+function stagePreFormAttachment(file) {
+    if (!file || !file.type.startsWith('image/')) {
+        alert('لطفاً فقط فایل تصویری (PNG, JPG, WebP) انتخاب فرمایید.');
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        alert('حداکثر حجم مجاز تصویر ۱۰ مگابایت است.');
+        return;
+    }
+    stagedPreFormFile = file;
+    const container = document.getElementById("preFormAttachmentPreview");
+    const thumb = document.getElementById("preFormAttachmentThumb");
+    const nameEl = document.getElementById("preFormAttachmentFilename");
+    const sizeEl = document.getElementById("preFormAttachmentFilesize");
+    if (container && thumb && nameEl && sizeEl) {
+        nameEl.innerText = file.name || 'image.png';
+        sizeEl.innerText = (file.size / 1024).toFixed(1) + ' KB';
+        const reader = new FileReader();
+        reader.onload = (e) => { thumb.src = e.target.result; };
+        reader.readAsDataURL(file);
+        container.classList.remove("d-none");
+    }
+}
+
+function clearPreFormAttachment() {
+    stagedPreFormFile = null;
+    const container = document.getElementById("preFormAttachmentPreview");
+    if (container) container.classList.add("d-none");
+    const fileInput = document.getElementById("preFormFileInput");
+    if (fileInput) fileInput.value = "";
+}
+
+function handlePreFormFileSelect(e) {
+    if (e.target.files && e.target.files[0]) {
+        stagePreFormAttachment(e.target.files[0]);
+    }
+}
+
+function openChatLightbox(url) {
+    const img = document.getElementById("chatLightboxImg");
+    const downloadBtn = document.getElementById("chatLightboxDownloadBtn");
+    if (img) img.src = url;
+    if (downloadBtn) downloadBtn.href = url;
+    const modalEl = document.getElementById("chatImageLightboxModal");
+    if (modalEl && window.bootstrap) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+}
+
+async function uploadFileToServer(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/portal/' + PORTAL_TOKEN + '/chat/upload', {
+        method: 'POST',
+        body: fd
+    });
+    const data = await res.json();
+    if (!data.success) {
+        throw new Error(data.error || 'خطا در آپلود تصویر.');
+    }
+    return data.url;
+}
+
+// درج حباب پیام در جریان چت
 function appendChatMessageBubble(msg) {
     const stream = document.getElementById("chatMessagesContainer");
     if (!stream) return;
@@ -4741,6 +5051,12 @@ function appendChatMessageBubble(msg) {
     const isUser = (msg.sender_type === 'user');
     const isAi = (msg.sender_type === 'ai');
     const timeStr = formatPersianChatTime(msg.created_at);
+
+    const imgHtml = msg.image_url ? `
+        <div class="chat-msg-attachment mt-2 mb-1">
+            <img src="${escapeHtml(msg.image_url)}" class="rounded-3 border border-secondary border-opacity-50 shadow-sm" style="max-width: 220px; max-height: 180px; object-fit: cover; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="openChatLightbox('${escapeHtml(msg.image_url)}')" alt="تصویر پیوست">
+        </div>
+    ` : '';
 
     const row = document.createElement("div");
     row.className = 'chat-msg-row ' + (isUser ? 'user' : (isAi ? 'ai' : 'support'));
@@ -4752,7 +5068,8 @@ function appendChatMessageBubble(msg) {
             </div>
             <div class="chat-msg-bubble user">
                 <div class="fw-bold small opacity-75 mb-1" style="font-size: 0.72rem;">${escapeHtml(msg.sender_name || 'شما')}</div>
-                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message || '')}</div>
+                ${imgHtml}
                 <div class="chat-msg-time justify-content-end text-light">
                     <span>${timeStr}</span>
                     <i class="fas fa-check-double text-info" style="font-size: 0.65rem;"></i>
@@ -4767,7 +5084,8 @@ function appendChatMessageBubble(msg) {
                     <span>${escapeHtml(msg.sender_name || 'هوش مصنوعی')}</span>
                     <span class="badge bg-purple-subtle text-purple py-0 px-1 rounded-pill" style="font-size: 0.6rem; border: 1px solid rgba(192, 132, 252, 0.4); color: #e9d5ff;">پاسخ خودکار</span>
                 </div>
-                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message || '')}</div>
+                ${imgHtml}
                 <div class="chat-msg-time justify-content-start text-secondary">
                     <span>${timeStr}</span>
                 </div>
@@ -4785,7 +5103,8 @@ function appendChatMessageBubble(msg) {
                     <i class="fas fa-user-shield me-1"></i>
                     <span>${escapeHtml(msg.sender_name || 'پشتیبانی')}</span>
                 </div>
-                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message || '')}</div>
+                ${imgHtml}
                 <div class="chat-msg-time justify-content-start text-secondary">
                     <span>${timeStr}</span>
                 </div>
@@ -4812,7 +5131,7 @@ function scrollChatToBottom() {
 }
 
 // ثبت و شروع تیکت جدید از فرم
-function startNewPortalChat(e) {
+async function startNewPortalChat(e) {
     if (e) e.preventDefault();
     const btn = document.getElementById("portalStartChatBtn");
     const feedback = document.getElementById("portalChatFeedback");
@@ -4821,16 +5140,38 @@ function startNewPortalChat(e) {
     const phone = document.getElementById("portalChatContact").value.trim();
     const message = document.getElementById("portalChatMessage").value.trim();
 
-    if (!message) return;
+    if (!message && !stagedPreFormFile) return;
 
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ایجاد گفتگو...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ارسال...';
     if (feedback) feedback.className = "d-none";
+
+    let uploadedImageUrl = null;
+    if (stagedPreFormFile) {
+        try {
+            uploadedImageUrl = await uploadFileToServer(stagedPreFormFile);
+            clearPreFormAttachment();
+        } catch (err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-comments me-1"></i> ورود به گفتگوی آنلاین و ارسال پیام';
+            if (feedback) {
+                feedback.className = "alert alert-danger py-2 small mb-2";
+                feedback.innerText = 'خطا در بارگذاری فایل پیوست: ' + err.message;
+            }
+            return;
+        }
+    }
 
     fetch('/api/portal/' + PORTAL_TOKEN + '/chat/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: subject, name: name, phone: phone, message: message })
+        body: JSON.stringify({ 
+            subject: subject, 
+            name: name, 
+            phone: phone, 
+            message: message || '(تصویر پیوست ارسال شد)',
+            image_url: uploadedImageUrl 
+        })
     })
     .then(res => res.json())
     .then(data => {
@@ -4868,7 +5209,7 @@ function handleChatInputKey(e) {
 }
 
 // ارسال پیام در گفتگوی در حال انجام
-function sendPortalChatMessage(e) {
+async function sendPortalChatMessage(e) {
     if (e) e.preventDefault();
     if (!chatActiveTicket) return;
 
@@ -4876,30 +5217,45 @@ function sendPortalChatMessage(e) {
     const sendBtn = document.getElementById("portalChatSendBtn");
     const sendIcon = document.getElementById("portalSendIcon");
     const text = (input.value || '').trim();
+    const fileToSend = stagedChatFile;
 
-    if (!text) return;
+    if (!text && !fileToSend) return;
 
     input.value = '';
     sendBtn.disabled = true;
     if (sendIcon) sendIcon.className = "fas fa-spinner fa-spin";
 
     // پیش‌رندر پیام کاربر برای پاسخگویی آنی UI
+    const localImgUrl = fileToSend ? URL.createObjectURL(fileToSend) : null;
+    clearChatAttachment();
+
     const tempMsg = {
         id: chatLastMessageId + 1,
         sender_type: 'user',
         sender_name: document.getElementById("portalChatName").value || 'شما',
         message: text,
+        image_url: localImgUrl,
         created_at: new Date().toISOString()
     };
     appendChatMessageBubble(tempMsg);
     scrollChatToBottom();
+
+    let uploadedImageUrl = null;
+    if (fileToSend) {
+        try {
+            uploadedImageUrl = await uploadFileToServer(fileToSend);
+        } catch (err) {
+            console.warn("Upload attachment failed:", err);
+        }
+    }
 
     fetch('/api/portal/' + PORTAL_TOKEN + '/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             ticket_id: chatActiveTicket.id,
-            message: text,
+            message: text || '(تصویر ارسال شد)',
+            image_url: uploadedImageUrl,
             name: document.getElementById("portalChatName").value || ''
         })
     })
@@ -5154,6 +5510,547 @@ function escapeHtml(text) {
 // راه‌اندازی سیستم چت در لود صفحه
 document.addEventListener('DOMContentLoaded', () => {
     initPortalChatSystem();
+
+    // پشتیبانی از Drag & Drop فایل عکس در چت
+    const chatDropZones = [document.getElementById("chatMessengerView"), document.getElementById("chatPreFormView")];
+    chatDropZones.forEach(zone => {
+        if (!zone) return;
+        ['dragenter', 'dragover'].forEach(eventName => {
+            zone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                zone.style.outline = '2px dashed #3b82f6';
+            });
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            zone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                zone.style.outline = 'none';
+            });
+        });
+        zone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            if (dt && dt.files && dt.files.length > 0) {
+                const file = dt.files[0];
+                if (zone.id === "chatMessengerView") {
+                    stageChatAttachment(file);
+                } else {
+                    stagePreFormAttachment(file);
+                }
+            }
+        });
+    });
+
+    // پشتیبانی از Paste اسکرین‌شات از کلیپ‌بورد با Ctrl+V
+    document.addEventListener("paste", function(e) {
+        const chatModal = document.getElementById("supportChatModal");
+        if (!chatModal || !chatModal.classList.contains("show")) return;
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf("image") !== -1) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    const messenger = document.getElementById("chatMessengerView");
+                    if (messenger && !messenger.classList.contains("d-none")) {
+                        stageChatAttachment(file);
+                    } else {
+                        stagePreFormAttachment(file);
+                    }
+                    e.preventDefault();
+                    break;
+                }
+            }
+        }
+    });
+
+    // ثبت Service Worker برای PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then(() => {
+            console.log("PWA Service Worker registered successfully.");
+        }).catch(err => {
+            console.debug("PWA SW register note:", err);
+        });
+    }
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// 🎡 مدیریت گردونه شانس و پاداش روزانه (Lucky Wheel Engine)
+// ═════════════════════════════════════════════════════════════════════
+let luckyWheelPrizes = [];
+let luckyWheelCanSpin = false;
+let luckyWheelCountdownTimer = null;
+let luckyWheelCurrentRotation = 0;
+let luckyWheelIsSpinning = false;
+let luckyWheelLastSpinId = null;
+
+// سینت‌سایزر افکت صوتی با Web Audio API بدون نیاز به فایل صوتی خارجی
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+let luckyAudioCtx = null;
+function getLuckyAudioContext() {
+    if (!luckyAudioCtx && AudioContextClass) {
+        luckyAudioCtx = new AudioContextClass();
+    }
+    if (luckyAudioCtx && luckyAudioCtx.state === 'suspended') {
+        luckyAudioCtx.resume();
+    }
+    return luckyAudioCtx;
+}
+
+function playWheelTickSound() {
+    try {
+        const ctx = getLuckyAudioContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(540, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.035);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.035);
+    } catch(e) {}
+}
+
+function playWheelWinSound() {
+    try {
+        const ctx = getLuckyAudioContext();
+        if (!ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.12);
+            gain.gain.setValueAtTime(0.2, ctx.currentTime + idx * 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.12 + 0.45);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + idx * 0.12);
+            osc.stop(ctx.currentTime + idx * 0.12 + 0.45);
+        });
+    } catch(e) {}
+}
+
+function launchWheelConfetti() {
+    const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#8b5cf6', '#ffffff', '#fbbf24'];
+    for (let i = 0; i < 60; i++) {
+        const c = document.createElement('div');
+        c.style.position = 'fixed';
+        c.style.zIndex = '1095';
+        c.style.left = (Math.random() * 85 + 7) + 'vw';
+        c.style.top = '-15px';
+        c.style.width = (Math.random() * 8 + 6) + 'px';
+        c.style.height = (Math.random() * 12 + 8) + 'px';
+        c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+        c.style.pointerEvents = 'none';
+        c.style.transition = 'transform 3.2s ease-out, top 3.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 3.2s ease-out';
+        document.body.appendChild(c);
+        setTimeout(() => {
+            c.style.top = (Math.random() * 65 + 35) + 'vh';
+            c.style.transform = 'rotate(' + (Math.random() * 1080) + 'deg) translate(' + (Math.random() * 120 - 60) + 'px)';
+            c.style.opacity = '0';
+        }, 25);
+        setTimeout(() => { c.remove(); }, 3400);
+    }
+}
+
+// باز کردن مودال گردونه و دریافت تنظیمات از سرور
+function openLuckyWheelModal() {
+    const modalEl = document.getElementById("luckyWheelModal");
+    if (!modalEl || !window.bootstrap) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    const loadingEl = document.getElementById("luckyWheelLoading");
+    const containerEl = document.getElementById("luckyWheelContainer");
+    const alertEl = document.getElementById("luckyWheelDisabledAlert");
+    const resultAlert = document.getElementById("luckyWheelResultAlert");
+    const subChoiceBox = document.getElementById("luckyWheelSubChoiceBox");
+
+    if (loadingEl) loadingEl.classList.remove("d-none");
+    if (containerEl) containerEl.classList.add("d-none");
+    if (alertEl) alertEl.classList.add("d-none");
+    if (resultAlert) resultAlert.classList.add("d-none");
+    if (subChoiceBox) subChoiceBox.classList.add("d-none");
+
+    fetch('/api/portal/' + PORTAL_TOKEN + '/lucky-wheel/prizes')
+        .then(res => res.json())
+        .then(data => {
+            if (loadingEl) loadingEl.classList.add("d-none");
+            if (containerEl) containerEl.classList.remove("d-none");
+
+            if (!data.success || !data.enabled) {
+                if (alertEl) {
+                    alertEl.innerText = data.error || 'گردونه شانس در حال حاضر غیرفعال است.';
+                    alertEl.classList.remove("d-none");
+                }
+                const btn = document.getElementById("btnDoSpinWheel");
+                if (btn) btn.disabled = true;
+                return;
+            }
+
+            luckyWheelPrizes = data.prizes || [];
+            luckyWheelCanSpin = data.can_spin;
+
+            // رندر اسلایس‌های گردونه در بوم Canvas
+            drawLuckyWheel(luckyWheelCurrentRotation);
+
+            // رندر لیست کارت‌های جوایز
+            renderLuckyWheelPrizesGrid(luckyWheelPrizes);
+
+            // وضعیت دکمه و تایمر کول‌داون
+            updateLuckyWheelSpinState(data.can_spin, data.rem_seconds, data.remaining_time);
+        })
+        .catch(err => {
+            if (loadingEl) loadingEl.classList.add("d-none");
+            if (containerEl) containerEl.classList.remove("d-none");
+            if (alertEl) {
+                alertEl.innerText = 'خطا در بارگذاری اطلاعات گردونه شانس.';
+                alertEl.classList.remove("d-none");
+            }
+        });
+}
+
+function updateLuckyWheelSpinState(canSpin, remSeconds, remainingTimeStr) {
+    const btn = document.getElementById("btnDoSpinWheel");
+    const cdText = document.getElementById("luckyWheelCooldownText");
+    const cdVal = document.getElementById("luckyWheelCountdown");
+
+    if (luckyWheelCountdownTimer) clearInterval(luckyWheelCountdownTimer);
+
+    if (canSpin) {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play me-1"></i> چرخاندن گردونه';
+        }
+        if (cdText) cdText.classList.add("d-none");
+    } else {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-lock me-1"></i> شانس امروز استفاده شده';
+        }
+        if (cdText) cdText.classList.remove("d-none");
+        let secs = remSeconds || 0;
+        if (secs > 0) {
+            luckyWheelCountdownTimer = setInterval(() => {
+                secs--;
+                if (secs <= 0) {
+                    clearInterval(luckyWheelCountdownTimer);
+                    updateLuckyWheelSpinState(true, 0, '');
+                } else {
+                    const h = Math.floor(secs / 3600);
+                    const m = Math.floor((secs % 3600) / 60);
+                    const s = secs % 60;
+                    if (cdVal) cdVal.innerText = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                }
+            }, 1000);
+        } else if (cdVal && remainingTimeStr) {
+            cdVal.innerText = remainingTimeStr;
+        }
+    }
+}
+
+// رسم دقیق اسلایس‌های گردونه بر روی Canvas با افکت سه‌بعدی
+function drawLuckyWheel(rotationDeg) {
+    const canvas = document.getElementById("luckyWheelCanvas");
+    if (!canvas || !luckyWheelPrizes.length) return;
+    const ctx = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = width / 2 - 8;
+    const numPrizes = luckyWheelPrizes.length;
+    const arc = (2 * Math.PI) / numPrizes;
+
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((rotationDeg * Math.PI) / 180);
+
+    const defaultColors = ['#1e3a8a', '#065f46', '#92400e', '#831843', '#3730a3', '#155e75', '#3f3f46'];
+
+    for (let i = 0; i < numPrizes; i++) {
+        const prize = luckyWheelPrizes[i];
+        const angle = i * arc;
+
+        // رسم اسلایس با رنگ اختصاصی
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius, angle, angle + arc);
+        ctx.closePath();
+        ctx.fillStyle = prize.color || defaultColors[i % defaultColors.length];
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.stroke();
+
+        // رسم متن و عنوان جایزه
+        ctx.save();
+        ctx.rotate(angle + arc / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px Vazirmatn, sans-serif";
+        ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+        ctx.shadowBlur = 4;
+
+        const maxText = prize.title.length > 15 ? prize.title.substring(0, 14) + '…' : prize.title;
+        ctx.fillText(maxText, radius - 20, 4);
+        ctx.restore();
+    }
+
+    ctx.restore();
+}
+
+// چرخاندن گردونه و دریافت امن برنده از سرور
+function spinLuckyWheel() {
+    if (luckyWheelIsSpinning || !luckyWheelCanSpin) return;
+    const btn = document.getElementById("btnDoSpinWheel");
+    const resultAlert = document.getElementById("luckyWheelResultAlert");
+    const subChoiceBox = document.getElementById("luckyWheelSubChoiceBox");
+
+    if (resultAlert) resultAlert.classList.add("d-none");
+    if (subChoiceBox) subChoiceBox.classList.add("d-none");
+
+    luckyWheelIsSpinning = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال چرخش...';
+    }
+
+    fetch('/api/portal/' + PORTAL_TOKEN + '/lucky-wheel/spin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            luckyWheelIsSpinning = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play me-1"></i> چرخاندن گردونه';
+            }
+            if (resultAlert) {
+                resultAlert.className = "alert alert-danger rounded-3 small p-3";
+                resultAlert.innerText = data.error || 'خطا در ثبت چرخش گردونه.';
+                resultAlert.classList.remove("d-none");
+            }
+            return;
+        }
+
+        const prizeIdx = data.prize_index;
+        const totalPrizes = luckyWheelPrizes.length;
+        const arcDeg = 360 / totalPrizes;
+        
+        // محاسبه زاویه توقف دقیق زیر نشانگر بالای گردونه (270 درجه)
+        // فرمول: Center of slice idx after rotation aligns with 270 deg
+        const sliceCenterDeg = (prizeIdx * arcDeg) + (arcDeg / 2);
+        const fullRotations = 6 * 360; // ۶ دور چرخش کامل
+        const finalDeg = fullRotations + (270 - sliceCenterDeg);
+
+        // انیمیشن نرم با فرمول کاهش شتاب Ease-Out
+        const duration = 5200; // ۵.۲ ثانیه
+        const startRotation = luckyWheelCurrentRotation % 360;
+        const delta = finalDeg - startRotation;
+        const startTime = performance.now();
+        let lastTickAngle = 0;
+
+        function animateSpin(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Ease out cubic function
+            const ease = 1 - Math.pow(1 - progress, 3.2);
+            const currentAngle = startRotation + delta * ease;
+
+            // صدای تیک هنگام عبور از مرز اسلایس‌ها
+            if (Math.abs(currentAngle - lastTickAngle) >= arcDeg) {
+                playWheelTickSound();
+                lastTickAngle = currentAngle;
+            }
+
+            luckyWheelCurrentRotation = currentAngle;
+            drawLuckyWheel(currentAngle);
+
+            if (progress < 1) {
+                requestAnimationFrame(animateSpin);
+            } else {
+                luckyWheelIsSpinning = false;
+                luckyWheelCanSpin = false;
+                luckyWheelLastSpinId = data.spin_id;
+
+                // پایان چرخش: صدای تشویق و کانفتی
+                if (data.prize && data.prize.prize_type !== 'empty') {
+                    playWheelWinSound();
+                    launchWheelConfetti();
+                }
+
+                if (resultAlert) {
+                    const isWin = data.prize && data.prize.prize_type !== 'empty';
+                    resultAlert.className = `alert ${isWin ? 'alert-success border-success' : 'alert-secondary border-secondary'} rounded-3 small p-3 mb-3`;
+                    resultAlert.innerHTML = `<strong>${isWin ? '🎉 تبریک!' : '🎁'}</strong> ${escapeHtml(data.reward_message)}`;
+                    resultAlert.classList.remove("d-none");
+                }
+
+                // اگر مشترک بیش از ۱ اشتراک فعال دارد و جایزه حجمی است، کادر انتخاب را نمایش بده
+                if (data.needs_sub_choice && data.user_subscriptions && data.user_subscriptions.length > 1) {
+                    const select = document.getElementById("luckyWheelSubSelect");
+                    if (select) {
+                        select.innerHTML = '';
+                        data.user_subscriptions.forEach(s => {
+                            const opt = document.createElement("option");
+                            opt.value = s.id;
+                            opt.innerText = `${s.name} (شناسه #${s.id})`;
+                            select.appendChild(opt);
+                        });
+                    }
+                    if (subChoiceBox) subChoiceBox.classList.remove("d-none");
+                }
+
+                // شروع تایمر ۲۴ ساعته تا شانس بعدی
+                updateLuckyWheelSpinState(false, 86400, '24:00:00');
+            }
+        }
+
+        requestAnimationFrame(animateSpin);
+    })
+    .catch(err => {
+        luckyWheelIsSpinning = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play me-1"></i> چرخاندن گردونه';
+        }
+        if (resultAlert) {
+            resultAlert.className = "alert alert-danger rounded-3 small p-3";
+            resultAlert.innerText = 'خطا در ارتباط با سرور.';
+            resultAlert.classList.remove("d-none");
+        }
+    });
+}
+
+// تایید انتخاب اشتراک برای شارژ حجم برنده شده
+function confirmSubTrafficChoice() {
+    const select = document.getElementById("luckyWheelSubSelect");
+    const btn = document.getElementById("btnConfirmSubChoice");
+    const subChoiceBox = document.getElementById("luckyWheelSubChoiceBox");
+    const resultAlert = document.getElementById("luckyWheelResultAlert");
+    if (!select || !luckyWheelLastSpinId) return;
+
+    const subId = select.value;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال تخصیص...';
+    }
+
+    fetch('/api/portal/' + PORTAL_TOKEN + '/lucky-wheel/assign-traffic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spin_id: luckyWheelLastSpinId, subscription_id: subId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus me-1"></i> شارژ حجم روی اشتراک انتخابی';
+        }
+        if (data.success) {
+            if (subChoiceBox) subChoiceBox.classList.add("d-none");
+            if (resultAlert) {
+                resultAlert.className = "alert alert-success border-success rounded-3 small p-3";
+                resultAlert.innerText = data.message || 'حجم هدیه با موفقیت به اشتراک منتخب افزوده شد!';
+                resultAlert.classList.remove("d-none");
+            }
+        } else {
+            alert(data.error || 'خطا در تخصیص حجم به اشتراک.');
+        }
+    })
+    .catch(err => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus me-1"></i> شارژ حجم روی اشتراک انتخابی';
+        }
+        alert('خطا در برقراری ارتباط با سرور.');
+    });
+}
+
+// نمایش کارت‌های جوایز در پایین مودال
+function renderLuckyWheelPrizesGrid(prizes) {
+    const grid = document.getElementById("luckyWheelPrizesGrid");
+    if (!grid) return;
+    grid.innerHTML = '';
+    prizes.forEach(p => {
+        const col = document.createElement("div");
+        col.className = "col-6 col-md-4";
+        col.innerHTML = `
+            <div class="p-2 bg-black bg-opacity-30 rounded-3 border border-secondary border-opacity-25 d-flex align-items-center gap-2">
+                <div class="rounded-circle p-1 d-flex align-items-center justify-content-center text-white" style="width: 28px; height: 28px; background: ${p.color || '#3b82f6'}; flex-shrink: 0;">
+                    <i class="fas ${p.icon || 'fa-gift'}" style="font-size: 0.75rem;"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <div class="small text-white text-truncate fw-bold" style="font-size: 0.76rem;" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
+                    <div class="text-secondary" style="font-size: 0.68rem;">شانس برنده شدن: ${p.chance_weight || 1}x</div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(col);
+    });
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 📱 مدیریت PWA (نصب وب‌اپلیکیشن در اندروید، iOS و دسکتاپ)
+// ═════════════════════════════════════════════════════════════════════
+let deferredPortalPwaPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPortalPwaPrompt = e;
+    const btn = document.getElementById("portalPwaInstallBtn");
+    if (btn) btn.classList.remove("d-none");
+});
+
+function isIosDevice() {
+    return /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+}
+
+function isInStandaloneMode() {
+    return ('standalone' in window.navigator) && (window.navigator.standalone) || window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function handlePortalPwaInstall() {
+    if (deferredPortalPwaPrompt) {
+        deferredPortalPwaPrompt.prompt();
+        deferredPortalPwaPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                const btn = document.getElementById("portalPwaInstallBtn");
+                if (btn) btn.classList.add("d-none");
+            }
+            deferredPortalPwaPrompt = null;
+        });
+    } else if (isIosDevice() && !isInStandaloneMode()) {
+        const modalEl = document.getElementById("iosPwaGuideModal");
+        if (modalEl && window.bootstrap) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+    } else if (isInStandaloneMode()) {
+        alert("این اپلیکیشن هم‌اکنون به عنوان وب‌اپلیکیشن روی دستگاه شما نصب است.");
+    } else {
+        alert("برای نصب این برنامه، از منوی مرورگر خود (سه نقطه در بالا) گزینه «افزودن به صفحه اصلی» یا «نصب برنامه» (Add to Home screen) را انتخاب نمایید.");
+    }
+}
+
+// در صورت لود در آیفون دکمه نصب را برای نمایش راهنما آشکار کن
+document.addEventListener('DOMContentLoaded', () => {
+    if (isIosDevice() && !isInStandaloneMode()) {
+        const btn = document.getElementById("portalPwaInstallBtn");
+        if (btn) btn.classList.remove("d-none");
+    }
 });
 
 // تایمر معکوس فاکتور و بررسی زنده وضعیت پرداخت

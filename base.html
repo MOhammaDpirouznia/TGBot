@@ -9,8 +9,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-    <link rel="icon" type="image/x-icon" href="{{ branding.get('favicon_url') or '/avatars/favicon.ico' }}">
-    <link rel="shortcut icon" type="image/x-icon" href="{{ branding.get('favicon_url') or '/avatars/favicon.ico' }}">
+    {% if branding.get('favicon_url') %}
+    <link rel="icon" href="{{ branding.get('favicon_url') }}">
+    {% elif branding.get('logo_url') %}
+    <link rel="icon" href="{{ branding.get('logo_url') }}">
+    {% endif %}
+
+    <!-- PWA Web App Manifest & Meta Tags -->
+    {% if session.get('role') == 'reseller' %}
+    <link rel="manifest" href="{{ url_for('pwa_reseller_manifest') }}">
+    {% else %}
+    <link rel="manifest" href="{{ url_for('pwa_admin_manifest') }}">
+    {% endif %}
+    <meta name="theme-color" content="{{ branding.get('primary_color') or '#4f46e5' }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="{{ branding.get('brand_title') or 'VPN Panel' }}">
+    {% if branding.get('logo_url') %}
+    <link rel="apple-touch-icon" href="{{ branding.get('logo_url') }}">
+    {% endif %}
     <style>
         {% if palette_css %}
         {{ palette_css|safe }}
@@ -92,6 +109,101 @@
             max-width: 100vw;
             overflow-x: hidden;
             transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        /* ─── چیدمان بهینه و فشرده حرفه‌ای پنل (High-Density Native Compact Mode) ─── */
+        body {
+            font-size: 0.875rem; /* فونت پایه بهینه و شارپ ۱۴ پیکسل */
+        }
+
+        .main-content {
+            padding: 16px 20px;
+        }
+
+        /* سطرهای متراکم و فشرده جداول (بیش از دو برابر ردیف در یک نگاه بدون اسکرول) */
+        .table th,
+        .table td {
+            padding: 6px 9px !important;
+            vertical-align: middle;
+            font-size: 0.835rem;
+        }
+
+        .table th {
+            font-size: 0.775rem;
+            font-weight: 700;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            white-space: nowrap;
+        }
+
+        /* آواتارهای فشرده داخل جداول جهت جلوگیری از کشیدگی بی‌مورد سطرها */
+        .table img.rounded-circle {
+            width: 32px !important;
+            height: 32px !important;
+        }
+
+        /* دکمه‌های عملیات داخل جداول: تمیز، جمع‌وجور و شارپ */
+        .table .btn-sm {
+            padding: 2.5px 7px !important;
+            font-size: 0.75rem !important;
+            border-radius: 6px !important;
+            line-height: 1.35 !important;
+        }
+
+        .table .btn-sm i {
+            font-size: 0.72rem !important;
+        }
+
+        /* بج‌های فشرده و تمیز در جداول */
+        .table .badge {
+            font-size: 0.72rem !important;
+            padding: 2.5px 6px !important;
+            font-weight: 600;
+            border-radius: 5px !important;
+        }
+
+        /* نوار پیشرفت مصرف حجم در جدول (شارپ، زیبا و متناسب با سطر فشرده) */
+        .custom-usage-progress {
+            height: 8px !important;
+            border-radius: 999px !important;
+            background-color: rgba(148, 163, 184, 0.2) !important;
+            border: 1px solid rgba(148, 163, 184, 0.3) !important;
+            overflow: hidden !important;
+        }
+
+        [data-bs-theme="light"] .custom-usage-progress {
+            background-color: rgba(226, 232, 240, 0.9) !important;
+            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+        }
+
+        /* فشرده‌سازی سرفصل‌ها و کارت‌های پنل */
+        .page-header {
+            margin-bottom: 0.85rem !important;
+        }
+
+        .page-title {
+            font-size: 1.25rem !important;
+        }
+
+        .card-header {
+            padding: 10px 16px !important;
+        }
+
+        .card-body {
+            padding: 14px 16px !important;
+        }
+
+        /* کارت‌های آمار بالای داشبورد */
+        .stat-card {
+            padding: 14px 18px !important;
+            min-height: 88px !important;
+            border-radius: 12px !important;
+        }
+
+        .stat-card h3 {
+            font-size: 1.4rem !important;
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
         }
 
         /* ─── هاله‌های نوری شناور پس‌زمینه (Aura Mesh Glowing Blobs) ─── */
@@ -216,97 +328,47 @@
             border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06));
         }
 
-        /* ─── استایل هوشمند و ملایم برای ردیف‌های مشتریان (VIP، تیکت‌دار و بدهکار) ─── */
-        /* حالت روشن (Light Mode) */
-        .table > tbody > tr.customer-row-vip > td,
-        .table > tbody > tr.customer-row-vip > th,
-        tr.customer-row-vip > td,
-        tr.customer-row-vip > th,
-        tr.customer-row-vip {
-            background-color: rgba(245, 158, 11, 0.07) !important;
-            --bs-table-bg: rgba(245, 158, 11, 0.07) !important;
+        /* ─── نشان مشتری ویژه VIP (فوق‌العاده خوانا، شارپ و پرکنتراست در تم تیره و روشن) ─── */
+        .badge-vip {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 0.72rem !important;
+            letter-spacing: 0.5px;
+            padding: 2px 7px !important;
+            border-radius: 5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            vertical-align: middle;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(0, 0, 0, 0.15) !important;
         }
-        .table-hover > tbody > tr.customer-row-vip:hover > td,
-        .table-hover > tbody > tr.customer-row-vip:hover > th,
-        tr.customer-row-vip:hover > td {
-            background-color: rgba(245, 158, 11, 0.13) !important;
-            --bs-table-hover-bg: rgba(245, 158, 11, 0.13) !important;
-        }
-
-        .table > tbody > tr.customer-row-ticket > td,
-        .table > tbody > tr.customer-row-ticket > th,
-        tr.customer-row-ticket > td,
-        tr.customer-row-ticket > th,
-        tr.customer-row-ticket {
-            background-color: rgba(14, 165, 233, 0.07) !important;
-            --bs-table-bg: rgba(14, 165, 233, 0.07) !important;
-        }
-        .table-hover > tbody > tr.customer-row-ticket:hover > td,
-        .table-hover > tbody > tr.customer-row-ticket:hover > th,
-        tr.customer-row-ticket:hover > td {
-            background-color: rgba(14, 165, 233, 0.13) !important;
-            --bs-table-hover-bg: rgba(14, 165, 233, 0.13) !important;
+        .badge-vip i, .badge-vip svg {
+            color: #000000 !important;
+            font-size: 0.7rem;
         }
 
-        .table > tbody > tr.customer-row-debtor > td,
-        .table > tbody > tr.customer-row-debtor > th,
-        tr.customer-row-debtor > td,
-        tr.customer-row-debtor > th,
-        tr.customer-row-debtor {
-            background-color: rgba(239, 68, 68, 0.07) !important;
-            --bs-table-bg: rgba(239, 68, 68, 0.07) !important;
+        [data-bs-theme="dark"] .badge-vip {
+            background: linear-gradient(135deg, #facc15 0%, #eab308 100%) !important;
+            color: #000000 !important;
+            font-weight: 850 !important;
+            border: 1px solid #fef08a !important;
+            box-shadow: 0 0 8px rgba(250, 204, 21, 0.45) !important;
+            text-shadow: none !important;
         }
-        .table-hover > tbody > tr.customer-row-debtor:hover > td,
-        .table-hover > tbody > tr.customer-row-debtor:hover > th,
-        tr.customer-row-debtor:hover > td {
-            background-color: rgba(239, 68, 68, 0.13) !important;
-            --bs-table-hover-bg: rgba(239, 68, 68, 0.13) !important;
+        [data-bs-theme="dark"] .badge-vip i,
+        [data-bs-theme="dark"] .badge-vip svg {
+            color: #000000 !important;
         }
 
-        /* حالت تاریک (Dark Mode) - ملایم، کم‌رنگ و سازگار با تم تیره بدون خیره‌کنندگی */
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > th,
-        [data-bs-theme="dark"] tr.customer-row-vip > td,
-        [data-bs-theme="dark"] tr.customer-row-vip > th,
-        [data-bs-theme="dark"] tr.customer-row-vip {
-            background-color: rgba(245, 158, 11, 0.11) !important;
-            --bs-table-bg: rgba(245, 158, 11, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-vip:hover > td {
-            background-color: rgba(245, 158, 11, 0.18) !important;
-            --bs-table-hover-bg: rgba(245, 158, 11, 0.18) !important;
-        }
-
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket > td,
-        [data-bs-theme="dark"] tr.customer-row-ticket > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket {
-            background-color: rgba(14, 165, 233, 0.11) !important;
-            --bs-table-bg: rgba(14, 165, 233, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket:hover > td {
-            background-color: rgba(14, 165, 233, 0.18) !important;
-            --bs-table-hover-bg: rgba(14, 165, 233, 0.18) !important;
-        }
-
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor > td,
-        [data-bs-theme="dark"] tr.customer-row-debtor > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor {
-            background-color: rgba(239, 68, 68, 0.11) !important;
-            --bs-table-bg: rgba(239, 68, 68, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor:hover > td {
-            background-color: rgba(239, 68, 68, 0.18) !important;
-            --bs-table-hover-bg: rgba(239, 68, 68, 0.18) !important;
+        /* رفع باگ سراسری بوت‌استرپ ۵.۳ در حالت دارک مود که نوشته‌های text-dark روی bg-warning را سفید و ناخوانا می‌کرد */
+        [data-bs-theme="dark"] .badge.bg-warning,
+        [data-bs-theme="dark"] .badge.bg-warning.text-dark,
+        [data-bs-theme="dark"] .badge.bg-warning *,
+        [data-bs-theme="dark"] .badge.bg-warning i,
+        [data-bs-theme="dark"] .badge.bg-warning svg {
+            color: #000000 !important;
         }
 
         [data-bs-theme="dark"] .table th {
@@ -1444,6 +1506,7 @@
             transition: width 0.4s ease;
         }
     </style>
+    {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -1468,9 +1531,14 @@
             {% endif %}
             <span class="small">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</span>
         </div>
-        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
-            <i class="fas fa-circle-half-stroke"></i>
-        </button>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary px-2 py-1" id="baseMobilePwaInstallBtn" onclick="handleBasePwaInstall()" style="display: none;" title="نصب وب‌اپلیکیشن">
+                <i class="fas fa-download me-1"></i> <span class="small">نصب اپ</span>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
+                <i class="fas fa-circle-half-stroke"></i>
+            </button>
+        </div>
     </div>
 
     <!-- Sidebar Backdrop for Mobile -->
@@ -1508,7 +1576,7 @@
                                 {% else %}<i class="fas fa-code-branch text-primary"></i>
                                 {% endif %}
                             {% endif %}
-                            <span>نسخه: {{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
+                            <span>{{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
                         </span>
                     </div>
                 </div>
@@ -1545,6 +1613,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
                     <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_ai_studio' %}active{% endif %}" href="{{ url_for('reseller_ai_studio') }}">
+                    <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی
+                </a>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
@@ -1553,7 +1624,7 @@
                 </a>
 
                 <!-- منوی کشویی امور مالی و گزارشات -->
-                {% set is_finance_active = request.endpoint in ['reseller_payments', 'reseller_discounts', 'reseller_reports', 'reseller_affiliates'] %}
+                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments', 'reseller_discounts', 'reseller_affiliates'] %}
                 <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1568,17 +1639,17 @@
                 </button>
                 <div class="collapse submenu-collapse {% if is_finance_active %}show{% endif %}" id="resellerFinanceCollapse">
                     <div class="submenu-inner">
-                        <a class="submenu-item {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                            <i class="fas fa-file-invoice-dollar text-primary"></i> سوابق مالی
+                        <a class="submenu-item {% if request.endpoint == 'reseller_accounting' %}active{% endif %}" href="{{ url_for('reseller_accounting') }}">
+                            <i class="fas fa-scale-balanced text-primary"></i> حسابداری و تراز سود
+                        </a>
+                        <a class="submenu-item {% if request.endpoint in ['reseller_reports', 'reseller_payments'] %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و سوابق مالی
                         </a>
                         {% if not sub_role or sub_role in ['partner', 'manager2'] %}
                         <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
                             <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
                         </a>
                         {% endif %}
-                        <a class="submenu-item {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
-                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
-                        </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
                             <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
                         </a>
@@ -1604,7 +1675,7 @@
                 <div class="collapse submenu-collapse {% if is_settings_active %}show{% endif %}" id="resellerSettingsCollapse">
                     <div class="submenu-inner">
                         <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
-                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها و پلن‌ها
+                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
                             <i class="fas fa-robot text-primary"></i> ربات تلگرام
@@ -1669,6 +1740,13 @@
                 </a>
                 {% endif %}
 
+                <!-- سیستم یادآوری -->
+                {% if has_permission('dashboard') %}
+                <a class="nav-link {% if request.endpoint == 'admin_reminders' %}active{% endif %}" href="{{ url_for('admin_reminders') }}">
+                    <i class="fas fa-bell text-danger"></i> یادآوری و هشدار
+                </a>
+                {% endif %}
+
                 <div class="nav-category">بخش‌های تکمیلی و مدیریت</div>
 
                 <!-- دسته‌بندی ۱: مدیریت نمایندگان و همکاران -->
@@ -1720,7 +1798,7 @@
                     <div class="submenu-inner">
                         {% if has_permission('plans') %}
                         <a class="submenu-item {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
-                            <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
+                            <i class="fas fa-layer-group text-info"></i> بسته‌های فروش
                         </a>
                         {% endif %}
                         {% if has_permission('discounts') %}
@@ -1738,6 +1816,9 @@
                             <i class="fas fa-paper-plane text-primary"></i> پیام همگانی و اطلاعیه‌ها
                         </a>
                         {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_ai_studio' %}active{% endif %}" href="{{ url_for('admin_ai_studio') }}">
+                            <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی و مارکتینگ
+                        </a>
                     </div>
                 </div>
                 {% endif %}
@@ -1784,7 +1865,7 @@
                 {% endif %}
 
                 <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1820,6 +1901,12 @@
                         {% if has_permission('servers_view') %}
                         <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                             <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_node_monitor' %}active{% endif %}" href="{{ url_for('admin_node_monitor') }}">
+                            <i class="fas fa-network-wired text-warning"></i> پایش سلامت نودها و سوییچینگ
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_security' %}active{% endif %}" href="{{ url_for('admin_security') }}">
+                            <i class="fas fa-shield-alt text-primary"></i> امنیت سیستم
                         </a>
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' %}
@@ -1863,6 +1950,9 @@
                     {% endif %}
                 </div>
             </a>
+            <button type="button" class="btn btn-sm btn-outline-primary w-100 mb-2 align-items-center justify-content-center gap-2" id="baseSidebarPwaInstallBtn" onclick="handleBasePwaInstall()" style="display: none;">
+                <i class="fas fa-download"></i> <span>نصب وب‌اپلیکیشن (PWA)</span>
+            </button>
             <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
                 <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
             </button>
@@ -1874,6 +1964,16 @@
 
     <!-- Main Content -->
     <main class="main-content">
+        <!-- هشدار یادآوری مدیریت -->
+        {% if session.get('role') != 'reseller' %}
+        <div id="adminRemindersAlert" class="container-fluid mt-3" style="display:none;">
+            <div class="alert alert-danger shadow-sm d-flex align-items-center" role="alert">
+                <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                <div id="adminRemindersAlertText"></div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- بنرهای اطلاعیه بالای پنل نمایندگان با ماندگاری در localStorage تا زمان بستن -->
         {% if session.get('role') == 'reseller' %}
             {% set active_reseller_banners = get_reseller_banners() if get_reseller_banners else [] %}
@@ -2256,6 +2356,9 @@
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
+                    if (window.location.pathname.includes('/payments')) {
+                        document.dispatchEvent(new CustomEvent('newPaymentReceived'));
+                    }
                 }
 
                 lastAdminPendingCount = data.pending_payments_count;
@@ -2380,6 +2483,9 @@
                         document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
+                    }
+                    if (window.location.pathname.includes('/payments')) {
+                        document.dispatchEvent(new CustomEvent('newPaymentReceived'));
                     }
                 }
 
@@ -2604,16 +2710,8 @@
                         }
                     }
 
-                    // ۲. ارسال خودکار فرم به سرور پس از مکث ۶۵۰ میلی‌ثانیه‌ای (Debounce)
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
-                        if (currentVal !== initialVal) {
-                            sessionStorage.setItem('keep_server_search_focus', 'true');
-                            const pageInput = form.querySelector('input[name="page"]');
-                            if (pageInput) pageInput.value = '1';
-                            form.submit();
-                        }
-                    }, 650);
+                    // ۲. فیلتر سروری فقط با زدن کلید Enter یا کلیک روی دکمه جستجو انجام شود
+                    // (ارسال خودکار برای جلوگیری از پرش صفحه و گم شدن متن حین تایپ غیرفعال شد)
                 });
 
                 // ارسال فوری با کلید Enter
@@ -2881,6 +2979,466 @@
             initFormRedirectPreserver();
         });
     </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            {% if session.get('role') != 'reseller' %}
+            fetch('/api/admin/reminders/active')
+                .then(r => r.json())
+                .then(reminders => {
+                    if (reminders && reminders.length > 0) {
+                        const alertBox = document.getElementById('adminRemindersAlert');
+                        const alertText = document.getElementById('adminRemindersAlertText');
+                        if (alertBox && alertText) {
+                            let msgs = reminders.map(r => '<b>' + r.title + '</b>: ' + (r.type === 'traffic' ? 'ترافیک ' + (r.current_traffic||0).toFixed(2) + ' از ' + r.target_traffic + ' GB' : r.description));
+                            alertText.innerHTML = msgs.join('<br>');
+                            alertBox.style.display = 'block';
+                        }
+                    }
+                }).catch(e => console.error(e));
+            {% endif %}
+        });
+    </script>
     {% block scripts %}{% endblock %}
+    <!-- اسکریپت رفرش خودکار جداول پرداخت بدون رفرش صفحه -->
+    <script>
+        document.addEventListener('newPaymentReceived', function() {
+            const tableIds = ['paymentsTable', 'customerPaymentsTable', 'resellerReceiptTable', 'resellerWalletTable'];
+            let hasTargetTable = false;
+            for (let id of tableIds) {
+                if (document.getElementById(id)) {
+                    hasTargetTable = true;
+                    break;
+                }
+            }
+            
+            if (hasTargetTable) {
+                // Fetch the current page again
+                fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => response.text())
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        for (let id of tableIds) {
+                            const oldTable = document.getElementById(id);
+                            const newTable = doc.getElementById(id);
+                            if (oldTable && newTable) {
+                                oldTable.innerHTML = newTable.innerHTML;
+                                // Flash effect to show it updated
+                                oldTable.style.transition = 'background-color 0.5s';
+                                oldTable.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
+                                setTimeout(() => {
+                                    oldTable.style.backgroundColor = '';
+                                }, 1000);
+                            }
+                        }
+                    })
+                    .catch(e => console.warn('Failed to auto-refresh table:', e));
+            }
+        });
+    </script>
+
+    <!-- مودال سریع یادداشت‌های اشتراک (Quick Subscription Notes Modal) -->
+    <div class="modal fade" id="quickSubNoteModal" tabindex="-1" aria-labelledby="quickSubNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-header py-3 border-bottom">
+                    <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2" id="quickSubNoteModalLabel">
+                        <i class="fas fa-note-sticky text-warning"></i>
+                        <span>یادداشت اشتراک:</span>
+                        <span id="quickSubNoteTitle" class="text-primary font-monospace"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="quickSubNoteLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="small text-muted mt-2">در حال بارگذاری اطلاعات یادداشت...</div>
+                    </div>
+                    <div id="quickSubNoteAlert" class="alert alert-danger py-2 px-3 small rounded-3 mb-3 d-none"></div>
+                    <form id="quickSubNoteForm" style="display: none;" onsubmit="event.preventDefault(); saveQuickSubNote();">
+                        <input type="hidden" id="quickSubNoteSubId" value="">
+                        
+                        <!-- ۱. یادداشت محرمانه داخلی همکاران -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-lock text-warning"></i>
+                                    <span>یادداشت داخلی همکاران / پشتیبانی:</span>
+                                </label>
+                                <span id="quickSubNoteInternalMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickSubNoteInternalInput" class="form-control" rows="3" placeholder="یادداشت خصوصی، نکته پیگیری یا تذکر به همکاران..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                🔒 کاملاً محرمانه: فقط شما و همکاران پنل خودتان می‌بینید. به مشتری نمایش داده نمی‌شود.
+                            </small>
+                        </div>
+
+                        <!-- ۲. پیام به مشتری در پورتال -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-bullhorn text-info"></i>
+                                    <span>پیام به مشتری در پورتال (اطلاعیه):</span>
+                                </label>
+                                <span id="quickSubNoteCustomerMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickSubNoteCustomerInput" class="form-control" rows="2" placeholder="پیام دلخواه جهت نمایش در بالای پورتال مشتری (اختیاری)..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                📢 در بالای پورتال مشتری به عنوان بنر قابل بستن نمایش می‌یابد و کاربر می‌تواند آن را ببندد.
+                            </small>
+                        </div>
+
+                        <!-- ۳. بخش نمایش یادداشت بدهی در صورت وجود -->
+                        <div id="quickSubNoteDebtSection" class="p-2 rounded bg-danger bg-opacity-10 border border-danger border-opacity-25 mb-2" style="display: none;">
+                            <div class="small fw-bold text-danger d-flex align-items-center gap-1 mb-1">
+                                <i class="fas fa-file-invoice-dollar"></i>
+                                <span>شرایط و یادداشت بدهی ثبت‌شده برای مشتری:</span>
+                            </div>
+                            <div id="quickSubNoteDebtText" class="small text-dark pe-2"></div>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.7rem;">این متن در فاکتور بدهی پورتال به خود مشتری نشان داده می‌شود.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2 bg-light border-top d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary px-4 fw-bold d-inline-flex align-items-center gap-1" id="quickSubNoteSaveBtn" onclick="saveQuickSubNote()">
+                        <i class="fas fa-check"></i>
+                        <span>ذخیره تغییرات</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال سریع یادداشت تراکنش مالی (Quick Transaction Note Modal) -->
+    <div class="modal fade" id="quickTxNoteModal" tabindex="-1" aria-labelledby="quickTxNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-header py-3 border-bottom">
+                    <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2" id="quickTxNoteModalLabel">
+                        <i class="fas fa-file-invoice-dollar text-primary"></i>
+                        <span>یادداشت پرداخت:</span>
+                        <span id="quickTxNoteTitle" class="text-dark font-monospace"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="quickTxNoteLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="small text-muted mt-2">در حال بارگذاری اطلاعات پرداخت...</div>
+                    </div>
+                    <div id="quickTxNoteAlert" class="alert alert-danger py-2 px-3 small rounded-3 mb-3 d-none"></div>
+                    <form id="quickTxNoteForm" style="display: none;" onsubmit="event.preventDefault(); saveQuickTxNote();">
+                        <input type="hidden" id="quickTxNoteTxId" value="">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                <label class="form-label fw-bold small text-dark mb-0 d-flex align-items-center gap-1">
+                                    <i class="fas fa-lock text-warning"></i>
+                                    <span>یادداشت داخلی تراکنش / فیش:</span>
+                                </label>
+                                <span id="quickTxNoteMeta" class="badge bg-light text-muted border font-monospace" style="font-size: 0.68rem;"></span>
+                            </div>
+                            <textarea id="quickTxNoteInput" class="form-control" rows="3" placeholder="توضیحات و یادداشت داخلی درباره این تراکنش، واریزکننده، هماهنگی‌ها..."></textarea>
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                                🔒 این یادداشت کاملاً محرمانه بوده و فقط در پنل همکاران جهت بررسی‌های مالی نمایش می‌یابد.
+                            </small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2 bg-light border-top d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary px-4 fw-bold d-inline-flex align-items-center gap-1" id="quickTxNoteSaveBtn" onclick="saveQuickTxNote()">
+                        <i class="fas fa-check"></i>
+                        <span>ذخیره یادداشت</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- اسکریپت توابع سراسری یادداشت‌های سریع -->
+    <script>
+        let currentSubNoteTriggerBtn = null;
+        let currentTxNoteTriggerBtn = null;
+
+        function openQuickSubNote(subId, subName, btn) {
+            currentSubNoteTriggerBtn = btn || null;
+            const modalEl = document.getElementById('quickSubNoteModal');
+            if (!modalEl) return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            
+            document.getElementById('quickSubNoteSubId').value = subId;
+            document.getElementById('quickSubNoteTitle').textContent = subName ? (subName.length > 25 ? subName.slice(0, 25) + '...' : subName) : ('#' + subId);
+            document.getElementById('quickSubNoteLoading').style.display = 'block';
+            document.getElementById('quickSubNoteForm').style.display = 'none';
+            document.getElementById('quickSubNoteAlert').classList.add('d-none');
+            document.getElementById('quickSubNoteSaveBtn').disabled = false;
+            
+            modal.show();
+            
+            fetch('/api/subscription/' + subId + '/notes', {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                document.getElementById('quickSubNoteLoading').style.display = 'none';
+                if (!res.success) {
+                    document.getElementById('quickSubNoteAlert').textContent = res.error || 'خطا در واکشی یادداشت';
+                    document.getElementById('quickSubNoteAlert').classList.remove('d-none');
+                    return;
+                }
+                document.getElementById('quickSubNoteForm').style.display = 'block';
+                document.getElementById('quickSubNoteInternalInput').value = res.internal_note || '';
+                document.getElementById('quickSubNoteCustomerInput').value = res.customer_note || '';
+                
+                const iMeta = document.getElementById('quickSubNoteInternalMeta');
+                if (res.updated_by || res.updated_at) {
+                    iMeta.textContent = (res.updated_by ? 'توسط: ' + res.updated_by : '') + (res.updated_at ? ' (' + res.updated_at.slice(0, 10) + ')' : '');
+                    iMeta.style.display = 'inline-block';
+                } else {
+                    iMeta.style.display = 'none';
+                }
+                
+                const cMeta = document.getElementById('quickSubNoteCustomerMeta');
+                if (res.customer_note_updated_by || res.customer_note_updated_at) {
+                    cMeta.textContent = (res.customer_note_updated_by ? 'توسط: ' + res.customer_note_updated_by : '') + (res.customer_note_updated_at ? ' (' + res.customer_note_updated_at.slice(0, 10) + ')' : '');
+                    cMeta.style.display = 'inline-block';
+                } else {
+                    cMeta.style.display = 'none';
+                }
+
+                const dSec = document.getElementById('quickSubNoteDebtSection');
+                const dText = document.getElementById('quickSubNoteDebtText');
+                if (res.debt_notes && res.debt_notes.trim()) {
+                    dText.textContent = res.debt_notes;
+                    dSec.style.display = 'block';
+                } else {
+                    dSec.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                document.getElementById('quickSubNoteLoading').style.display = 'none';
+                document.getElementById('quickSubNoteAlert').textContent = 'خطا در ارتباط با سرور';
+                document.getElementById('quickSubNoteAlert').classList.remove('d-none');
+            });
+        }
+
+        function saveQuickSubNote() {
+            const subId = document.getElementById('quickSubNoteSubId').value;
+            const internalNote = document.getElementById('quickSubNoteInternalInput').value;
+            const customerNote = document.getElementById('quickSubNoteCustomerInput').value;
+            const saveBtn = document.getElementById('quickSubNoteSaveBtn');
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+            
+            fetch('/api/subscription/' + subId + '/notes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    internal_note: internalNote,
+                    customer_note: customerNote
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره تغییرات';
+                if (!res.success) {
+                    alert(res.error || 'خطا در ذخیره یادداشت');
+                    return;
+                }
+                
+                const modalEl = document.getElementById('quickSubNoteModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                
+                if (currentSubNoteTriggerBtn) {
+                    const hasNote = Boolean((internalNote && internalNote.trim()) || (customerNote && customerNote.trim()));
+                    const icon = currentSubNoteTriggerBtn.querySelector('i');
+                    if (hasNote) {
+                        currentSubNoteTriggerBtn.classList.remove('text-muted', 'opacity-50');
+                        currentSubNoteTriggerBtn.classList.add('text-warning');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky text-warning';
+                        }
+                        currentSubNoteTriggerBtn.setAttribute('title', 'یادداشت: ' + (internalNote || customerNote).slice(0, 50));
+                    } else {
+                        currentSubNoteTriggerBtn.classList.remove('text-warning');
+                        currentSubNoteTriggerBtn.classList.add('text-muted', 'opacity-50');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky';
+                        }
+                        currentSubNoteTriggerBtn.setAttribute('title', 'افزودن یادداشت / پیام به مشتری');
+                    }
+                }
+            })
+            .catch(err => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره تغییرات';
+                alert('خطا در برقراری ارتباط با سرور');
+            });
+        }
+
+        function openQuickTxNote(txId, orderIdOrTitle, btn) {
+            currentTxNoteTriggerBtn = btn || null;
+            const modalEl = document.getElementById('quickTxNoteModal');
+            if (!modalEl) return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            
+            document.getElementById('quickTxNoteTxId').value = txId;
+            document.getElementById('quickTxNoteTitle').textContent = orderIdOrTitle ? '#' + orderIdOrTitle : '#' + txId;
+            document.getElementById('quickTxNoteLoading').style.display = 'block';
+            document.getElementById('quickTxNoteForm').style.display = 'none';
+            document.getElementById('quickTxNoteAlert').classList.add('d-none');
+            document.getElementById('quickTxNoteSaveBtn').disabled = false;
+            
+            modal.show();
+            
+            fetch('/api/transaction/' + txId + '/note', {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                document.getElementById('quickTxNoteLoading').style.display = 'none';
+                if (!res.success) {
+                    document.getElementById('quickTxNoteAlert').textContent = res.error || 'خطا در واکشی یادداشت';
+                    document.getElementById('quickTxNoteAlert').classList.remove('d-none');
+                    return;
+                }
+                document.getElementById('quickTxNoteForm').style.display = 'block';
+                document.getElementById('quickTxNoteInput').value = res.internal_note || '';
+                
+                const meta = document.getElementById('quickTxNoteMeta');
+                if (res.updated_by || res.updated_at) {
+                    meta.textContent = (res.updated_by ? 'توسط: ' + res.updated_by : '') + (res.updated_at ? ' (' + res.updated_at.slice(0, 10) + ')' : '');
+                    meta.style.display = 'inline-block';
+                } else {
+                    meta.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                document.getElementById('quickTxNoteLoading').style.display = 'none';
+                document.getElementById('quickTxNoteAlert').textContent = 'خطا در ارتباط با سرور';
+                document.getElementById('quickTxNoteAlert').classList.remove('d-none');
+            });
+        }
+
+        function saveQuickTxNote() {
+            const txId = document.getElementById('quickTxNoteTxId').value;
+            const internalNote = document.getElementById('quickTxNoteInput').value;
+            const saveBtn = document.getElementById('quickTxNoteSaveBtn');
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+            
+            fetch('/api/transaction/' + txId + '/note', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    internal_note: internalNote
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره یادداشت';
+                if (!res.success) {
+                    alert(res.error || 'خطا در ذخیره یادداشت');
+                    return;
+                }
+                
+                const modalEl = document.getElementById('quickTxNoteModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                
+                if (currentTxNoteTriggerBtn) {
+                    const hasNote = Boolean(internalNote && internalNote.trim());
+                    const icon = currentTxNoteTriggerBtn.querySelector('i');
+                    if (hasNote) {
+                        currentTxNoteTriggerBtn.classList.remove('text-muted', 'opacity-50');
+                        currentTxNoteTriggerBtn.classList.add('text-warning');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky text-warning';
+                        }
+                        currentTxNoteTriggerBtn.setAttribute('title', 'یادداشت: ' + internalNote.slice(0, 50));
+                    } else {
+                        currentTxNoteTriggerBtn.classList.remove('text-warning');
+                        currentTxNoteTriggerBtn.classList.add('text-muted', 'opacity-50');
+                        if (icon) {
+                            icon.className = 'fas fa-note-sticky';
+                        }
+                        currentTxNoteTriggerBtn.setAttribute('title', 'افزودن یادداشت پرداخت');
+                    }
+                }
+            })
+            .catch(err => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ذخیره یادداشت';
+                alert('خطا در برقراری ارتباط با سرور');
+            });
+        }
+    </script>
+
+    <!-- PWA Service Worker Registration & Installation Prompt Handler -->
+    <script>
+        let baseDeferredPrompt = null;
+        const baseMobilePwaBtn = document.getElementById('baseMobilePwaInstallBtn');
+        const baseSidebarPwaBtn = document.getElementById('baseSidebarPwaInstallBtn');
+
+        function updateBasePwaButtons(show) {
+            const displayVal = show ? 'inline-flex' : 'none';
+            if (baseMobilePwaBtn) baseMobilePwaBtn.style.display = displayVal;
+            if (baseSidebarPwaBtn) baseSidebarPwaBtn.style.display = displayVal;
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            baseDeferredPrompt = e;
+            updateBasePwaButtons(true);
+        });
+
+        window.addEventListener('appinstalled', () => {
+            baseDeferredPrompt = null;
+            updateBasePwaButtons(false);
+            console.log('PWA application installed successfully.');
+        });
+
+        async function handleBasePwaInstall() {
+            if (!baseDeferredPrompt) {
+                const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIos) {
+                    alert('برای نصب این برنامه در آیفون/آیپد: دکمه Share (اشتراک‌گذاری در پایین سافاری) را لمس کرده و گزینه "Add to Home Screen" (افزودن به صفحه اصلی) را انتخاب نمایید.');
+                } else {
+                    alert('این برنامه قابلیت نصب مستقیم روی دستگاه شما را داراست. لطفاً از طریق منوی مرورگر (سه نقطه)، گزینه Install App یا Add to Home screen را انتخاب نمایید.');
+                }
+                return;
+            }
+            baseDeferredPrompt.prompt();
+            const { outcome } = await baseDeferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                baseDeferredPrompt = null;
+                updateBasePwaButtons(false);
+            }
+        }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => {
+                        console.log('PWA Service Worker registered with scope:', reg.scope);
+                    })
+                    .catch(err => {
+                        console.warn('PWA Service Worker registration skipped/failed:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>
