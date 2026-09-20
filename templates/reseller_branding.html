@@ -205,6 +205,10 @@
                                 <div class="col-md-7">
                                     <label class="form-label fw-bold small">آپلود تصویر/لوگوی اختصاصی لودینگ مینی‌اپ:</label>
                                     <input type="file" class="form-control" name="splash_image_file" accept="image/*">
+                                    <div class="input-group mt-2">
+                                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا آدرس مستقیم تصویر اسپلش:</span>
+                                        <input type="text" name="mini_app_splash_image" class="form-control font-monospace" value="{{ reseller.get('mini_app_splash_image') or '' }}" placeholder="/avatars/splash.png یا https://..." dir="ltr">
+                                    </div>
                                     <div class="form-text small text-muted">در صورت عدم آپلود، تصویر لوگوی اصلی فروشگاه شما در لودینگ نمایش داده می‌شود.</div>
                                 </div>
 
@@ -264,6 +268,10 @@
                         <div class="col-md-6">
                             <label class="form-label fw-bold">فایل لوگوی اختصاصی نماینده</label>
                             <input type="file" class="form-control" name="logo_file" accept="image/*">
+                            <div class="input-group mt-2">
+                                <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا آدرس مستقیم لوگو:</span>
+                                <input type="text" name="logo_url" class="form-control font-monospace" value="{{ reseller.get('logo_url') or '' }}" placeholder="/avatars/logo.png یا https://..." dir="ltr">
+                            </div>
                             {% if reseller.get('logo_url') %}
                                 <div class="mt-2 d-flex align-items-center gap-2 p-2 rounded bg-light border">
                                     <span class="small text-muted">لوگوی اختصاصی فعلی:</span>

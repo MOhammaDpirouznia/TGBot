@@ -33,7 +33,7 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 load_dotenv()
 
-from database import db
+from database import db, DB_DIR
 from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
     format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ,
@@ -296,8 +296,44 @@ def jinja_format_single_link(sub, template=None):
 
 # ─── سرویس هوشمند آواتار سه‌بعدی و پروفایل تلگرام (Smart 3D & Telegram Avatar Service) ───
 
-AVATAR_CACHE_DIR = Path("data/avatars")
+# مسیر پایدار ذخیره‌سازی آواتارها و لوگوها متناسب با دایرکتوری پایدار دیتابیس (Docker / Railway / VPS)
+AVATAR_CACHE_DIR = DB_DIR / "avatars"
 AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_AVATAR_DIR = Path("data/avatars")
+LOCAL_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
+# تضمین وجود پیش‌فرض‌های سیستم (Logo.webp و favicon.ico) در تمام مسیرها
+try:
+    import shutil
+    for default_asset in ["Logo.webp", "logo.webp", "favicon.ico"]:
+        src_asset = LOCAL_AVATAR_DIR / default_asset
+        dst_asset = AVATAR_CACHE_DIR / default_asset
+        if src_asset.exists() and not dst_asset.exists():
+            shutil.copy2(src_asset, dst_asset)
+        static_dst = Path("static/images") / default_asset
+        if src_asset.exists() and not static_dst.exists():
+            shutil.copy2(src_asset, static_dst)
+except Exception as e:
+    logger.warning(f"Failed to sync default assets: {e}")
+
+
+def find_avatar_file(filename: str) -> Optional[Path]:
+    """یافتن فایل آواتار یا لوگو در مسیرهای پایدار و محلی با فال‌بک مطمئن"""
+    if not filename:
+        return None
+    clean_name = Path(filename).name
+    search_dirs = [
+        AVATAR_CACHE_DIR,
+        LOCAL_AVATAR_DIR,
+        Path("static/images"),
+        Path("static"),
+        Path("data"),
+    ]
+    for d in search_dirs:
+        p = d / clean_name
+        if p.exists() and p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
 
 
 def generate_fallback_avatar_svg(identifier: str) -> str:
@@ -320,28 +356,34 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     clean_ident = raw_ident.lstrip("@").strip()
 
     # ۰۰. بررسی مستقیم نام فایل در پوشه کش آواتارها و لوگوهای آپلود شده
-    direct_file = AVATAR_CACHE_DIR / clean_ident
-    if direct_file.exists() and direct_file.is_file() and direct_file.stat().st_size > 0:
+    direct_file = find_avatar_file(clean_ident)
+    if direct_file:
         ext = direct_file.suffix.lower()
-        mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
+        mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else ("image/x-icon" if ext == ".ico" else "image/jpeg")))
         return direct_file.read_bytes(), mime
 
     # ۰. بررسی اولویت اول: تصویر اختصاصی آپلود شده یا تنظیم شده
-    custom_candidates = [
-        AVATAR_CACHE_DIR / f"custom_{clean_ident}.svg",
-        AVATAR_CACHE_DIR / f"custom_{clean_ident}.jpg",
-        AVATAR_CACHE_DIR / f"custom_{clean_ident}.png",
-        AVATAR_CACHE_DIR / f"custom_{clean_ident}.webp",
-        AVATAR_CACHE_DIR / f"custom_admin_{clean_ident}.svg",
-        AVATAR_CACHE_DIR / f"custom_admin_{clean_ident}.jpg",
-        AVATAR_CACHE_DIR / f"custom_reseller_{clean_ident}.svg",
-        AVATAR_CACHE_DIR / f"custom_reseller_{clean_ident}.jpg",
-    ]
-    for c_file in custom_candidates:
-        if c_file.exists() and c_file.stat().st_size > 0:
-            ext = c_file.suffix.lower()
-            mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
-            return c_file.read_bytes(), mime
+    for cand_prefix in [
+        f"custom_{clean_ident}",
+        f"custom_admin_{clean_ident}",
+        f"custom_reseller_{clean_ident}",
+    ]:
+        for cand_ext in [".svg", ".webp", ".png", ".jpg", ".jpeg"]:
+            found_cand = find_avatar_file(f"{cand_prefix}{cand_ext}")
+            if found_cand:
+                ext = found_cand.suffix.lower()
+                mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
+                return found_cand.read_bytes(), mime
+
+    # ۰.۵ فالبک برای درخواست‌های لوگو و اسپلش به Logo.webp و favicon.ico
+    if "logo" in clean_ident.lower() or "splash" in clean_ident.lower():
+        fallback_logo = find_avatar_file("Logo.webp") or find_avatar_file("logo.webp")
+        if fallback_logo:
+            return fallback_logo.read_bytes(), "image/webp"
+    if "favicon" in clean_ident.lower():
+        fallback_fav = find_avatar_file("favicon.ico")
+        if fallback_fav:
+            return fallback_fav.read_bytes(), "image/x-icon"
 
     try:
         # جستجو در جدول اشتراک‌ها
@@ -561,14 +603,23 @@ def preset_avatar_img(preset_id: str):
 
 @app.route("/avatars/<path:filename>")
 def serve_avatar_static_file(filename):
-    """سرویس‌دهی مستقیم و امن فایل‌های آواتار، لوگوها و فاویکون‌ها از پوشه کش"""
-    p = AVATAR_CACHE_DIR / filename
-    if p.exists() and p.is_file():
+    """سرویس‌دهی مستقیم و امن فایل‌های آواتار، لوگوها و فاویکون‌ها از پوشه کش و مسیرهای معتبر"""
+    p = find_avatar_file(filename)
+    if p and p.exists() and p.is_file():
         ext = p.suffix.lower()
         mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else ("image/x-icon" if ext == ".ico" else "image/jpeg")))
         resp = Response(p.read_bytes(), mimetype=mime)
         resp.headers["Cache-Control"] = "public, max-age=259200"
         return resp
+    # در صورت عدم وجود فایل و درخواست لوگو یا اسپلش، فالبک تضمینی به Logo.webp
+    if "logo" in filename.lower() or "splash" in filename.lower():
+        fallback_logo = find_avatar_file("Logo.webp") or find_avatar_file("logo.webp")
+        if fallback_logo:
+            return Response(fallback_logo.read_bytes(), mimetype="image/webp", headers={"Cache-Control": "public, max-age=86400"})
+    elif "favicon" in filename.lower():
+        fallback_fav = find_avatar_file("favicon.ico")
+        if fallback_fav:
+            return Response(fallback_fav.read_bytes(), mimetype="image/x-icon", headers={"Cache-Control": "public, max-age=86400"})
     abort(404)
 
 
@@ -615,6 +666,8 @@ DEFAULT_HIDDIPLUS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 
 
 @app.route("/api/miniapp/logo")
+@app.route("/miniapp/splash-image")
+@app.route("/miniapp/logo")
 def miniapp_logo():
     """
     سرویس‌دهی تضمینی تصویر لوگوی لودینگ مینی‌اپ بدون احتمال خطای ۴۰۴ یا نمایش آیکون شکسته.
@@ -630,36 +683,27 @@ def miniapp_logo():
         r_info = db.get_reseller(int(r_arg)) or {}
         custom_setting = r_info.get("mini_app_splash_image") or r_info.get("logo_url")
     if not custom_setting:
-        custom_setting = db.get_setting("mini_app_splash_image")
+        custom_setting = db.get_setting("mini_app_splash_image") or db.get_setting("store_logo") or db.get_setting("logo_url")
+
+    # اگر مقدار خالی بود یا پیش‌فرض قدیمی hiddiplus بود، به Logo.webp ارجاع داده می‌شود
+    if not custom_setting or "hiddiplus" in str(custom_setting).lower():
+        custom_setting = "/avatars/Logo.webp"
 
     if custom_setting:
         raw = str(custom_setting).strip()
         if raw.startswith("http://") or raw.startswith("https://"):
             return redirect(raw)
-        clean_path = raw.split("?")[0].lstrip("/")
-        for check_path in [
-            Path(clean_path),
-            AVATAR_CACHE_DIR / Path(clean_path).name,
-            Path("static/images") / Path(clean_path).name,
-        ]:
-            if check_path.exists() and check_path.is_file() and check_path.stat().st_size > 0:
-                ext = check_path.suffix.lower()
-                mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
-                return Response(check_path.read_bytes(), mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
+        clean_name = Path(raw.split("?")[0]).name
+        found = find_avatar_file(clean_name)
+        if found:
+            ext = found.suffix.lower()
+            mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
+            return Response(found.read_bytes(), mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
 
-    # ۲. بررسی فایل‌های تصویری موجود در پوشه‌های static یا avatars
-    for candidate in [
-        Path("static/images/hiddiplus_logo.jpg"),
-        Path("static/images/hiddiplus_splash.jpg"),
-        AVATAR_CACHE_DIR / "hiddiplus_logo.jpg",
-        AVATAR_CACHE_DIR / "hiddiplus_splash.jpg",
-        Path("static/images/hiddiplus_logo.svg"),
-        AVATAR_CACHE_DIR / "hiddiplus_logo.svg",
-    ]:
-        if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
-            ext = candidate.suffix.lower()
-            mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
-            return Response(candidate.read_bytes(), mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
+    # ۲. فالبک مستقیم به Logo.webp پیش‌فرض سامانه
+    default_logo_file = find_avatar_file("Logo.webp") or find_avatar_file("logo.webp")
+    if default_logo_file:
+        return Response(default_logo_file.read_bytes(), mimetype="image/webp", headers={"Cache-Control": "public, max-age=86400"})
 
     # ۳. فالبک قطعی درون کدی با هدر کش
     return Response(DEFAULT_HIDDIPLUS_SVG, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
@@ -3374,8 +3418,8 @@ def check_custom_domain():
     if reseller:
         g.custom_reseller = reseller
         g.brand_title = reseller.get("brand_title") or reseller.get("name") or "فروشگاه اشتراک"
-        g.logo_url = reseller.get("logo_url")
-        g.favicon_url = reseller.get("favicon_url")
+        g.logo_url = reseller.get("logo_url") or db.get_setting("store_logo") or db.get_setting("logo_url") or "/avatars/Logo.webp"
+        g.favicon_url = reseller.get("favicon_url") or db.get_setting("store_favicon") or db.get_setting("favicon_url") or "/avatars/favicon.ico"
         g.primary_color = reseller.get("primary_color")
         g.footer_text = reseller.get("footer_text")
         g.support_username = reseller.get("support_username")
@@ -3383,8 +3427,8 @@ def check_custom_domain():
     else:
         g.custom_reseller = None
         g.brand_title = None
-        g.logo_url = None
-        g.favicon_url = None
+        g.logo_url = db.get_setting("store_logo") or db.get_setting("logo_url") or "/avatars/Logo.webp"
+        g.favicon_url = db.get_setting("store_favicon") or db.get_setting("favicon_url") or "/avatars/favicon.ico"
         g.primary_color = None
         g.footer_text = None
         g.support_username = None
@@ -3477,8 +3521,8 @@ def inject_global_branding():
     
     # تنظیمات کلی سیستم و فروشگاه
     system_store_name = db.get_setting("store_name", "سامانه هوشمند اینترنت پرو")
-    system_store_logo = db.get_setting("store_logo", "")
-    system_store_favicon = db.get_setting("store_favicon", "")
+    system_store_logo = db.get_setting("store_logo", "") or db.get_setting("logo_url", "") or "/avatars/Logo.webp"
+    system_store_favicon = db.get_setting("store_favicon", "") or db.get_setting("favicon_url", "") or "/avatars/favicon.ico"
     system_copyright = db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026")
     system_primary_color = db.get_setting("store_primary_color", "#4f46e5")
     system_brand_header_style = db.get_setting("brand_header_style", "style_glass")
@@ -3509,8 +3553,8 @@ def inject_global_branding():
 
             branding = {
                 "brand_title": final_brand_title,
-                "logo_url": final_logo_url,
-                "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+                "logo_url": final_logo_url or "/avatars/Logo.webp",
+                "favicon_url": r_data.get("favicon_url") or system_store_favicon or "/avatars/favicon.ico",
                 "primary_color": r_data.get("primary_color") or system_primary_color,
                 "footer_text": r_data.get("footer_text") or system_copyright,
                 "store_version": store_version,
@@ -3540,8 +3584,8 @@ def inject_global_branding():
 
         branding = {
             "brand_title": final_brand_title,
-            "logo_url": final_logo_url,
-            "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+            "logo_url": final_logo_url or "/avatars/Logo.webp",
+            "favicon_url": r_data.get("favicon_url") or system_store_favicon or "/avatars/favicon.ico",
             "primary_color": r_data.get("primary_color") or system_primary_color,
             "footer_text": r_data.get("footer_text") or system_copyright,
             "store_version": store_version,
@@ -3560,8 +3604,8 @@ def inject_global_branding():
         admin_tutorial_domain = db.get_setting("tutorial_domain", "")
         branding = {
             "brand_title": system_store_name,
-            "logo_url": system_store_logo,
-            "favicon_url": system_store_favicon,
+            "logo_url": system_store_logo or "/avatars/Logo.webp",
+            "favicon_url": system_store_favicon or "/avatars/favicon.ico",
             "primary_color": system_primary_color,
             "footer_text": system_copyright,
             "store_version": store_version,
@@ -13504,11 +13548,32 @@ def settings():
             elif "store_logo_file" in request.files:
                 file = request.files["store_logo_file"]
                 if file and file.filename:
-                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "webp"
                     fn = f"system_store_logo_{int(time.time())}.{ext}"
                     fp = AVATAR_CACHE_DIR / fn
                     file.save(fp)
+                    try:
+                        shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+                    except Exception:
+                        pass
                     store_logo_url = url_for("telegram_avatar", identifier=fn)
+
+            existing_store_favicon = db.get_setting("store_favicon", "") or db.get_setting("favicon_url", "")
+            store_favicon_url = request.form.get("store_favicon_url", existing_store_favicon).strip()
+            if request.form.get("clear_store_favicon"):
+                store_favicon_url = ""
+            elif "store_favicon_file" in request.files:
+                f_file = request.files["store_favicon_file"]
+                if f_file and f_file.filename:
+                    ext = f_file.filename.rsplit(".", 1)[-1].lower() if "." in f_file.filename else "ico"
+                    fn = f"system_store_favicon_{int(time.time())}.{ext}"
+                    fp = AVATAR_CACHE_DIR / fn
+                    f_file.save(fp)
+                    try:
+                        shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+                    except Exception:
+                        pass
+                    store_favicon_url = url_for("telegram_avatar", identifier=fn)
 
             if request.form.get("clear_version_custom_icon"):
                 version_custom_icon = ""
@@ -13519,6 +13584,10 @@ def settings():
                     fn = f"system_version_icon_{int(time.time())}.{ext}"
                     fp = AVATAR_CACHE_DIR / fn
                     v_file.save(fp)
+                    try:
+                        shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+                    except Exception:
+                        pass
                     version_custom_icon = url_for("telegram_avatar", identifier=fn)
 
             if store_name:
@@ -13532,6 +13601,9 @@ def settings():
             if store_primary_color:
                 db.save_setting("store_primary_color", store_primary_color)
             db.save_setting("store_logo", store_logo_url)
+            db.save_setting("logo_url", store_logo_url)
+            db.save_setting("store_favicon", store_favicon_url)
+            db.save_setting("favicon_url", store_favicon_url)
             db.save_setting("brand_header_style", brand_header_style)
             db.save_setting("version_icon_type", version_icon_type)
             db.save_setting("version_custom_icon", version_custom_icon)
@@ -13690,16 +13762,23 @@ def settings():
             db.save_setting("mini_app_splash_subtitle", splash_subtitle)
             db.save_setting("mini_app_splash_duration", splash_duration)
 
-            if "splash_image_file" in request.files:
+            if request.form.get("clear_splash_image"):
+                db.save_setting("mini_app_splash_image", "")
+            elif "splash_image_file" in request.files and request.files["splash_image_file"].filename:
                 file = request.files["splash_image_file"]
-                if file and file.filename:
-                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-                    if ext in ["jpg", "jpeg", "png", "webp", "gif"]:
-                        fn = f"mini_app_splash_{int(time.time())}.{ext}"
-                        fp = AVATAR_CACHE_DIR / fn
-                        file.save(fp)
-                        splash_image_url = url_for("telegram_avatar", identifier=fn)
-                        db.save_setting("mini_app_splash_image", splash_image_url)
+                ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "webp"
+                if ext in ["jpg", "jpeg", "png", "webp", "gif", "svg"]:
+                    fn = f"mini_app_splash_{int(time.time())}.{ext}"
+                    fp = AVATAR_CACHE_DIR / fn
+                    file.save(fp)
+                    try:
+                        shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+                    except Exception:
+                        pass
+                    splash_image_url = url_for("telegram_avatar", identifier=fn)
+                    db.save_setting("mini_app_splash_image", splash_image_url)
+            elif request.form.get("mini_app_splash_image"):
+                db.save_setting("mini_app_splash_image", request.form.get("mini_app_splash_image").strip())
 
             try:
                 from telegram_menu_helper import sync_all_bots_menu_button
@@ -13745,8 +13824,10 @@ def settings():
         "store_github_repo": db.get_setting("store_github_repo", ""),
         "store_copyright": db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026"),
         "store_primary_color": db.get_setting("store_primary_color", "#4f46e5"),
-        "store_logo": db.get_setting("store_logo", ""),
-        "logo_url": db.get_setting("store_logo", ""),
+        "store_logo": db.get_setting("store_logo", "") or db.get_setting("logo_url", ""),
+        "logo_url": db.get_setting("store_logo", "") or db.get_setting("logo_url", "") or "/avatars/Logo.webp",
+        "store_favicon": db.get_setting("store_favicon", "") or db.get_setting("favicon_url", ""),
+        "favicon_url": db.get_setting("store_favicon", "") or db.get_setting("favicon_url", "") or "/avatars/favicon.ico",
         "brand_header_style": db.get_setting("brand_header_style", "style_glass"),
         "version_icon_type": db.get_setting("version_icon_type", "branch"),
         "version_custom_icon": db.get_setting("version_custom_icon", ""),
@@ -13783,6 +13864,9 @@ def settings():
         "portal_palette": db.get_setting("portal_palette", "inherit")
     }
     chat_settings = db.get_chat_settings()
+    raw_admin_splash = db.get_setting("mini_app_splash_image", "")
+    if not raw_admin_splash or "hiddiplus" in str(raw_admin_splash).lower():
+        raw_admin_splash = "/avatars/Logo.webp"
     mini_app_config = {
         "menu_button_enabled": str(db.get_setting("mini_app_menu_button_enabled", "1")).lower() in ("1", "true"),
         "menu_button_text": db.get_setting("mini_app_menu_button_text", "ورود به برنامه | HiddiPlus") or "ورود به برنامه | HiddiPlus",
@@ -13791,7 +13875,7 @@ def settings():
         "splash_enabled": str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true"),
         "splash_title": db.get_setting("mini_app_splash_title", "HiddiPlus") or "HiddiPlus",
         "splash_subtitle": db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت") or "سرویس اتصال هوشمند و پرسرعت",
-        "splash_image": db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg") or "/static/images/hiddiplus_splash.jpg",
+        "splash_image": raw_admin_splash,
         "splash_duration": int(db.get_setting("mini_app_splash_duration", "1800") or 1800),
     }
 
@@ -18530,14 +18614,17 @@ def reseller_branding():
         # بررسی پاک‌سازی یا آپلود لوگوی اختصاصی
         if request.form.get("clear_logo"):
             logo_url = ""
-        elif "logo_file" in request.files:
+        elif "logo_file" in request.files and request.files["logo_file"].filename:
             file = request.files["logo_file"]
-            if file and file.filename:
-                ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
-                fn = f"reseller_{reseller_id}_logo_{int(time.time())}.{ext}"
-                fp = AVATAR_CACHE_DIR / fn
-                file.save(fp)
-                logo_url = url_for("telegram_avatar", identifier=fn)
+            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "webp"
+            fn = f"reseller_{reseller_id}_logo_{int(time.time())}.{ext}"
+            fp = AVATAR_CACHE_DIR / fn
+            file.save(fp)
+            try:
+                shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+            except Exception:
+                pass
+            logo_url = url_for("telegram_avatar", identifier=fn)
 
         if not request.form.get("clear_logo") and not logo_url and reseller and reseller.get("logo_url"):
             logo_url = reseller["logo_url"]
@@ -18552,17 +18639,20 @@ def reseller_branding():
         miniapp_buy_enabled = 1 if request.form.get("miniapp_buy_enabled") else 0
 
         # بررسی پاک‌سازی یا آپلود تصویر/لوگوی اسپلش مینی‌اپ
-        mini_app_splash_image = ""
+        mini_app_splash_image = request.form.get("mini_app_splash_image", "").strip()
         if request.form.get("clear_splash_image"):
             mini_app_splash_image = ""
-        elif "splash_image_file" in request.files:
+        elif "splash_image_file" in request.files and request.files["splash_image_file"].filename:
             s_file = request.files["splash_image_file"]
-            if s_file and s_file.filename:
-                ext = s_file.filename.rsplit(".", 1)[-1].lower() if "." in s_file.filename else "png"
-                fn = f"reseller_{reseller_id}_splash_{int(time.time())}.{ext}"
-                fp = AVATAR_CACHE_DIR / fn
-                s_file.save(fp)
-                mini_app_splash_image = url_for("telegram_avatar", identifier=fn)
+            ext = s_file.filename.rsplit(".", 1)[-1].lower() if "." in s_file.filename else "webp"
+            fn = f"reseller_{reseller_id}_splash_{int(time.time())}.{ext}"
+            fp = AVATAR_CACHE_DIR / fn
+            s_file.save(fp)
+            try:
+                shutil.copy2(fp, LOCAL_AVATAR_DIR / fn)
+            except Exception:
+                pass
+            mini_app_splash_image = url_for("telegram_avatar", identifier=fn)
 
         if not request.form.get("clear_splash_image") and not mini_app_splash_image and reseller and reseller.get("mini_app_splash_image"):
             mini_app_splash_image = reseller["mini_app_splash_image"]
@@ -20535,6 +20625,125 @@ def reseller_apply():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# مسیرهای ثبت‌نام و ورود مشتریان جدید (New Customer Registration & Auth)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/register", methods=["GET", "POST"])
+@app.route("/signup", methods=["GET", "POST"])
+@app.route("/customer/register", methods=["GET", "POST"])
+def customer_register():
+    """صفحه و فرم عمومی ثبت‌نام مشتری جدید با پشتیبانی از کادر معرف، دامنه اختصاصی و اعتبارسنجی ضد تقلب"""
+    r_param = request.args.get("r") or request.form.get("reseller_id")
+    effective_r_id = 0
+    if g.get("custom_reseller") and g.custom_reseller.get("id"):
+        effective_r_id = int(g.custom_reseller["id"])
+    elif r_param:
+        try:
+            effective_r_id = int(r_param)
+        except (ValueError, TypeError):
+            effective_r_id = 0
+
+    prefilled_ref = request.args.get("ref", "").strip()
+    if effective_r_id == 0 and prefilled_ref:
+        ref_lookup = db.lookup_customer_referrer_by_phone(prefilled_ref)
+        if ref_lookup and ref_lookup.get("reseller_id"):
+            effective_r_id = int(ref_lookup["reseller_id"])
+
+    r_info = db.get_reseller(effective_r_id) or {} if effective_r_id > 0 else {}
+    brand_title = r_info.get("brand_title") or r_info.get("name") or db.get_setting("brand_title") or db.get_setting("store_name") or "فروشگاه اشتراک"
+    logo_url = r_info.get("logo_url") or db.get_setting("store_logo") or db.get_setting("logo_url") or "/avatars/Logo.webp"
+    favicon_url = r_info.get("favicon_url") or db.get_setting("store_favicon") or db.get_setting("favicon_url") or "/avatars/favicon.ico"
+    portal_subtitle = r_info.get("portal_subtitle") or db.get_setting("portal_subtitle") or "عضویت و ایجاد حساب کاربری مشتری"
+    primary_color = r_info.get("primary_color") or db.get_setting("primary_color") or "#4f46e5"
+    support_username = r_info.get("support_username") or db.get_setting("support_username") or ""
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        phone = request.form.get("phone", "").strip()
+        password = request.form.get("password", "").strip()
+        referrer_phone = request.form.get("referrer_phone", "").strip() or prefilled_ref
+
+        res = db.register_customer_user(
+            phone=phone,
+            username=username,
+            password=password,
+            full_name=username,
+            referrer_phone=referrer_phone,
+            reseller_id=effective_r_id
+        )
+
+        if not res.get("success"):
+            flash(res.get("message") or "خطا در ثبت‌نام.", "danger")
+            return render_template(
+                "customer_register.html",
+                brand_title=brand_title,
+                logo_url=logo_url,
+                favicon_url=favicon_url,
+                portal_subtitle=portal_subtitle,
+                primary_color=primary_color,
+                support_username=support_username,
+                reseller_id=effective_r_id,
+                prefilled_ref=referrer_phone,
+                prefilled_name=username,
+                prefilled_phone=phone
+            )
+
+        synthetic_tg_id = res.get("telegram_id")
+        user_phone = res.get("phone_number")
+        session["customer_phone"] = user_phone
+        session["customer_tg_id"] = synthetic_tg_id
+        session["customer_reseller_id"] = res.get("reseller_id", effective_r_id)
+
+        flash(f"🎉 خوش آمدید {username}! حساب کاربری شما با موفقیت ایجاد شد.", "success")
+        return redirect(url_for("customer_portal", telegram_id=synthetic_tg_id, r=effective_r_id))
+
+    return render_template(
+        "customer_register.html",
+        brand_title=brand_title,
+        logo_url=logo_url,
+        favicon_url=favicon_url,
+        portal_subtitle=portal_subtitle,
+        primary_color=primary_color,
+        support_username=support_username,
+        reseller_id=effective_r_id,
+        prefilled_ref=prefilled_ref
+    )
+
+
+@app.route("/api/customer/lookup-referrer", methods=["GET", "POST"])
+def api_customer_lookup_referrer():
+    """استعلام آنلاین مشخصات معرف با شماره تماس بر اساس اولویت قلمرو نماینده یا ماتریس هوشمند"""
+    phone = (request.args.get("phone") or request.form.get("phone") or "").strip()
+    r_val = request.args.get("r") or request.form.get("r")
+    r_id = None
+    if g.get("custom_reseller"):
+        r_id = g.custom_reseller.get("id")
+    elif r_val:
+        try:
+            r_id = int(r_val)
+        except (ValueError, TypeError):
+            r_id = None
+
+    if not phone:
+        return jsonify({"success": False, "found": False, "message": "شماره تماس ارسال نشده است."})
+
+    referrer_info = db.lookup_customer_referrer_by_phone(phone, domain_reseller_id=r_id)
+    if referrer_info:
+        name = referrer_info.get("account_name") or "کاربر گرامی"
+        return jsonify({
+            "success": True,
+            "found": True,
+            "referrer_name": name,
+            "reseller_id": referrer_info.get("reseller_id", 0)
+        })
+    return jsonify({
+        "success": True,
+        "found": False,
+        "message": "معرف با این شماره در سیستم یافت نشد."
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # مسیر اختصاصی وب‌هوک دریافت پیامک‌های بانک (Smart Bank SMS Webhook)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -21035,16 +21244,43 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     با تفکیک کامل و ایزوله نماینده و مدیریت
     """
     if request:
-        tg_id_arg = request.args.get("tg_id") or request.args.get("id")
-        if tg_id_arg and str(tg_id_arg).isdigit():
-            telegram_id = int(tg_id_arg)
+        tg_id_arg = request.args.get("tg_id") or request.args.get("id") or request.args.get("telegram_id")
+        if tg_id_arg is not None:
+            try:
+                telegram_id = int(str(tg_id_arg).strip())
+            except (ValueError, TypeError):
+                pass
+        if not telegram_id and session.get("customer_tg_id"):
+            try:
+                telegram_id = int(session.get("customer_tg_id"))
+            except (ValueError, TypeError):
+                pass
+
         r_arg = request.args.get("r") or request.args.get("reseller_id")
-        if r_arg and str(r_arg).isdigit():
-            reseller_id = int(r_arg)
+        if r_arg is not None:
+            try:
+                reseller_id = int(str(r_arg).strip())
+            except (ValueError, TypeError):
+                pass
+        if reseller_id is None and session.get("customer_reseller_id"):
+            try:
+                reseller_id = int(session.get("customer_reseller_id"))
+            except (ValueError, TypeError):
+                pass
+        if reseller_id is None and g.get("custom_reseller") and g.custom_reseller.get("id"):
+            reseller_id = int(g.custom_reseller["id"])
+
         if not token:
             token = request.args.get("token") or request.args.get("sub_id")
         if not is_webapp and (request.args.get("tg_id") or request.path.startswith("/webapp")):
             is_webapp = True
+
+    # بازیابی اطلاعات حساب کاربری مشتری در صورت ثبت‌نام وب یا ورود با شماره
+    cust_user = None
+    if telegram_id:
+        cust_user = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
+    if not cust_user and session.get("customer_phone"):
+        cust_user = db.get_customer_user_by_phone(session.get("customer_phone"), reseller_id)
 
     sub_row = None
     conn = db.get_connection()
@@ -21093,11 +21329,19 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     is_new_customer = False
     if not sub_row:
         if is_webapp or telegram_id:
-            # کاربر بدون اشتراک در مینی‌اپ (حالت خرید اشتراک جدید)
+            # کاربر بدون اشتراک در مینی‌اپ یا پرتال وب (حالت خرید اشتراک جدید)
             is_new_customer = True
+            acc_name = "کاربر گرامی"
+            cust_phone = ""
+            if cust_user:
+                acc_name = cust_user.get("full_name") or cust_user.get("username") or "کاربر گرامی"
+                cust_phone = cust_user.get("phone_number") or ""
+                if not reseller_id and cust_user.get("reseller_id"):
+                    reseller_id = int(cust_user["reseller_id"])
             sub = {
                 "id": 0,
-                "account_name": "کاربر گرامی",
+                "account_name": acc_name,
+                "phone_number": cust_phone,
                 "data_limit": 0,
                 "data_used": 0,
                 "status": "none",
@@ -21124,6 +21368,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             reseller_id = sub.get("reseller_id") or 0
         if not telegram_id:
             telegram_id = sub.get("telegram_id") or 0
+        if cust_user and not sub.get("phone_number") and cust_user.get("phone_number"):
+            sub["phone_number"] = cust_user.get("phone_number")
 
         # روزهای مانده از تابع غنی‌ساز هیدیفای
         days_left = sub.get("remaining_days", sub.get("duration", 30))
@@ -21281,7 +21527,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     # بررسی برندینگ و نماینده
     brand_title = db.get_setting("portal_title") or db.get_setting("store_name") or "فروشگاه اینترنت آزاد"
     portal_subtitle = db.get_setting("portal_subtitle") or "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"
-    logo_url = db.get_setting("store_logo")
+    logo_url = db.get_setting("store_logo") or db.get_setting("logo_url") or "/avatars/Logo.webp"
+    favicon_url = db.get_setting("store_favicon") or db.get_setting("favicon_url") or "/avatars/favicon.ico"
     support_username = db.get_setting("support_username")
     support_phone = db.get_setting("support_phone")
     portal_layout = db.get_setting("portal_layout", "classic")
@@ -21292,6 +21539,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         brand_title = r_info.get("portal_title") or r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or brand_title
         portal_subtitle = r_info.get("portal_subtitle") or portal_subtitle
         logo_url = r_info.get("logo_url") or logo_url
+        favicon_url = r_info.get("favicon_url") or favicon_url
         support_username = r_info.get("support_username") or support_username
         support_phone = r_info.get("support_phone") or r_info.get("phone") or support_phone
         if r_info.get("portal_layout"):
@@ -21367,13 +21615,17 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
         mini_app_splash_title = r_info.get("mini_app_splash_title") or r_info.get("brand_name") or r_info.get("portal_title") or r_info.get("brand_title") or r_info.get("name") or brand_title
         mini_app_splash_subtitle = r_info.get("mini_app_splash_subtitle") or r_info.get("portal_subtitle") or "پورتال کاربری و استعلام وضعیت اشتراک"
-        mini_app_splash_image = r_info.get("mini_app_splash_image") or r_info.get("logo_url") or ""
+        mini_app_splash_image = r_info.get("mini_app_splash_image") or r_info.get("logo_url") or logo_url or "/avatars/Logo.webp"
+        if not mini_app_splash_image or "hiddiplus" in str(mini_app_splash_image).lower():
+            mini_app_splash_image = "/avatars/Logo.webp"
         mini_app_splash_duration = 1800
     else:
         mini_app_splash_enabled = str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true")
-        mini_app_splash_title = db.get_setting("mini_app_splash_title", "HiddiPlus")
-        mini_app_splash_subtitle = db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت")
-        mini_app_splash_image = db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg")
+        mini_app_splash_title = db.get_setting("mini_app_splash_title", brand_title or "HiddiPlus")
+        mini_app_splash_subtitle = db.get_setting("mini_app_splash_subtitle", portal_subtitle or "سرویس اتصال هوشمند و پرسرعت")
+        mini_app_splash_image = db.get_setting("mini_app_splash_image") or logo_url or "/avatars/Logo.webp"
+        if not mini_app_splash_image or "hiddiplus" in str(mini_app_splash_image).lower():
+            mini_app_splash_image = "/avatars/Logo.webp"
         try:
             mini_app_splash_duration = int(db.get_setting("mini_app_splash_duration", "1800"))
         except Exception:
@@ -21402,10 +21654,13 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     customer_ref_cfg = db.get_customer_referral_config(effective_r_id or 0)
     customer_ref_enabled = bool(customer_ref_cfg.get("is_enabled"))
     customer_ref_link = ""
+    customer_web_ref_link = ""
+    customer_ref_code = ""
     customer_ref_stats = {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0, "wallet_balance": user_wallet}
 
     if customer_ref_enabled:
         bot_username = ""
+        r_info_ref = {}
         if effective_r_id and int(effective_r_id) > 0:
             r_info_ref = db.get_reseller(int(effective_r_id)) or {}
             bot_username = (r_info_ref.get("bot_username") or "").replace("@", "").strip()
@@ -21413,10 +21668,42 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             bot_username = (db.get_setting("bot_username") or "").replace("@", "").strip()
 
         target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
-        if target_tg_id and bot_username:
-            customer_ref_link = f"https://t.me/{bot_username}?start=ref_{target_tg_id}"
+        if target_tg_id:
             customer_ref_stats = db.get_customer_referral_stats(target_tg_id, reseller_id=effective_r_id or 0)
             customer_ref_stats["wallet_balance"] = user_wallet
+
+        # استخراج شماره تماس یا کد معرف مشتری
+        cust_phone = (cust_user.get("phone_number") if cust_user else "") or (sub.get("phone_number") if sub else "") or session.get("customer_phone", "")
+        if cust_phone:
+            customer_ref_code = cust_phone
+        elif target_tg_id and target_tg_id > 0:
+            customer_ref_code = str(target_tg_id)
+        elif target_tg_id and target_tg_id < 0:
+            customer_ref_code = f"0{abs(target_tg_id)}"
+
+        # ساخت لینک وب‌سایت کسب درآمد بر اساس دامنه اختصاصی یا دامنه سرور
+        base_domain = ""
+        if g.get("custom_reseller") and g.custom_reseller.get("id"):
+            base_domain = request.host_url.rstrip('/') if request else ""
+        elif effective_r_id and int(effective_r_id) > 0 and r_info_ref.get("custom_domain"):
+            r_dom = r_info_ref["custom_domain"].strip()
+            base_domain = f"https://{r_dom}" if not r_dom.startswith("http") else r_dom
+        else:
+            adm_dom = db.get_setting("custom_domain")
+            if adm_dom:
+                base_domain = f"https://{adm_dom}" if not adm_dom.startswith("http") else adm_dom
+            elif request:
+                base_domain = request.host_url.rstrip('/')
+
+        if base_domain and customer_ref_code:
+            if effective_r_id and int(effective_r_id) > 0 and not (g.get("custom_reseller") and int(g.custom_reseller.get("id", 0)) == int(effective_r_id)):
+                customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}&r={effective_r_id}"
+            else:
+                customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}"
+
+        # لینک دعوت در ربات تلگرام
+        if target_tg_id and bot_username:
+            customer_ref_link = f"https://t.me/{bot_username}?start=ref_{target_tg_id}"
         elif bot_username:
             customer_ref_link = f"https://t.me/{bot_username}"
 
@@ -21427,6 +21714,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         brand_title=brand_title,
         portal_subtitle=portal_subtitle,
         logo_url=logo_url,
+        favicon_url=favicon_url,
         support_username=support_username,
         support_phone=support_phone,
         days_left=days_left,
@@ -21469,6 +21757,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         mini_app_splash_duration=mini_app_splash_duration,
         customer_ref_enabled=customer_ref_enabled,
         customer_ref_link=customer_ref_link,
+        customer_web_ref_link=customer_web_ref_link,
+        customer_ref_code=customer_ref_code,
         customer_ref_stats=customer_ref_stats,
         customer_ref_cfg=customer_ref_cfg,
         portal_banners=db.get_portal_customer_banners(
@@ -21491,10 +21781,16 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 @app.route("/renew/<token>", methods=["GET"])
 @app.route("/portal", methods=["GET"])
 @app.route("/portal/<token>", methods=["GET"])
-@app.route("/portal/user/<int:telegram_id>", methods=["GET"])
-def customer_portal(token: str = None, telegram_id: int = None):
+@app.route("/portal/user/<telegram_id>", methods=["GET"])
+def customer_portal(token: str = None, telegram_id=None):
     """روت اصلی پورتال دائمی و استعلام وضعیت و تمدید اشتراک مشتری"""
-    return _handle_customer_portal_view(token=token, telegram_id=telegram_id)
+    parsed_tg_id = None
+    if telegram_id is not None:
+        try:
+            parsed_tg_id = int(str(telegram_id).strip())
+        except (ValueError, TypeError):
+            pass
+    return _handle_customer_portal_view(token=token, telegram_id=parsed_tg_id)
 
 
 @app.route("/<portal_prefix>/<token>", methods=["GET"])
@@ -22062,15 +22358,42 @@ def customer_buy_new_plan():
     """
     plan_id = request.form.get("plan_id")
     payment_method = request.form.get("payment_method", "card_to_card").strip()
-    reseller_id = int(request.form.get("reseller_id") or 0)
-    telegram_id = int(request.form.get("telegram_id") or 0)
+    reseller_id = 0
+    try:
+        reseller_id = int(request.form.get("reseller_id") or 0)
+    except (ValueError, TypeError):
+        reseller_id = 0
+
+    telegram_id = 0
+    try:
+        telegram_id = int(request.form.get("telegram_id") or 0)
+    except (ValueError, TypeError):
+        telegram_id = 0
+
+    if not telegram_id and session.get("customer_tg_id"):
+        try:
+            telegram_id = int(session.get("customer_tg_id"))
+        except (ValueError, TypeError):
+            pass
+
+    if not reseller_id and session.get("customer_reseller_id"):
+        try:
+            reseller_id = int(session.get("customer_reseller_id"))
+        except (ValueError, TypeError):
+            pass
+
+    if not reseller_id and g.get("custom_reseller") and g.custom_reseller.get("id"):
+        reseller_id = int(g.custom_reseller["id"])
+
     token = request.form.get("token", "").strip()
-    is_webapp_req = str(request.form.get("is_webapp", "1")).strip() in ("1", "true", "True")
+    is_webapp_req = str(request.form.get("is_webapp", "0")).strip() in ("1", "true", "True")
+    if not is_webapp_req and request.args.get("tg_id"):
+        is_webapp_req = True
 
     if is_webapp_req:
         target_return_url = url_for("telegram_webapp", tg_id=telegram_id, r=reseller_id) if telegram_id else url_for("telegram_webapp", r=reseller_id)
     else:
-        target_return_url = url_for("customer_portal", token=token) if token else url_for("customer_portal")
+        target_return_url = url_for("customer_portal", token=token) if token else (url_for("customer_portal", telegram_id=telegram_id, r=reseller_id) if telegram_id else url_for("customer_portal"))
 
     # بررسی مجاز بودن خرید اشتراک جدید در پرتال یا مینی‌اپ با ایزولاسیون کامل بین مدیریت و نمایندگان
     if reseller_id > 0:
@@ -22091,6 +22414,10 @@ def customer_buy_new_plan():
 
     raw_discount_code = request.form.get("discount_code", "").strip().upper()
     account_name = request.form.get("account_name", "").strip()
+    if not account_name and telegram_id:
+        u_info = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
+        if u_info:
+            account_name = u_info.get("full_name") or u_info.get("username") or u_info.get("phone_number")
     if not account_name:
         account_name = f"user_{telegram_id}_{int(time.time()) % 10000}" if telegram_id else f"client_{int(time.time())}"
 
@@ -23591,6 +23918,9 @@ def internal_server_error(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
     import traceback
     from datetime import datetime
     with open('error_log.txt', 'a', encoding='utf-8') as f:

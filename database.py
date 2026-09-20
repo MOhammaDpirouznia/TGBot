@@ -81,6 +81,39 @@ logger.info(f"Database path: {DB_PATH}")
 logger.info(f"Data directory: {DB_DIR}")
 
 
+def normalize_phone_number(raw_phone: str) -> Optional[str]:
+    """نرمال‌سازی و استانداردسازی شماره تماس به فرمت 09xxxxxxxxx یا بین‌المللی یکدست"""
+    if not raw_phone:
+        return None
+    persian_arabic_digits = {
+        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+        '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+        '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+    }
+    s = str(raw_phone).strip()
+    for pa, en in persian_arabic_digits.items():
+        s = s.replace(pa, en)
+
+    cleaned = re.sub(r"[^\d+]", "", s)
+    if cleaned.startswith("+98"):
+        cleaned = "0" + cleaned[3:]
+    elif cleaned.startswith("0098"):
+        cleaned = "0" + cleaned[4:]
+    elif cleaned.startswith("98") and len(cleaned) == 12:
+        cleaned = "0" + cleaned[2:]
+    elif not cleaned.startswith("0") and len(cleaned) == 10 and cleaned.startswith("9"):
+        cleaned = "0" + cleaned
+
+    # بررسی شماره‌های موبایل ایران
+    if len(cleaned) == 11 and cleaned.startswith("09") and cleaned.isdigit():
+        return cleaned
+    # شماره بین‌المللی معتبر (با پیش‌شماره کشور)
+    if cleaned.startswith("+") and len(cleaned) >= 10 and cleaned[1:].isdigit():
+        return cleaned
+    return None
+
+
 class Database:
     """کلاس مدیریت دیتابیس"""
 
@@ -1513,6 +1546,20 @@ class Database:
         except Exception as e_crs:
             logger.warning(f"Error initializing customer_referral_settings: {e_crs}")
 
+        # ستون‌های ثبت‌نام وب مشتریان
+        for u_web_col in [
+            ("password_hash", "TEXT DEFAULT NULL"),
+            ("full_name", "TEXT DEFAULT NULL"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {u_web_col[0]} {u_web_col[1]}")
+            except Exception:
+                pass
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_phone_reseller ON users(phone_number, reseller_id)")
+        except Exception:
+            pass
+
         # تصحیح خودکار شناسه نماینده برای اشتراک‌های قدیمی که تگ نماینده در کامنت دارند اما reseller_id آن‌ها خالی است
         try:
             import re
@@ -2599,7 +2646,7 @@ class Database:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor.execute("SELECT * FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -2931,7 +2978,7 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT id, wallet_balance FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor.execute("SELECT id, telegram_id, wallet_balance FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
             row = cursor.fetchone()
             if not row:
                 cursor.execute("""
@@ -2939,15 +2986,17 @@ class Database:
                     VALUES (?, ?, ?, ?, ?)
                 """, (telegram_id, f"user_{telegram_id}", amount, now, now))
                 new_balance = amount
+                actual_tg_id = telegram_id
             else:
+                actual_tg_id = row["telegram_id"]
                 current_bal = int(row["wallet_balance"] or 0)
                 new_balance = current_bal + amount
-                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE telegram_id = ?", (new_balance, now, telegram_id))
+                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, row["id"]))
 
             cursor.execute("""
                 INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, amount, tx_type, new_balance, description, ref_id, now))
+            """, (actual_tg_id, amount, tx_type, new_balance, description, ref_id, now))
 
             conn.commit()
             return {"success": True, "new_balance": new_balance}
@@ -2965,22 +3014,23 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT id, wallet_balance FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor.execute("SELECT id, telegram_id, wallet_balance FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
             row = cursor.fetchone()
             if not row:
                 return {"success": False, "error": "کاربر یافت نشد."}
 
+            actual_tg_id = row["telegram_id"]
             current_bal = int(row["wallet_balance"] or 0)
             if current_bal < amount:
                 return {"success": False, "error": "موجودی کیف پول شما کافی نیست.", "balance": current_bal, "required": amount}
 
             new_balance = current_bal - amount
-            cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE telegram_id = ?", (new_balance, now, telegram_id))
+            cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, row["id"]))
 
             cursor.execute("""
                 INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
                 VALUES (?, ?, 'purchase', ?, ?, ?, ?)
-            """, (telegram_id, -amount, new_balance, description, ref_id, now))
+            """, (actual_tg_id, -amount, new_balance, description, ref_id, now))
 
             conn.commit()
             return {"success": True, "new_balance": new_balance}
@@ -8360,21 +8410,33 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            # ۱. جستجوی رفرال در انتظار
-            cursor.execute("""
+            # ۱. جستجوی رفرال در انتظار (پشتیبانی از شناسه تلگرام یا شناسه جدول users)
+            candidate_ids = [referred_id]
+            try:
+                cursor.execute("SELECT id, telegram_id FROM users WHERE id = ? OR telegram_id = ?", (referred_id, referred_id))
+                u_m = cursor.fetchone()
+                if u_m:
+                    if u_m["id"]: candidate_ids.append(int(u_m["id"]))
+                    if u_m["telegram_id"]: candidate_ids.append(int(u_m["telegram_id"]))
+            except Exception:
+                pass
+            candidate_ids = list(set(candidate_ids))
+            placeholders = ",".join("?" for _ in candidate_ids)
+
+            cursor.execute(f"""
                 SELECT * FROM referrals
-                WHERE referred_id = ? AND COALESCE(reseller_id, 0) = ? AND status = 'pending'
+                WHERE referred_id IN ({placeholders}) AND COALESCE(reseller_id, 0) = ? AND status = 'pending'
                 ORDER BY id DESC LIMIT 1
-            """, (referred_id, reseller_id))
+            """, (*candidate_ids, reseller_id))
             ref = cursor.fetchone()
 
             # اگر رفرال pending نبود اما شرط all_purchases فعال باشد، آخرین رفرال را برمی‌داریم
             if not ref and cfg.get("reward_condition") == "all_purchases":
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT * FROM referrals
-                    WHERE referred_id = ? AND COALESCE(reseller_id, 0) = ?
+                    WHERE referred_id IN ({placeholders}) AND COALESCE(reseller_id, 0) = ?
                     ORDER BY id DESC LIMIT 1
-                """, (referred_id, reseller_id))
+                """, (*candidate_ids, reseller_id))
                 ref = cursor.fetchone()
 
             if not ref:
@@ -8465,17 +8527,29 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
+            candidate_ids = [user_id]
+            try:
+                cursor.execute("SELECT id, telegram_id FROM users WHERE telegram_id = ? OR id = ?", (user_id, user_id))
+                u_row = cursor.fetchone()
+                if u_row:
+                    if u_row["id"]: candidate_ids.append(int(u_row["id"]))
+                    if u_row["telegram_id"]: candidate_ids.append(int(u_row["telegram_id"]))
+            except Exception:
+                pass
+            candidate_ids = list(set(candidate_ids))
+            placeholders = ",".join("?" for _ in candidate_ids)
+
+            cursor.execute(f"""
                 SELECT COUNT(*) as total FROM referrals
-                WHERE referrer_id = ? AND COALESCE(reseller_id, 0) = ?
-            """, (user_id, reseller_id))
+                WHERE referrer_id IN ({placeholders}) AND COALESCE(reseller_id, 0) = ?
+            """, (*candidate_ids, reseller_id))
             total_invites = cursor.fetchone()["total"]
 
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT COUNT(*) as rewarded, COALESCE(SUM(reward_amount), 0) as total_reward
                 FROM referrals
-                WHERE referrer_id = ? AND COALESCE(reseller_id, 0) = ? AND status = 'rewarded'
-            """, (user_id, reseller_id))
+                WHERE referrer_id IN ({placeholders}) AND COALESCE(reseller_id, 0) = ? AND status = 'rewarded'
+            """, (*candidate_ids, reseller_id))
             rew_row = cursor.fetchone()
             rewarded_invites = rew_row["rewarded"] if rew_row else 0
             total_reward = rew_row["total_reward"] if rew_row else 0
@@ -8526,6 +8600,347 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting customer referrals list for reseller {reseller_id}: {e}")
             return []
+        finally:
+            conn.close()
+
+    def lookup_customer_referrer_by_phone(self, phone: str, domain_reseller_id: Optional[int] = None) -> Optional[dict]:
+        """
+        جستجو و تشخیص هوشمند معرف با شماره تماس یا شناسه بر اساس ماتریس اولویت ۳ لایه‌ای:
+        ۱. اولویت با قلمرو نماینده فعال/دامنه (domain_reseller_id)
+        ۲. اولویت با اشتراک فعال و معتبر
+        ۳. اولویت با جدیدترین تاریخ فعالیت/تراکنش
+        """
+        clean_phone = normalize_phone_number(phone)
+        possible_id = None
+        if not clean_phone and str(phone).strip():
+            raw_s = str(phone).strip()
+            if raw_s.lstrip('-').isdigit():
+                try:
+                    possible_id = int(raw_s)
+                except (ValueError, TypeError):
+                    pass
+        if not clean_phone and possible_id is None:
+            return None
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. اگر دامنه یا پارامتر نماینده مشخص باشد، ابتدا در قلمرو همان نماینده جستجو می‌کنیم
+            if domain_reseller_id is not None:
+                r_id = int(domain_reseller_id or 0)
+                if clean_phone:
+                    cursor.execute("""
+                        SELECT s.id as sub_id, s.telegram_id, s.phone_number, s.reseller_id, s.account_name, s.status, s.updated_at,
+                               u.id as user_id, u.username, u.wallet_balance
+                        FROM subscriptions s
+                        LEFT JOIN users u ON (s.telegram_id != 0 AND s.telegram_id = u.telegram_id) OR (s.phone_number = u.phone_number AND COALESCE(u.reseller_id, 0) = COALESCE(s.reseller_id, 0))
+                        WHERE (s.phone_number = ? OR u.phone_number = ?)
+                          AND COALESCE(s.reseller_id, 0) = ?
+                          AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                        ORDER BY CASE WHEN s.status = 'active' THEN 1 ELSE 2 END, s.id DESC
+                        LIMIT 1
+                    """, (clean_phone, clean_phone, r_id))
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            "phone_number": clean_phone,
+                            "reseller_id": r_id,
+                            "telegram_id": row["telegram_id"] or 0,
+                            "user_id": row["user_id"] or row["sub_id"],
+                            "account_name": row["account_name"] or row["username"] or "مشتری",
+                            "status": row["status"]
+                        }
+
+                    cursor.execute("""
+                        SELECT id as user_id, telegram_id, phone_number, reseller_id, username, wallet_balance
+                        FROM users
+                        WHERE phone_number = ? AND COALESCE(reseller_id, 0) = ?
+                        ORDER BY id DESC LIMIT 1
+                    """, (clean_phone, r_id))
+                    u_row = cursor.fetchone()
+                    if u_row:
+                        return {
+                            "phone_number": clean_phone,
+                            "reseller_id": r_id,
+                            "telegram_id": u_row["telegram_id"] or 0,
+                            "user_id": u_row["user_id"],
+                            "account_name": u_row["username"] or "مشتری",
+                            "status": "user"
+                        }
+                elif possible_id is not None:
+                    cursor.execute("""
+                        SELECT id as user_id, telegram_id, phone_number, reseller_id, username, wallet_balance
+                        FROM users
+                        WHERE (telegram_id = ? OR id = ?) AND COALESCE(reseller_id, 0) = ?
+                        ORDER BY id DESC LIMIT 1
+                    """, (possible_id, possible_id, r_id))
+                    u_row = cursor.fetchone()
+                    if u_row:
+                        return {
+                            "phone_number": u_row["phone_number"] or "",
+                            "reseller_id": r_id,
+                            "telegram_id": u_row["telegram_id"] or 0,
+                            "user_id": u_row["user_id"],
+                            "account_name": u_row["username"] or "مشتری",
+                            "status": "user"
+                        }
+
+            # ۲. اگر در قلمرو نماینده یافت نشد یا ثبت‌نام روی دامنه عمومی بدون نماینده است:
+            if clean_phone:
+                cursor.execute("""
+                    SELECT s.id as sub_id, s.telegram_id, s.phone_number, s.reseller_id, s.account_name, s.status, s.updated_at,
+                           u.id as user_id, u.username, u.wallet_balance
+                    FROM subscriptions s
+                    LEFT JOIN users u ON (s.telegram_id != 0 AND s.telegram_id = u.telegram_id) OR (s.phone_number = u.phone_number AND COALESCE(u.reseller_id, 0) = COALESCE(s.reseller_id, 0))
+                    WHERE (s.phone_number = ? OR u.phone_number = ?)
+                      AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                    ORDER BY 
+                        CASE WHEN s.status = 'active' THEN 1 ELSE 2 END,
+                        s.id DESC
+                """, (clean_phone, clean_phone))
+                rows = cursor.fetchall()
+                if rows:
+                    best = rows[0]
+                    return {
+                        "phone_number": clean_phone,
+                        "reseller_id": int(best["reseller_id"] or 0),
+                        "telegram_id": best["telegram_id"] or 0,
+                        "user_id": best["user_id"] or best["sub_id"],
+                        "account_name": best["account_name"] or best["username"] or "مشتری",
+                        "status": best["status"]
+                    }
+
+                cursor.execute("""
+                    SELECT id as user_id, telegram_id, phone_number, reseller_id, username, wallet_balance
+                    FROM users
+                    WHERE phone_number = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (clean_phone,))
+                u_only = cursor.fetchone()
+                if u_only:
+                    return {
+                        "phone_number": clean_phone,
+                        "reseller_id": int(u_only["reseller_id"] or 0),
+                        "telegram_id": u_only["telegram_id"] or 0,
+                        "user_id": u_only["user_id"],
+                        "account_name": u_only["username"] or "مشتری",
+                        "status": "user"
+                    }
+            elif possible_id is not None:
+                cursor.execute("""
+                    SELECT id as user_id, telegram_id, phone_number, reseller_id, username, wallet_balance
+                    FROM users
+                    WHERE (telegram_id = ? OR id = ?)
+                    ORDER BY id DESC LIMIT 1
+                """, (possible_id, possible_id))
+                u_only = cursor.fetchone()
+                if u_only:
+                    return {
+                        "phone_number": u_only["phone_number"] or "",
+                        "reseller_id": int(u_only["reseller_id"] or 0),
+                        "telegram_id": u_only["telegram_id"] or 0,
+                        "user_id": u_only["user_id"],
+                        "account_name": u_only["username"] or "مشتری",
+                        "status": "user"
+                    }
+
+            return None
+        except Exception as e:
+            logger.error(f"Error looking up referrer by phone {phone}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_customer_user_by_phone(self, phone: str, reseller_id: Optional[int] = None) -> Optional[dict]:
+        """یافتن کاربر مشتری با شماره تلفن و در صورت لزوم شناسه نماینده"""
+        clean_phone = normalize_phone_number(phone)
+        if not clean_phone:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id is not None:
+                cursor.execute("""
+                    SELECT * FROM users WHERE phone_number = ? AND COALESCE(reseller_id, 0) = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (clean_phone, int(reseller_id or 0)))
+            else:
+                cursor.execute("""
+                    SELECT * FROM users WHERE phone_number = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (clean_phone,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting customer user by phone: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_customer_user_by_id(self, user_id: int) -> Optional[dict]:
+        """یافتن کاربر مشتری با شناسه جدول users یا شناسه تلگرام"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM users WHERE id = ? OR telegram_id = ?", (user_id, user_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting customer user by id: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def register_customer_user(self, phone: str, username: str, password: Optional[str] = None,
+                               full_name: Optional[str] = None, referrer_phone: Optional[str] = None,
+                               reseller_id: int = 0) -> dict:
+        """
+        ثبت‌نام مشتری جدید از طریق فرم وب با اعتبارسنجی شماره معرف، سپرهای ضد تقلب
+        و انتساب خودکار رفرال در صورت وجود معرف معتبر
+        """
+        clean_phone = normalize_phone_number(phone)
+        if not clean_phone:
+            return {"success": False, "error": "invalid_phone", "message": "شماره موبایل وارد شده معتبر نمی‌باشد."}
+
+        clean_username = (username or "").strip()
+        if not clean_username:
+            clean_username = f"user_{clean_phone[-4:]}"
+
+        clean_name = (full_name or "").strip() or clean_username
+        effective_r_id = int(reseller_id or 0)
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # ۱. بررسی اینکه آیا کاربر از قبل با این شماره موبایل ثبت‌نام کرده یا نه
+            cursor.execute("""
+                SELECT id, telegram_id, username, reseller_id FROM users
+                WHERE phone_number = ? AND COALESCE(reseller_id, 0) = ?
+            """, (clean_phone, effective_r_id))
+            existing = cursor.fetchone()
+            if existing:
+                return {
+                    "success": False,
+                    "error": "already_registered",
+                    "message": "حساب کاربری با این شماره موبایل از قبل وجود دارد. لطفاً وارد شوید یا از شماره دیگری استفاده نمایید.",
+                    "user_id": existing["id"]
+                }
+
+            # ۲. بررسی معرف در صورت ارسال
+            clean_ref_phone = normalize_phone_number(referrer_phone) if referrer_phone else None
+            referrer_info = None
+            if clean_ref_phone:
+                # سپر ضد تقلب ۱: جلوگیری از خود-معرفی
+                if clean_ref_phone == clean_phone:
+                    return {
+                        "success": False,
+                        "error": "self_referral",
+                        "message": "نمی‌توانید شماره موبایل خودتان را به عنوان معرف وارد نمایید."
+                    }
+
+                referrer_info = self.lookup_customer_referrer_by_phone(clean_ref_phone, domain_reseller_id=effective_r_id)
+                if not referrer_info:
+                    return {
+                        "success": False,
+                        "error": "referrer_not_found",
+                        "message": f"شماره تماس معرف «{clean_ref_phone}» در سیستم یافت نشد."
+                    }
+
+                # اگر نماینده مشخص نبود، از معرف ارث‌بری می‌کنیم
+                if effective_r_id == 0 and referrer_info.get("reseller_id"):
+                    effective_r_id = int(referrer_info["reseller_id"] or 0)
+
+            # ۳. تولید شناسه تلگرامی مصنوعی یکتا برای کاربران وب (عدم تداخل با شناسه‌های مثبت تلگرام)
+            synthetic_tg_id = -int(clean_phone)
+
+            # اطمینان از یکتایی synthetic_tg_id
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (synthetic_tg_id,))
+            if cursor.fetchone():
+                synthetic_tg_id = -int(f"{clean_phone}{int(time.time()) % 1000}")
+
+            pwd_hash = self.hash_password(password.strip()) if password and password.strip() else None
+
+            # ۴. ایجاد رکورد کاربر در جدول users
+            cursor.execute("""
+                INSERT INTO users (telegram_id, username, phone_number, is_verified, password_hash, full_name, reseller_id, wallet_balance, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)
+            """, (synthetic_tg_id, clean_username, clean_phone, pwd_hash, clean_name, effective_r_id, now, now))
+            new_user_id = cursor.lastrowid
+
+            # ۵. ثبت رفرال در صورت وجود معرف
+            if referrer_info:
+                ref_cfg = self.get_customer_referral_config(effective_r_id)
+                if ref_cfg.get("is_enabled"):
+                    ref_referrer_id = referrer_info.get("telegram_id")
+                    if not ref_referrer_id or ref_referrer_id == 0:
+                        ref_referrer_id = -(int(referrer_info["phone_number"]))
+
+                    try:
+                        cursor.execute("""
+                            INSERT INTO referrals (referrer_id, referred_id, reseller_id, reward_amount, status, created_at, updated_at)
+                            VALUES (?, ?, ?, 0, 'pending', ?, ?)
+                        """, (ref_referrer_id, synthetic_tg_id, effective_r_id, now, now))
+
+                        cursor.execute("""
+                            UPDATE users SET referred_by = ?, updated_at = ? WHERE id = ?
+                        """, (ref_referrer_id, now, new_user_id))
+                    except Exception as e_ref:
+                        logger.warning(f"Could not insert pending referral: {e_ref}")
+
+            conn.commit()
+            return {
+                "success": True,
+                "user_id": new_user_id,
+                "telegram_id": synthetic_tg_id,
+                "phone_number": clean_phone,
+                "username": clean_username,
+                "full_name": clean_name,
+                "reseller_id": effective_r_id,
+                "has_referrer": bool(referrer_info)
+            }
+        except Exception as e:
+            logger.error(f"Error registering customer user ({phone}): {e}")
+            return {"success": False, "error": str(e), "message": "خطای سیستمی در فرآیند ثبت‌نام."}
+        finally:
+            conn.close()
+
+    def authenticate_customer_user(self, phone: str, password: str, reseller_id: Optional[int] = None) -> dict:
+        """احراز هویت مشتری با شماره موبایل و رمز عبور"""
+        clean_phone = normalize_phone_number(phone)
+        if not clean_phone or not password:
+            return {"success": False, "error": "invalid_credentials", "message": "شماره موبایل یا رمز عبور نامعتبر است."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id is not None:
+                cursor.execute("""
+                    SELECT * FROM users WHERE phone_number = ? AND COALESCE(reseller_id, 0) = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (clean_phone, int(reseller_id or 0)))
+            else:
+                cursor.execute("""
+                    SELECT * FROM users WHERE phone_number = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (clean_phone,))
+            u_row = cursor.fetchone()
+            if not u_row:
+                return {"success": False, "error": "user_not_found", "message": "حساب کاربری با این شماره موبایل یافت نشد."}
+
+            user = dict(u_row)
+            stored_hash = user.get("password_hash")
+            if not stored_hash:
+                return {"success": False, "error": "no_password_set", "message": "برای این حساب رمزی ثبت نشده است."}
+
+            input_hash = self.hash_password(password.strip())
+            if input_hash != stored_hash:
+                return {"success": False, "error": "wrong_password", "message": "رمز عبور وارد شده نادرست است."}
+
+            return {"success": True, "user": user}
+        except Exception as e:
+            logger.error(f"Error authenticating customer user: {e}")
+            return {"success": False, "error": str(e), "message": "خطای سیستمی در ورود."}
         finally:
             conn.close()
 

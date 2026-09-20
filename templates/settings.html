@@ -848,6 +848,32 @@ function generateRandomSecret() {
                     {% endif %}
                 </div>
 
+                <!-- تنظیمات فاویکون -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-icons me-1 text-primary"></i> آیکون تب مرورگر (Favicon):
+                    </label>
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        <img src="{{ store_branding_config.favicon_url or '/avatars/favicon.ico' }}" id="currentFaviconPreview" alt="Favicon" class="rounded border p-1 shadow-sm" style="width: 48px; height: 48px; object-fit: contain; background: #fff;" onerror="this.onerror=null; this.src='/avatars/favicon.ico';">
+                        <div class="flex-grow-1">
+                            <input type="file" name="store_favicon_file" id="storeFaviconFileInput" class="form-control" accept="image/x-icon,image/png,image/svg+xml,image/webp,image/jpeg">
+                            <div class="form-text small">آپلود فاویکون جدید (ICO, PNG, SVG)</div>
+                        </div>
+                    </div>
+                    <div class="input-group mt-2">
+                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا آدرس مستقیم:</span>
+                        <input type="text" name="store_favicon_url" id="storeFaviconUrlInput" class="form-control font-monospace" value="{{ store_branding_config.store_favicon }}" placeholder="/avatars/favicon.ico یا https://..." dir="ltr">
+                    </div>
+                    {% if store_branding_config.store_favicon %}
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" name="clear_store_favicon" value="1" id="clearStoreFaviconCheckbox">
+                        <label class="form-check-label small text-danger" for="clearStoreFaviconCheckbox">
+                            حذف فاویکون فعلی و بازگشت به پیش‌فرض سیستم (favicon.ico)
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+
                 <!-- ۶. تنظیمات کپی‌رایت -->
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">
@@ -2680,7 +2706,11 @@ function escapeHtml(str) {
                 <div class="col-md-5">
                     <label class="form-label fw-bold">آپلود تصویر یا لوگوی جدید برای لودینگ:</label>
                     <input type="file" class="form-control" name="splash_image_file" accept="image/*">
-                    <div class="form-text text-muted">فرمت‌های مجاز: JPG, PNG, WEBP. ابعاد پیشنهادی مربعی با کیفیت بالا.</div>
+                    <div class="input-group mt-2">
+                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا آدرس مستقیم:</span>
+                        <input type="text" name="mini_app_splash_image" class="form-control font-monospace" value="{{ mini_app_config.splash_image }}" placeholder="/avatars/Logo.webp یا https://..." dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">فرمت‌های مجاز: JPG, PNG, WEBP. در صورت خالی بودن، پیش‌فرض سیستم (Logo.webp) استفاده می‌شود.</div>
                 </div>
 
                 <div class="col-md-4">

@@ -1,7 +1,7 @@
 <!-- مودال سراسری انتخاب بصری آیکون‌ها از کاتالوگ بسته‌ها (پنل مدیریت و پنل نمایندگی) -->
 <div class="modal fade text-start" id="globalIconPickerModal" tabindex="-1" aria-labelledby="globalIconPickerModalLabel" aria-hidden="true" style="z-index: 1065;">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden icon-picker-modal-content">
             <!-- هدر مودال با تم سلطنتی و خط زرین -->
             <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #1e1b4b 0%, #2e1065 50%, #3b0764 100%); border-bottom: 2px solid #f59e0b;">
                 <div class="d-flex align-items-center gap-3">
@@ -20,11 +20,11 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             
-            <div class="modal-body p-3 p-md-4 bg-light bg-opacity-50">
+            <div class="modal-body p-3 p-md-4 icon-picker-modal-body">
                 <!-- کادر جستجوی بلادرنگ دوزبانه -->
                 <div class="mb-3">
                     <div class="input-group shadow-sm">
-                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="fas fa-search"></i></span>
+                        <span class="input-group-text border-end-0 text-muted icon-picker-search-addon"><i class="fas fa-search"></i></span>
                         <input type="text" id="iconSearchInput" class="form-control border-start-0 ps-1" placeholder="جستجو بین آیکون‌ها (الماس، تاج، جام، موشک، ستاره، اینترنت، سکه، سپر، crown, gold, star...)" oninput="filterIconCatalog(this.value)">
                         <button class="btn btn-outline-secondary" type="button" onclick="clearIconSearch()" title="پاک کردن جستجو">
                             <i class="fas fa-times"></i>
@@ -38,7 +38,7 @@
                         <button class="nav-link active py-1.5 px-3 small fw-bold" onclick="filterIconCategory('all', this)">همه آیکون‌ها</button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link py-1.5 px-3 small fw-bold text-dark border-warning" style="background: rgba(245, 158, 11, 0.15); color: #b45309 !important;" onclick="filterIconCategory('gold', this)">
+                        <button class="nav-link py-1.5 px-3 small fw-bold tab-gold" onclick="filterIconCategory('gold', this)">
                             👑 نشان‌های طلایی و لوکس
                         </button>
                     </li>
@@ -68,10 +68,10 @@
                 </div>
             </div>
             
-            <div class="modal-footer bg-white py-2 px-4 d-flex justify-content-between align-items-center border-top">
+            <div class="modal-footer py-2 px-4 d-flex justify-content-between align-items-center border-top icon-picker-modal-footer">
                 <div class="d-flex align-items-center gap-2">
                     <span class="small text-muted">آیکون انتخابی فعلی:</span>
-                    <span class="badge bg-light text-dark border font-monospace px-2 py-1.5" id="currentSelectedIconBadge">خالی (پیش‌فرض)</span>
+                    <span class="badge font-monospace px-2 py-1.5 icon-picker-curr-badge" id="currentSelectedIconBadge">خالی (پیش‌فرض)</span>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-sm btn-outline-warning" id="iconPickerResetBtn" onclick="resetToSmartDetectionFromModal()">
@@ -85,25 +85,231 @@
 </div>
 
 <style>
+/* ─── استایل عمومی و حالت روشن مودال کاتالوگ آیکون‌ها ─── */
+.icon-picker-modal-content {
+    background-color: #ffffff;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+}
+.icon-picker-modal-body {
+    background-color: #f8fafc;
+}
+.icon-picker-modal-footer {
+    background-color: #ffffff;
+    border-top: 1px solid #e2e8f0;
+}
+.icon-picker-search-addon {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    color: #64748b;
+}
+#iconSearchInput {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+#iconSearchInput:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 0.2rem rgba(245, 158, 11, 0.2);
+}
+#iconCategoryTabs .nav-link {
+    background: #ffffff;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+#iconCategoryTabs .nav-link:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+#iconCategoryTabs .nav-link.active {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border-color: #2563eb !important;
+}
+#iconCategoryTabs .nav-link.tab-gold {
+    background: rgba(245, 158, 11, 0.12);
+    color: #b45309;
+    border-color: rgba(245, 158, 11, 0.4);
+}
+#iconCategoryTabs .nav-link.tab-gold.active {
+    background: #f59e0b !important;
+    color: #ffffff !important;
+    border-color: #f59e0b !important;
+}
+.icon-picker-curr-badge {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+.icon-picker-curr-badge.icon-picker-curr-badge-active {
+    background-color: #fef3c7;
+    color: #b45309;
+    border: 1px solid #f59e0b;
+    font-weight: 600;
+}
+
+/* کارت آیکون در حالت روشن */
 .icon-card-btn {
-    border-color: #e2e8f0 !important;
+    border: 1px solid #e2e8f0 !important;
     background-color: #ffffff !important;
-    transition: all 0.22s ease-in-out !important;
+    transition: all 0.2s ease-in-out !important;
+    cursor: pointer;
 }
 .icon-card-btn:hover {
     border-color: #f59e0b !important;
     background-color: #fffdf5 !important;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(245, 158, 11, 0.22) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(245, 158, 11, 0.18) !important;
 }
 .icon-card-btn:active {
-    transform: scale(0.96);
+    transform: scale(0.97);
+}
+.icon-card-btn .icon-card-name {
+    color: #1e293b !important;
+    font-weight: 600;
+}
+.icon-card-btn .icon-card-code {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+    border: 1px solid #e2e8f0 !important;
 }
 .icon-medal-badge {
     transition: transform 0.2s ease;
 }
 .icon-card-btn:hover .icon-medal-badge {
-    transform: scale(1.1);
+    transform: scale(1.08);
+}
+
+/* ─── حالت تیره فوق‌العاده مدرن، شیک و خوانا (Dark Theme Optimization) ─── */
+[data-bs-theme="dark"] .icon-picker-modal-content,
+html.dark .icon-picker-modal-content,
+body.dark-mode .icon-picker-modal-content {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+}
+[data-bs-theme="dark"] .icon-picker-modal-body,
+html.dark .icon-picker-modal-body,
+body.dark-mode .icon-picker-modal-body {
+    background-color: #0b0f19 !important;
+}
+[data-bs-theme="dark"] .icon-picker-modal-footer,
+html.dark .icon-picker-modal-footer,
+body.dark-mode .icon-picker-modal-footer {
+    background-color: #0f172a !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+[data-bs-theme="dark"] .icon-picker-search-addon,
+html.dark .icon-picker-search-addon,
+body.dark-mode .icon-picker-search-addon {
+    background-color: #1e293b !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #94a3b8 !important;
+}
+[data-bs-theme="dark"] #iconSearchInput,
+html.dark #iconSearchInput,
+body.dark-mode #iconSearchInput {
+    background-color: #1e293b !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+}
+[data-bs-theme="dark"] #iconSearchInput::placeholder,
+html.dark #iconSearchInput::placeholder,
+body.dark-mode #iconSearchInput::placeholder {
+    color: #64748b !important;
+}
+[data-bs-theme="dark"] #iconSearchInput:focus,
+html.dark #iconSearchInput:focus,
+body.dark-mode #iconSearchInput:focus {
+    border-color: #f59e0b !important;
+    box-shadow: 0 0 0 0.2rem rgba(245, 158, 11, 0.25) !important;
+}
+[data-bs-theme="dark"] #iconCategoryTabs .nav-link,
+html.dark #iconCategoryTabs .nav-link,
+body.dark-mode #iconCategoryTabs .nav-link {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+[data-bs-theme="dark"] #iconCategoryTabs .nav-link:hover,
+html.dark #iconCategoryTabs .nav-link:hover,
+body.dark-mode #iconCategoryTabs .nav-link:hover {
+    background: rgba(51, 65, 85, 0.8) !important;
+    color: #f8fafc !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+}
+[data-bs-theme="dark"] #iconCategoryTabs .nav-link.active,
+html.dark #iconCategoryTabs .nav-link.active,
+body.dark-mode #iconCategoryTabs .nav-link.active {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 12px rgba(37, 99, 235, 0.4) !important;
+}
+[data-bs-theme="dark"] #iconCategoryTabs .nav-link.tab-gold,
+html.dark #iconCategoryTabs .nav-link.tab-gold,
+body.dark-mode #iconCategoryTabs .nav-link.tab-gold {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #fbbf24 !important;
+    border-color: rgba(245, 158, 11, 0.45) !important;
+}
+[data-bs-theme="dark"] #iconCategoryTabs .nav-link.tab-gold.active,
+html.dark #iconCategoryTabs .nav-link.tab-gold.active,
+body.dark-mode #iconCategoryTabs .nav-link.tab-gold.active {
+    background: #f59e0b !important;
+    color: #1e1b4b !important;
+    font-weight: 700 !important;
+    border-color: #f59e0b !important;
+}
+[data-bs-theme="dark"] .icon-picker-curr-badge,
+html.dark .icon-picker-curr-badge,
+body.dark-mode .icon-picker-curr-badge {
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+[data-bs-theme="dark"] .icon-picker-curr-badge.icon-picker-curr-badge-active,
+html.dark .icon-picker-curr-badge.icon-picker-curr-badge-active,
+body.dark-mode .icon-picker-curr-badge.icon-picker-curr-badge-active {
+    background-color: rgba(245, 158, 11, 0.2) !important;
+    color: #fbbf24 !important;
+    border: 1px solid #f59e0b !important;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.25) !important;
+    font-weight: 700 !important;
+}
+
+/* کارت آیکون‌ها در حالت تیره (حل قطعی مشکل سفیدی زمینه و ناخوانایی متن) */
+[data-bs-theme="dark"] .icon-card-btn,
+html.dark .icon-card-btn,
+body.dark-mode .icon-card-btn {
+    background-color: #151d2c !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+}
+[data-bs-theme="dark"] .icon-card-btn:hover,
+html.dark .icon-card-btn:hover,
+body.dark-mode .icon-card-btn:hover {
+    background-color: #1e2c42 !important;
+    border-color: #f59e0b !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px rgba(245, 158, 11, 0.28) !important;
+    transform: translateY(-3px) !important;
+}
+[data-bs-theme="dark"] .icon-card-btn .icon-card-name,
+html.dark .icon-card-btn .icon-card-name,
+body.dark-mode .icon-card-btn .icon-card-name {
+    color: #f8fafc !important;
+    font-weight: 700 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+[data-bs-theme="dark"] .icon-card-btn .icon-card-code,
+html.dark .icon-card-btn .icon-card-code,
+body.dark-mode .icon-card-btn .icon-card-code {
+    background-color: rgba(11, 15, 25, 0.85) !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 </style>
 
@@ -258,10 +464,10 @@ function openGlobalIconPicker(inputId, previewId, isReseller = false, defaultIco
     if (badge) {
         if (currentVal) {
             badge.textContent = currentVal;
-            badge.className = 'badge bg-warning-subtle text-dark border border-warning font-monospace px-2 py-1.5';
+            badge.className = 'badge font-monospace px-2.5 py-1.5 icon-picker-curr-badge icon-picker-curr-badge-active';
         } else {
             badge.textContent = isResellerPickerMode ? (defaultMasterIconForPicker ? `آیکون مدیریت (${defaultMasterIconForPicker})` : 'آیکون مدیریت (هوشمند)') : 'خالی (تشخیص هوشمند)';
-            badge.className = 'badge bg-light text-secondary border font-monospace px-2 py-1.5';
+            badge.className = 'badge font-monospace px-2.5 py-1.5 icon-picker-curr-badge';
         }
     }
 
@@ -406,9 +612,135 @@ function clearIconSearch() {
     renderIconGrid();
 }
 
+function isDarkThemeActive() {
+    return document.documentElement.getAttribute('data-bs-theme') === 'dark' ||
+           document.body.classList.contains('dark-mode') ||
+           document.documentElement.classList.contains('dark') ||
+           localStorage.getItem('app_theme') === 'dark';
+}
+
+function getIconBadgeStyles(item, isDark) {
+    if (!isDark) {
+        return {
+            bg: item.bg || 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            color: item.color || '#b45309',
+            border: item.border ? `1.5px solid ${item.border}` : '1.5px solid #f59e0b',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)'
+        };
+    }
+
+    // ─── تم دارک: پالت رنگی اختصاصی، نئونی، شیک و بدون سفیدی زننده ───
+    if (item.isEmoji) {
+        return {
+            bg: 'rgba(255, 255, 255, 0.08)',
+            color: '#f8fafc',
+            border: '1.5px solid rgba(255, 255, 255, 0.15)',
+            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)'
+        };
+    }
+
+    const cat = item.cat;
+    const icon = item.icon || '';
+
+    if (cat === 'gold') {
+        if (icon.includes('gem') || icon.includes('diamond')) {
+            return {
+                bg: 'linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(147, 51, 234, 0.12) 100%)',
+                color: '#c084fc',
+                border: '1.5px solid rgba(192, 132, 252, 0.55)',
+                boxShadow: '0 0 12px rgba(168, 85, 247, 0.25)'
+            };
+        }
+        if (icon.includes('fire')) {
+            return {
+                bg: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(220, 38, 38, 0.12) 100%)',
+                color: '#f87171',
+                border: '1.5px solid rgba(248, 113, 113, 0.55)',
+                boxShadow: '0 0 12px rgba(239, 68, 68, 0.25)'
+            };
+        }
+        if (icon.includes('circle-check')) {
+            return {
+                bg: 'linear-gradient(135deg, rgba(34, 197, 94, 0.25) 0%, rgba(22, 163, 74, 0.12) 100%)',
+                color: '#4ade80',
+                border: '1.5px solid rgba(74, 222, 128, 0.55)',
+                boxShadow: '0 0 12px rgba(34, 197, 94, 0.25)'
+            };
+        }
+        return {
+            bg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(217, 119, 6, 0.12) 100%)',
+            color: '#fbbf24',
+            border: '1.5px solid rgba(245, 158, 11, 0.6)',
+            boxShadow: '0 0 14px rgba(245, 158, 11, 0.28)'
+        };
+    }
+
+    if (cat === 'badges') {
+        if (icon.includes('gem') || icon.includes('wand')) {
+            return {
+                bg: 'linear-gradient(135deg, rgba(147, 51, 234, 0.25) 0%, rgba(109, 40, 217, 0.12) 100%)',
+                color: '#c084fc',
+                border: '1.5px solid rgba(192, 132, 252, 0.5)',
+                boxShadow: '0 0 10px rgba(147, 51, 234, 0.22)'
+            };
+        }
+        if (icon.includes('certificate') || icon.includes('diamond')) {
+            return {
+                bg: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(2, 132, 199, 0.12) 100%)',
+                color: '#38bdf8',
+                border: '1.5px solid rgba(56, 189, 248, 0.5)',
+                boxShadow: '0 0 10px rgba(14, 165, 233, 0.22)'
+            };
+        }
+        return {
+            bg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(180, 83, 9, 0.12) 100%)',
+            color: '#fde047',
+            border: '1.5px solid rgba(245, 158, 11, 0.5)',
+            boxShadow: '0 0 10px rgba(245, 158, 11, 0.22)'
+        };
+    }
+
+    if (cat === 'speed') {
+        return {
+            bg: 'linear-gradient(135deg, rgba(239, 68, 68, 0.24) 0%, rgba(249, 115, 22, 0.12) 100%)',
+            color: '#f87171',
+            border: '1.5px solid rgba(239, 68, 68, 0.55)',
+            boxShadow: '0 0 12px rgba(239, 68, 68, 0.22)'
+        };
+    }
+
+    if (cat === 'security') {
+        return {
+            bg: 'linear-gradient(135deg, rgba(14, 165, 233, 0.24) 0%, rgba(2, 132, 199, 0.12) 100%)',
+            color: '#38bdf8',
+            border: '1.5px solid rgba(56, 189, 248, 0.55)',
+            boxShadow: '0 0 12px rgba(14, 165, 233, 0.22)'
+        };
+    }
+
+    if (cat === 'packages') {
+        return {
+            bg: 'linear-gradient(135deg, rgba(99, 102, 241, 0.24) 0%, rgba(79, 70, 229, 0.12) 100%)',
+            color: '#818cf8',
+            border: '1.5px solid rgba(129, 140, 248, 0.55)',
+            boxShadow: '0 0 12px rgba(99, 102, 241, 0.22)'
+        };
+    }
+
+    // devices & default
+    return {
+        bg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.22) 0%, rgba(37, 99, 235, 0.12) 100%)',
+        color: '#60a5fa',
+        border: '1.5px solid rgba(96, 165, 250, 0.5)',
+        boxShadow: '0 0 10px rgba(59, 130, 246, 0.2)'
+    };
+}
+
 function renderIconGrid() {
     const grid = document.getElementById('iconPickerGrid');
     if (!grid) return;
+    
+    const isDark = isDarkThemeActive();
     
     let filtered = ICON_CATALOG.filter(item => {
         if (currentCategoryFilter !== 'all' && item.cat !== currentCategoryFilter) {
@@ -442,22 +774,20 @@ function renderIconGrid() {
             : `<i class="${item.icon}"></i>`;
         
         const valueToPass = item.icon.replace(/'/g, "\\'");
-        const badgeBg = item.bg || 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
-        const badgeColor = item.color || '#b45309';
-        const badgeBorder = item.border || '#f59e0b';
+        const badgeStyle = getIconBadgeStyles(item, isDark);
         
         html += `
             <div class="col">
-                <button type="button" class="btn btn-outline-light border text-dark w-100 h-100 p-2 d-flex flex-column align-items-center justify-content-center icon-card-btn shadow-sm rounded-3" 
-                        style="transition: all 0.2s ease; min-height: 94px; background-color: #ffffff;" 
+                <button type="button" class="btn w-100 h-100 p-2 d-flex flex-column align-items-center justify-content-center icon-card-btn shadow-sm rounded-3" 
+                        style="transition: all 0.2s ease; min-height: 94px;" 
                         onclick="selectIconFromPicker('${valueToPass}', ${isEmoji})"
                         title="${item.name} (${item.icon})">
                     <span class="icon-medal-badge d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm mb-1" 
-                          style="width: 42px; height: 42px; background: ${badgeBg}; color: ${badgeColor}; border: 1.5px solid ${badgeBorder}; font-size: 1.25rem;">
+                          style="width: 42px; height: 42px; background: ${badgeStyle.bg}; color: ${badgeStyle.color}; border: ${badgeStyle.border}; box-shadow: ${badgeStyle.boxShadow}; font-size: 1.25rem;">
                         ${iconRender}
                     </span>
-                    <span class="small fw-bold text-truncate w-100 text-center mt-1 text-dark" style="font-size: 0.73rem;">${item.name}</span>
-                    <span class="badge bg-light text-secondary font-monospace mt-1 px-1 text-truncate w-100 text-center" style="font-size: 0.62rem;">
+                    <span class="icon-card-name small fw-bold text-truncate w-100 text-center mt-1" style="font-size: 0.73rem;">${item.name}</span>
+                    <span class="icon-card-code badge font-monospace mt-1 px-1 text-truncate w-100 text-center" style="font-size: 0.62rem;">
                         ${isEmoji ? 'ایموجی' : item.icon.replace('fas fa-', '').replace('fab fa-', '')}
                     </span>
                 </button>
@@ -466,5 +796,24 @@ function renderIconGrid() {
     });
 
     grid.innerHTML = html;
+}
+
+// گوش‌به‌زنگ بودن جهت تغییر بلادرنگ تم کاربر در کل پنل
+if (typeof window !== 'undefined' && window.MutationObserver) {
+    const iconPickerThemeObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.attributeName === 'data-bs-theme' || mutation.attributeName === 'class') {
+                const modalEl = document.getElementById('globalIconPickerModal');
+                if (modalEl && (modalEl.classList.contains('show') || modalEl.style.display === 'block')) {
+                    renderIconGrid();
+                }
+                break;
+            }
+        }
+    });
+    iconPickerThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme', 'class'] });
+    if (document.body) {
+        iconPickerThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-bs-theme'] });
+    }
 }
 </script>
