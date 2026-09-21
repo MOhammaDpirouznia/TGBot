@@ -1692,6 +1692,9 @@
                         <a class="submenu-item {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
                             <i class="fas fa-palette text-warning"></i> هویت بصری و شخصی‌سازی
                         </a>
+                        <a class="submenu-item" href="{{ url_for('reseller_lucky_wheel_page') }}">
+                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
+                        </a>
                     </div>
                 </div>
                 {% endif %}
@@ -1818,6 +1821,9 @@
                         {% endif %}
                         <a class="submenu-item {% if request.endpoint == 'admin_ai_studio' %}active{% endif %}" href="{{ url_for('admin_ai_studio') }}">
                             <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی و مارکتینگ
+                        </a>
+                        <a class="submenu-item" href="{{ url_for('settings') }}?tab=lucky_wheel#card-lucky-wheel">
+                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
                         </a>
                     </div>
                 </div>

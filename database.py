@@ -154,8 +154,12 @@ class Database:
                 language TEXT DEFAULT 'fa',
                 is_vip BOOLEAN DEFAULT 0,
                 vip_type TEXT DEFAULT 'manual',
+                vip_tier TEXT DEFAULT 'none',
                 vip_expire_at TEXT,
                 vip_custom_cashback INTEGER,
+                birthday TEXT,
+                last_birthday_reward_year INTEGER DEFAULT 0,
+                last_anniversary_reward_year INTEGER DEFAULT 0,
                 reseller_id INTEGER DEFAULT 0,
                 created_at TEXT,
                 updated_at TEXT
@@ -326,10 +330,15 @@ class Database:
                 slice_color TEXT DEFAULT '#3b82f6',
                 slice_icon TEXT DEFAULT 'gift',
                 is_active INTEGER DEFAULT 1,
+                daily_limit INTEGER DEFAULT 0,
                 created_at TEXT,
                 updated_at TEXT
             )
         """)
+        try:
+            cursor.execute("ALTER TABLE lucky_wheel_prizes ADD COLUMN daily_limit INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         # جدول سابقه چرخش‌های گردونه شانس (Lucky Wheel Spins)
         cursor.execute("""
@@ -348,6 +357,67 @@ class Database:
                 FOREIGN KEY (prize_id) REFERENCES lucky_wheel_prizes(id)
             )
         """)
+
+        # جدول ماموریت‌های اجتماعی و کسب حجم رایگان (Social Tasks & Quests)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER DEFAULT 0,
+                title TEXT NOT NULL,
+                description TEXT,
+                task_type TEXT NOT NULL,
+                target_count INTEGER DEFAULT 1,
+                target_channel_id TEXT,
+                target_link TEXT,
+                reward_type TEXT NOT NULL,
+                reward_value TEXT NOT NULL,
+                plan_id TEXT,
+                icon TEXT DEFAULT 'fa-gift',
+                badge_text TEXT,
+                is_active INTEGER DEFAULT 1,
+                order_num INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول ثبت پیشرفت و جوایز دریافت‌شده ماموریت‌ها توسط کاربران (User Social Tasks)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_social_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                task_id INTEGER NOT NULL,
+                progress_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                proof_data TEXT,
+                reward_delivered TEXT,
+                claimed_at TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                UNIQUE(user_id, task_id)
+            )
+        """)
+
+        # درج ماموریت‌های اولیه پیش‌فرض در صورت خالی بودن جدول
+        try:
+            cursor.execute("SELECT COUNT(*) as count FROM social_tasks")
+            st_count = cursor.fetchone()["count"]
+            if st_count == 0:
+                starter_tasks = [
+                    (0, "عضویت در کانال اطلاع‌رسانی", "با عضویت در کانال رسمی، از جدیدترین اخبار و سرورها مطلع شده و حجم هدیه دریافت کنید.", "join_channel", 1, "", "https://t.me", "traffic", "2", None, "fa-bullhorn", "پاداش ۲ گیگابایت", 1, 1, now, now),
+                    (0, "معرفی به دوستان (۵ نفر)", "لینک اختصاصی خود را با دوستان به اشتراک بگذارید تا پس از ثبت‌نام ۵ نفر، ۵ گیگابایت حجم هدیه بگیرید.", "invite_friends", 5, "", "", "traffic", "5", None, "fa-users", "پاداش ۵ گیگابایت", 1, 2, now, now),
+                    (0, "ثبت نظر و امتیاز به کیفیت سرویس", "کیفیت خدمات، پینگ و سرعت اتصال را ارزیابی فرمایید و ۱ گیگابایت حجم هدیه دریافت نمایید.", "review_rating", 1, "", "", "traffic", "1", None, "fa-star", "پاداش ۱ گیگابایت", 1, 3, now, now),
+                    (0, "دنبال کردن و لایک پست‌های کانال", "پست‌های اخیر کانال را مشاهده کرده و برای دریافت ۲۰,۰۰۰ تومان شارژ کیف پول تایید نمایید.", "like_posts", 10, "", "https://t.me", "wallet", "20000", None, "fa-heart", "۲۰,۰۰۰ تومان شارژ", 1, 4, now, now)
+                ]
+                cursor.executemany("""
+                    INSERT INTO social_tasks (
+                        reseller_id, title, description, task_type, target_count, target_channel_id,
+                        target_link, reward_type, reward_value, plan_id, icon, badge_text,
+                        is_active, order_num, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, starter_tasks)
+        except Exception as e_seed:
+            logger.debug(f"Error seeding initial social tasks: {e_seed}")
 
         # جدول اعلان‌های ارسال شده
         cursor.execute("""
@@ -727,6 +797,26 @@ class Database:
 
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN vip_tier TEXT DEFAULT 'none'")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN birthday TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_birthday_reward_year INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_anniversary_reward_year INTEGER DEFAULT 0")
         except Exception:
             pass
 
@@ -2778,69 +2868,430 @@ class Database:
                 pass
         return True
 
-    def get_user_vip_info(self, telegram_id: int) -> dict:
-        """دریافت اطلاعات و مزایای VIP کاربر شامل درصد کش‌بک فعال"""
+    def get_user_loyalty_tier(self, telegram_id: int) -> dict:
+        """
+        محاسبه دقیق سطح وفاداری مشتری (عادی، برنزی، نقره‌ای، طلایی)
+        بر اساس مجموع خریدهای تایید شده و مجموع ترافیک اشتراک‌ها
+        با اعمال خودکار ۵ تا ۱۵ درصد تخفیف همیشگی برای سطوح بالا و درصد کش‌بک
+        """
         user = self.get_user(telegram_id)
-        is_vip = self.is_user_vip(telegram_id)
-        if not user:
-            return {
-                "is_vip": False,
-                "vip_type": "none",
-                "vip_expire_at": None,
-                "cashback_percent": 0,
-                "custom_cashback": None
-            }
+        is_vip_flag = self.is_user_vip(telegram_id) if user else False
+        vip_tier_db = (user.get("vip_tier") or "none").lower() if user else "none"
 
-        custom_cb = user.get("vip_custom_cashback")
-        reseller_id = user.get("reseller_id")
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        total_spent = 0
+        total_orders = 0
+        total_gb = 0
+        try:
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total_spent,
+                       COALESCE(COUNT(id), 0) as total_orders
+                FROM transactions
+                WHERE user_id = ? AND status = 'approved'
+            """, (telegram_id,))
+            row = cursor.fetchone()
+            if row:
+                total_spent = int(row["total_spent"] or 0)
+                total_orders = int(row["total_orders"] or 0)
 
-        if is_vip:
-            if custom_cb is not None and str(custom_cb).strip() != "":
-                try:
-                    cb_rate = int(custom_cb)
-                except Exception:
-                    cb_rate = 10
-            elif reseller_id:
-                reseller = self.get_reseller(reseller_id)
-                cb_rate = int((reseller.get("vip_cashback_percent") if reseller else 10) or 10)
-            else:
-                vip_sets = self.get_vip_settings()
-                cb_rate = int(vip_sets.get("cashback_percent", 10))
-        else:
-            cb_rate = 0
+            cursor.execute("""
+                SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                FROM subscriptions
+                WHERE telegram_id = ?
+            """, (telegram_id,))
+            row_gb = cursor.fetchone()
+            if row_gb:
+                total_gb = float(row_gb["total_gb"] or 0)
+        except Exception as e:
+            logger.error(f"Error calculating stats for loyalty tier {telegram_id}: {e}")
+        finally:
+            conn.close()
+
+        sets = self.get_vip_settings()
+        b_tomans = sets["bronze_threshold_tomans"]
+        b_gb = sets["bronze_threshold_gb"]
+        b_disc = sets["bronze_discount_percent"]
+        b_cb = sets["bronze_cashback_percent"]
+
+        s_tomans = sets["silver_threshold_tomans"]
+        s_gb = sets["silver_threshold_gb"]
+        s_disc = sets["silver_discount_percent"]
+        s_cb = sets["silver_cashback_percent"]
+
+        g_tomans = sets["gold_threshold_tomans"]
+        g_gb = sets["gold_threshold_gb"]
+        g_disc = sets["gold_discount_percent"]
+        g_cb = sets["gold_cashback_percent"]
+
+        is_manual_vip = bool(user and user.get("vip_type") == "manual" and is_vip_flag)
+
+        tier = "none"
+        title = "عادی"
+        badge = "عضو عادی"
+        badge_html = '<span class="badge bg-secondary">عادی</span>'
+        discount_percent = 0
+        cashback_percent = 0
+        next_tier = "bronze"
+        next_tier_title = "برنزی"
+        next_tier_target = b_tomans
+        remaining_tomans = max(0, b_tomans - total_spent)
+        progress_percent = min(100, max(0, int((total_spent / max(1, b_tomans)) * 100)))
+
+        if (total_spent >= g_tomans or (g_gb > 0 and total_gb >= g_gb)) or vip_tier_db == "gold":
+            tier = "gold"
+            title = "طلایی"
+            badge = "🥇 طلایی"
+            badge_html = '<span class="badge bg-warning text-dark border border-warning shadow-sm"><i class="fas fa-crown me-1"></i>سطح طلایی (VIP)</span>'
+            discount_percent = g_disc
+            cashback_percent = g_cb
+            next_tier = None
+            next_tier_title = None
+            next_tier_target = g_tomans
+            remaining_tomans = 0
+            progress_percent = 100
+        elif (total_spent >= s_tomans or (s_gb > 0 and total_gb >= s_gb)) or vip_tier_db == "silver":
+            tier = "silver"
+            title = "نقره‌ای"
+            badge = "🥈 نقره‌ای"
+            badge_html = '<span class="badge bg-light text-dark border border-secondary shadow-sm"><i class="fas fa-star text-secondary me-1"></i>سطح نقره‌ای</span>'
+            discount_percent = s_disc
+            cashback_percent = s_cb
+            next_tier = "gold"
+            next_tier_title = "طلایی"
+            next_tier_target = g_tomans
+            remaining_tomans = max(0, g_tomans - total_spent)
+            step_span = max(1, g_tomans - s_tomans)
+            progress_percent = min(100, max(0, int(((total_spent - s_tomans) / step_span) * 100)))
+        elif (total_spent >= b_tomans or (b_gb > 0 and total_gb >= b_gb)) or vip_tier_db == "bronze" or is_manual_vip:
+            tier = "bronze"
+            title = "برنزی"
+            badge = "🥉 برنزی"
+            badge_html = '<span class="badge text-white border shadow-sm" style="background: #cd7f32;"><i class="fas fa-medal me-1"></i>سطح برنزی</span>'
+            discount_percent = b_disc
+            cashback_percent = b_cb
+            next_tier = "silver"
+            next_tier_title = "نقره‌ای"
+            next_tier_target = s_tomans
+            remaining_tomans = max(0, s_tomans - total_spent)
+            step_span = max(1, s_tomans - b_tomans)
+            progress_percent = min(100, max(0, int(((total_spent - b_tomans) / step_span) * 100)))
+
+        custom_cb = user.get("vip_custom_cashback") if user else None
+        if custom_cb is not None and str(custom_cb).strip().isdigit():
+            cashback_percent = int(custom_cb)
 
         return {
-            "is_vip": is_vip,
-            "vip_type": user.get("vip_type") or "manual",
-            "vip_expire_at": user.get("vip_expire_at"),
-            "cashback_percent": cb_rate,
-            "custom_cashback": custom_cb
+            "tier": tier,
+            "title": title,
+            "badge": badge,
+            "badge_html": badge_html,
+            "discount_percent": discount_percent,
+            "cashback_percent": cashback_percent,
+            "total_spent": total_spent,
+            "total_orders": total_orders,
+            "total_gb": total_gb,
+            "next_tier": next_tier,
+            "next_tier_title": next_tier_title,
+            "next_tier_target": next_tier_target,
+            "remaining_tomans": remaining_tomans,
+            "progress_percent": progress_percent,
+            "is_vip": tier != "none" or is_vip_flag,
+            "birthday": user.get("birthday") if user else None,
+            "last_birthday_reward_year": user.get("last_birthday_reward_year", 0) if user else 0,
+            "last_anniversary_reward_year": user.get("last_anniversary_reward_year", 0) if user else 0
         }
 
-    def set_user_vip(self, telegram_id: int, is_vip: bool, vip_type: str = "manual",
-                     expire_at: Optional[str] = None, custom_cashback: Optional[int] = None) -> dict:
-        """تغییر و تنظیم وضعیت VIP کاربر (دستی یا خودکار)"""
+    def evaluate_and_update_user_vip_tier(self, telegram_id: int) -> dict:
+        """بررسی مجدد مجموع خریدها و به‌روزرسانی خودکار سطح وفاداری کاربر در پایگاه داده"""
+        tier_info = self.get_user_loyalty_tier(telegram_id)
+        tier = tier_info["tier"]
+        val_is_vip = 1 if tier != "none" else 0
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            cursor.execute("""
+                UPDATE users
+                SET vip_tier = ?, is_vip = CASE WHEN is_vip = 1 AND vip_type = 'manual' THEN 1 ELSE ? END, updated_at = ?
+                WHERE telegram_id = ?
+            """, (tier, val_is_vip, now, telegram_id))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating VIP tier for {telegram_id}: {e}")
+        finally:
+            conn.close()
+        return tier_info
+
+    def set_user_birthday(self, telegram_id: int, birthday: str) -> bool:
+        """ثبت یا ویرایش تاریخ تولد کاربر جهت دریافت خودکار هدیه تولد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        clean_b = (birthday or "").strip()
+        try:
+            cursor.execute("UPDATE users SET birthday = ?, updated_at = ? WHERE telegram_id = ?", (clean_b, now, telegram_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting birthday for {telegram_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def check_telegram_chat_member(self, chat_id: Any, user_id: int, bot_token: str = None) -> dict:
+        """
+        بررسی وضعیت عضویت کاربر در کانال یا گروه تلگرام با استفاده از Telegram Bot API (getChatMember)
+        ضد جعل و بازگردانی وضعیت دقیق کاربر (member, administrator, creator, restricted, left, kicked)
+        """
+        token = (bot_token or "").strip() or self.get_setting("bot_token")
+        if not token or not chat_id or not user_id:
+            return {"is_member": False, "status": "unknown", "error": "missing_parameters"}
+
+        chat_str = str(chat_id).strip()
+        if not chat_str.startswith("@") and not chat_str.startswith("-") and not chat_str.isdigit():
+            chat_str = f"@{chat_str}"
+
+        url = f"https://api.telegram.org/bot{token}/getChatMember?chat_id={chat_str}&user_id={user_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "TelegramBot/1.0"})
+            with urllib.request.urlopen(req, timeout=6) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                if res_data.get("ok"):
+                    result = res_data.get("result", {})
+                    st = result.get("status", "")
+                    is_member = st in ["creator", "administrator", "member", "restricted"]
+                    return {"is_member": is_member, "status": st, "result": result}
+                return {"is_member": False, "status": "api_error", "error": res_data.get("description")}
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = json.loads(e.read().decode("utf-8"))
+                err_desc = err_body.get("description", str(e))
+            except Exception:
+                err_desc = str(e)
+            logger.warning(f"Telegram getChatMember HTTPError for user {user_id} in {chat_str}: {err_desc}")
+            return {"is_member": False, "status": "error", "error": err_desc}
+        except Exception as e:
+            logger.warning(f"Telegram getChatMember error for user {user_id} in {chat_str}: {e}")
+            return {"is_member": False, "status": "network_error", "error": str(e)}
+
+    def process_vip_anniversary_and_birthday_rewards(self, telegram_id: int = None) -> list:
+        """
+        بررسی روز تولد و سالگرد عضویت کاربران و شارژ خودکار هدیه وفاداری (حجم، کیف پول یا کد تخفیف)
+        هر کاربر در هر سال فقط ۱ بار می‌تواند هر یک از هدایا را دریافت کند (قفل ضد جعل سالانه)
+        """
+        now = datetime.now()
+        cur_year = now.year
+        cur_mm_dd = f"{now.month:02d}-{now.day:02d}"
+
+        # استخراج تاریخ شمسی امروز جهت تطبیق تاریخ تولدهای ثبت‌شده به شمسی
+        try:
+            import jdatetime
+            j_now = jdatetime.date.today()
+            j_cur_year = j_now.year
+            j_cur_mm_dd = f"{j_now.month:02d}-{j_now.day:02d}"
+        except Exception:
+            j_cur_year = cur_year
+            j_cur_mm_dd = cur_mm_dd
+
+        sets = self.get_vip_settings()
+        b_enabled = sets.get("birthday_reward_enabled", True)
+        b_type = sets.get("birthday_reward_type", "traffic")
+        b_val = sets.get("birthday_reward_val", "5")
+
+        a_enabled = sets.get("anniversary_reward_enabled", True)
+        a_type = sets.get("anniversary_reward_type", "traffic")
+        a_val = sets.get("anniversary_reward_val", "5")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        users_to_check = []
+        try:
+            if telegram_id:
+                cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            else:
+                cursor.execute("SELECT * FROM users WHERE birthday IS NOT NULL OR created_at IS NOT NULL")
+            users_to_check = [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching users for anniversary/birthday rewards: {e}")
+        finally:
+            conn.close()
+
+        rewards_granted = []
+        for u in users_to_check:
+            uid = u.get("telegram_id")
+            if not uid:
+                continue
+
+            # ۱. بررسی هدیه روز تولد
+            if b_enabled and u.get("birthday"):
+                raw_b = str(u["birthday"]).strip()
+                last_b_year = int(u.get("last_birthday_reward_year") or 0)
+                is_birthday_today = False
+                # استخراج ماه و روز از فرمت‌های YYYY-MM-DD یا MM-DD یا YYYY/MM/DD
+                b_parts = raw_b.replace("/", "-").split("-")
+                if len(b_parts) >= 2:
+                    user_mm_dd = f"{int(b_parts[-2]):02d}-{int(b_parts[-1]):02d}"
+                    if user_mm_dd in (cur_mm_dd, j_cur_mm_dd):
+                        is_birthday_today = True
+
+                if is_birthday_today and last_b_year not in (cur_year, j_cur_year):
+                    gift_note = ""
+                    if b_type == "traffic":
+                        subs = [s for s in self.get_user_subscriptions(uid) if s.get("status") == "active"]
+                        if subs:
+                            self.add_traffic_to_subscription(subs[0]["id"], float(b_val))
+                            gift_note = f"{b_val} گیگابایت حجم هدیه تولد به اشتراک «{subs[0].get('account_name', subs[0]['id'])}» اضافه شد."
+                        else:
+                            val_t = int(float(b_val) * 10000)
+                            self.add_wallet_balance(uid, val_t, "هدیه تبریک تولد به کیف پول")
+                            gift_note = f"{val_t:,} تومان شارژ هدیه تولد به کیف پول شما واریز شد."
+                    elif b_type == "wallet":
+                        w_val = int(b_val)
+                        self.add_wallet_balance(uid, w_val, "هدیه نقدی تبریک تولد", tx_type="birthday_gift")
+                        gift_note = f"{w_val:,} تومان هدیه نقدی تولد به کیف پول واریز شد."
+                    elif b_type == "discount":
+                        disc_code = f"BDAY{uid}{secrets.token_hex(2).upper()}"
+                        self.create_discount_code(disc_code, discount_percent=int(b_val), max_uses=1)
+                        gift_note = f"کد تخفیف اختصاصی {b_val}٪ روز تولد برای شما صادر شد: {disc_code}"
+
+                    conn_up = self.get_connection()
+                    try:
+                        conn_up.execute("UPDATE users SET last_birthday_reward_year = ? WHERE telegram_id = ?", (j_cur_year, uid))
+                        conn_up.commit()
+                    finally:
+                        conn_up.close()
+
+                    rewards_granted.append({
+                        "user_id": uid,
+                        "type": "birthday",
+                        "note": gift_note
+                    })
+
+            # ۲. بررسی هدیه سالگرد عضویت
+            if a_enabled and u.get("created_at"):
+                c_str = str(u["created_at"])[:10].replace("/", "-")
+                last_a_year = int(u.get("last_anniversary_reward_year") or 0)
+                try:
+                    c_dt = datetime.fromisoformat(str(u["created_at"])[:19])
+                    days_active = (now - c_dt).days
+                    c_parts = c_str.split("-")
+                    is_anniv_today = False
+                    if len(c_parts) >= 2:
+                        c_mm_dd = f"{int(c_parts[-2]):02d}-{int(c_parts[-1]):02d}"
+                        if c_mm_dd == cur_mm_dd and days_active >= 360:
+                            is_anniv_today = True
+
+                    if is_anniv_today and last_a_year not in (cur_year, j_cur_year):
+                        gift_note = ""
+                        if a_type == "traffic":
+                            subs = [s for s in self.get_user_subscriptions(uid) if s.get("status") == "active"]
+                            if subs:
+                                self.add_traffic_to_subscription(subs[0]["id"], float(a_val))
+                                gift_note = f"{a_val} گیگابایت حجم هدیه سالگرد عضویت افزوده شد."
+                            else:
+                                val_t = int(float(a_val) * 10000)
+                                self.add_wallet_balance(uid, val_t, "هدیه سالگرد عضویت به کیف پول")
+                                gift_note = f"{val_t:,} تومان هدیه سالگرد به کیف پول واریز شد."
+                        elif a_type == "wallet":
+                            w_val = int(a_val)
+                            self.add_wallet_balance(uid, w_val, "هدیه نقدی سالگرد عضویت", tx_type="anniversary_gift")
+                            gift_note = f"{w_val:,} تومان هدیه نقدی سالگرد عضویت واریز شد."
+                        elif a_type == "discount":
+                            disc_code = f"ANNIV{uid}{secrets.token_hex(2).upper()}"
+                            self.create_discount_code(disc_code, discount_percent=int(a_val), max_uses=1)
+                            gift_note = f"کد تخفیف اختصاصی {a_val}٪ سالگرد عضویت: {disc_code}"
+
+                        conn_up = self.get_connection()
+                        try:
+                            conn_up.execute("UPDATE users SET last_anniversary_reward_year = ? WHERE telegram_id = ?", (j_cur_year, uid))
+                            conn_up.commit()
+                        finally:
+                            conn_up.close()
+
+                        rewards_granted.append({
+                            "user_id": uid,
+                            "type": "anniversary",
+                            "note": gift_note
+                        })
+                except Exception as e_an:
+                    logger.debug(f"Error checking anniversary for {uid}: {e_an}")
+
+        return rewards_granted
+
+    def get_user_vip_info(self, telegram_id: int) -> dict:
+        """دریافت جامع اطلاعات، سطح وفاداری (Loyalty Tier)، درصد تخفیف همیشگی و مزایای VIP کاربر"""
+        user = self.get_user(telegram_id)
+        if not user:
+            return {
+                "is_vip": False,
+                "vip_type": "none",
+                "vip_tier": "none",
+                "tier_title": "عادی",
+                "tier_badge": "عضو عادی",
+                "tier_badge_html": '<span class="badge bg-secondary">عادی</span>',
+                "vip_expire_at": None,
+                "cashback_percent": 0,
+                "discount_percent": 0,
+                "custom_cashback": None,
+                "total_spent": 0,
+                "total_gb": 0,
+                "next_tier": "bronze",
+                "next_tier_title": "برنزی",
+                "remaining_tomans": 300000,
+                "progress_percent": 0,
+                "birthday": None
+            }
+
+        loyalty = self.get_user_loyalty_tier(telegram_id)
+        return {
+            "is_vip": loyalty["is_vip"],
+            "vip_type": user.get("vip_type") or "manual",
+            "vip_tier": loyalty["tier"],
+            "tier_title": loyalty["title"],
+            "tier_badge": loyalty["badge"],
+            "tier_badge_html": loyalty["badge_html"],
+            "vip_expire_at": user.get("vip_expire_at"),
+            "cashback_percent": loyalty["cashback_percent"],
+            "discount_percent": loyalty["discount_percent"],
+            "custom_cashback": user.get("vip_custom_cashback"),
+            "total_spent": loyalty["total_spent"],
+            "total_orders": loyalty["total_orders"],
+            "total_gb": loyalty["total_gb"],
+            "next_tier": loyalty["next_tier"],
+            "next_tier_title": loyalty["next_tier_title"],
+            "next_tier_target": loyalty["next_tier_target"],
+            "remaining_tomans": loyalty["remaining_tomans"],
+            "progress_percent": loyalty["progress_percent"],
+            "birthday": loyalty["birthday"]
+        }
+
+    def set_user_vip(self, telegram_id: int, is_vip: bool, vip_type: str = "manual",
+                      expire_at: Optional[str] = None, custom_cashback: Optional[int] = None,
+                      vip_tier: Optional[str] = None) -> dict:
+        """تغییر و تنظیم وضعیت VIP و سطح وفاداری کاربر (دستی یا خودکار)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        tier_val = vip_tier if vip_tier else ("gold" if is_vip else "none")
+        val_is_vip = 1 if is_vip else 0
+        try:
             cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
             row = cursor.fetchone()
-            val_is_vip = 1 if is_vip else 0
             if not row:
                 cursor.execute("""
-                    INSERT INTO users (telegram_id, username, is_vip, vip_type, vip_expire_at, vip_custom_cashback, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (telegram_id, f"user_{telegram_id}", val_is_vip, vip_type, expire_at, custom_cashback, now, now))
+                    INSERT INTO users (telegram_id, username, is_vip, vip_type, vip_tier, vip_expire_at, vip_custom_cashback, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (telegram_id, f"user_{telegram_id}", val_is_vip, vip_type, tier_val, expire_at, custom_cashback, now, now))
             else:
                 cursor.execute("""
                     UPDATE users
-                    SET is_vip = ?, vip_type = ?, vip_expire_at = ?, vip_custom_cashback = ?, updated_at = ?
+                    SET is_vip = ?, vip_type = ?, vip_tier = ?, vip_expire_at = ?, vip_custom_cashback = ?, updated_at = ?
                     WHERE telegram_id = ?
-                """, (val_is_vip, vip_type, expire_at, custom_cashback, now, telegram_id))
+                """, (val_is_vip, vip_type, tier_val, expire_at, custom_cashback, now, telegram_id))
             conn.commit()
-            logger.info(f"User {telegram_id} VIP status updated to {val_is_vip} ({vip_type})")
-            return {"success": True, "is_vip": bool(val_is_vip)}
+            logger.info(f"User {telegram_id} VIP status updated to {val_is_vip} ({vip_type}, tier: {tier_val})")
+            return {"success": True, "is_vip": bool(val_is_vip), "vip_tier": tier_val}
         except Exception as e:
             logger.error(f"Error setting VIP for {telegram_id}: {e}")
             return {"success": False, "error": str(e)}
@@ -2848,65 +3299,27 @@ class Database:
             conn.close()
 
     def check_and_upgrade_user_vip(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
-        """بررسی خودکار مجموع خریدهای کاربر و ارتقا به VIP در صورت رسیدن به حد نصاب"""
-        user = self.get_user(telegram_id)
-        if not user:
-            return {"upgraded": False, "is_vip": False}
-
-        if user.get("is_vip"):
-            return {"upgraded": False, "is_vip": True, "already_vip": True}
-
-        r_id = reseller_id if reseller_id is not None else user.get("reseller_id")
-
-        # محاسبه مجموع خریدهای تایید شده کاربر
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                SELECT COALESCE(SUM(amount), 0) as total_spent
-                FROM transactions
-                WHERE user_id = ? AND status = 'approved'
-            """, (telegram_id,))
-            spent_row = cursor.fetchone()
-            total_spent = int(spent_row["total_spent"] or 0) if spent_row else 0
-        except Exception as e:
-            logger.error(f"Error calculating total spent for {telegram_id}: {e}")
-            total_spent = 0
-        finally:
-            conn.close()
-
-        if r_id:
-            reseller = self.get_reseller(r_id)
-            auto_enabled = bool(reseller.get("vip_auto_enabled", 1)) if reseller else True
-            threshold = int((reseller.get("vip_auto_threshold") if reseller else 1000000) or 1000000)
-            cashback = int((reseller.get("vip_cashback_percent") if reseller else 10) or 10)
-        else:
-            vip_sets = self.get_vip_settings()
-            auto_enabled = vip_sets.get("auto_enabled", True)
-            threshold = vip_sets.get("auto_threshold", 1000000)
-            cashback = vip_sets.get("cashback_percent", 10)
-
-        if auto_enabled and total_spent >= threshold:
-            self.set_user_vip(telegram_id, is_vip=True, vip_type="auto")
-            logger.info(f"User {telegram_id} auto-upgraded to VIP (total spent: {total_spent:,} >= threshold: {threshold:,})")
-            return {
-                "upgraded": True,
-                "is_vip": True,
-                "total_spent": total_spent,
-                "threshold": threshold,
-                "cashback_percent": cashback,
-                "reseller_id": r_id
-            }
-
+        """بررسی خودکار مجموع خریدهای کاربر و ارتقا به سطوح برنزی، نقره‌ای و طلایی VIP"""
+        tier_info = self.evaluate_and_update_user_vip_tier(telegram_id)
         return {
-            "upgraded": False,
-            "is_vip": False,
-            "total_spent": total_spent,
-            "threshold": threshold
+            "upgraded": tier_info["tier"] != "none",
+            "is_vip": tier_info["is_vip"],
+            "tier": tier_info["tier"],
+            "title": tier_info["title"],
+            "total_spent": tier_info["total_spent"],
+            "discount_percent": tier_info["discount_percent"],
+            "cashback_percent": tier_info["cashback_percent"]
         }
 
     def get_vip_settings(self) -> dict:
-        """دریافت تنظیمات جامع و فیچرهای باشگاه مشتریان پریمیوم (VIP)"""
+        """دریافت تنظیمات جامع باشگاه وفاداری، سطوح سه‌گانه، تخفیف‌ها و هدایای تولد/سالگرد"""
+        def _to_int(key, default):
+            try:
+                val = self.get_setting(key, default)
+                return int(val) if val is not None else default
+            except Exception:
+                return default
+
         auto_enabled = str(self.get_setting("vip_auto_enabled", "1")).lower() in ("1", "true", "yes")
         enabled = str(self.get_setting("vip_system_enabled", "1")).lower() in ("1", "true", "yes")
         priority_support = str(self.get_setting("vip_priority_support", "1")).lower() in ("1", "true", "yes")
@@ -2914,11 +3327,8 @@ class Database:
         free_config_regen = str(self.get_setting("vip_free_config_regen", "1")).lower() in ("1", "true", "yes")
         show_vip_badge = str(self.get_setting("vip_show_badge", "1")).lower() in ("1", "true", "yes")
 
-        def _to_int(key, default):
-            try:
-                return int(self.get_setting(key, default))
-            except Exception:
-                return default
+        b_enabled = str(self.get_setting("vip_birthday_reward_enabled", "1")).lower() in ("1", "true", "yes")
+        a_enabled = str(self.get_setting("vip_anniversary_reward_enabled", "1")).lower() in ("1", "true", "yes")
 
         return {
             "enabled": enabled,
@@ -2932,25 +3342,381 @@ class Database:
             "priority_support": priority_support,
             "vip_server_access": vip_server_access,
             "free_config_regen": free_config_regen,
-            "show_vip_badge": show_vip_badge
+            "show_vip_badge": show_vip_badge,
+            # تنظیمات سطوح سه‌گانه وفاداری (Loyalty Tiers)
+            "bronze_threshold_tomans": _to_int("vip_bronze_threshold_tomans", 300000),
+            "bronze_threshold_gb": _to_int("vip_bronze_threshold_gb", 30),
+            "bronze_discount_percent": _to_int("vip_bronze_discount_percent", 5),
+            "bronze_cashback_percent": _to_int("vip_bronze_cashback_percent", 5),
+            "silver_threshold_tomans": _to_int("vip_silver_threshold_tomans", 800000),
+            "silver_threshold_gb": _to_int("vip_silver_threshold_gb", 80),
+            "silver_discount_percent": _to_int("vip_silver_discount_percent", 10),
+            "silver_cashback_percent": _to_int("vip_silver_cashback_percent", 10),
+            "gold_threshold_tomans": _to_int("vip_gold_threshold_tomans", 1500000),
+            "gold_threshold_gb": _to_int("vip_gold_threshold_gb", 150),
+            "gold_discount_percent": _to_int("vip_gold_discount_percent", 15),
+            "gold_cashback_percent": _to_int("vip_gold_cashback_percent", 15),
+            # هدایای مناسبتی (تولد و سالگرد عضویت)
+            "birthday_reward_enabled": b_enabled,
+            "birthday_reward_type": self.get_setting("vip_birthday_reward_type", "traffic"),
+            "birthday_reward_val": self.get_setting("vip_birthday_reward_val", "5"),
+            "anniversary_reward_enabled": a_enabled,
+            "anniversary_reward_type": self.get_setting("vip_anniversary_reward_type", "traffic"),
+            "anniversary_reward_val": self.get_setting("vip_anniversary_reward_val", "5")
         }
 
-    def save_vip_settings(self, settings: dict) -> bool:
-        """ذخیره تنظیمات و فیچرهای باشگاه مشتریان پریمیوم در جدول settings"""
+    def save_vip_settings(self, *args, **kwargs) -> bool:
+        """ذخیره تنظیمات باشگاه وفاداری و سطوح VIP (پشتیبانی از هر دو حالت دیکشنری و آرگومان‌های مجزا)"""
         try:
-            for k, v in settings.items():
-                if isinstance(v, bool):
-                    val_str = "1" if v else "0"
-                else:
-                    val_str = str(v)
-                self.set_setting(f"vip_{k}", val_str)
+            if args and isinstance(args[0], dict):
+                data = args[0]
+                for k, v in data.items():
+                    val_str = "1" if v is True else ("0" if v is False else str(v))
+                    key_name = k if k.startswith("vip_") else f"vip_{k}"
+                    self.set_setting(key_name, val_str)
+                return True
+            elif len(args) >= 1:
+                # فراخوانی با آرگومان‌های پوزیشنی قدیمی (enabled, threshold, cashback)
+                enabled = args[0]
+                threshold = args[1] if len(args) > 1 else 1000000
+                cashback = args[2] if len(args) > 2 else 10
+                self.set_setting("vip_auto_enabled", "1" if enabled else "0")
+                self.set_setting("vip_auto_threshold", str(threshold))
+                self.set_setting("vip_cashback_percent", str(cashback))
+                return True
+            elif kwargs:
+                for k, v in kwargs.items():
+                    val_str = "1" if v is True else ("0" if v is False else str(v))
+                    key_name = k if k.startswith("vip_") else f"vip_{k}"
+                    self.set_setting(key_name, val_str)
+                return True
             return True
         except Exception as e:
             logger.error(f"Error saving VIP settings: {e}")
             return False
 
+    # ═══════════════════════════════════════════════════════════════
+    # سیستم ماموریت‌های اجتماعی و کسب حجم رایگان (Social Tasks & Quests)
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_social_tasks(self, reseller_id: int = 0, active_only: bool = True) -> list:
+        """دریافت لیست ماموریت‌های فعال برای کاربران"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM social_tasks WHERE (reseller_id = ? OR reseller_id = 0)"
+            params = [reseller_id]
+            if active_only:
+                query += " AND is_active = 1"
+            query += " ORDER BY order_num ASC, id ASC"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error fetching social tasks: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_social_task(self, task_id: int) -> Optional[dict]:
+        """دریافت مشخصات یک ماموریت با شناسه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM social_tasks WHERE id = ?", (task_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching social task {task_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def add_social_task(self, title: str, task_type: str, reward_type: str, reward_value: str,
+                        target_count: int = 1, description: str = "", target_channel_id: str = "",
+                        target_link: str = "", plan_id: str = None, icon: str = "fa-gift",
+                        badge_text: str = "", is_active: int = 1, order_num: int = 0,
+                        reseller_id: int = 0) -> int:
+        """افزودن ماموریت جدید به سامانه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO social_tasks (
+                    reseller_id, title, description, task_type, target_count, target_channel_id,
+                    target_link, reward_type, reward_value, plan_id, icon, badge_text,
+                    is_active, order_num, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                reseller_id, title.strip(), (description or "").strip(), task_type.strip(),
+                max(1, int(target_count or 1)), (target_channel_id or "").strip(),
+                (target_link or "").strip(), reward_type.strip(), str(reward_value).strip(),
+                plan_id or None, icon or "fa-gift", badge_text or "",
+                1 if is_active else 0, int(order_num or 0), now, now
+            ))
+            conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Error adding social task: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def update_social_task(self, task_id: int, **kwargs) -> bool:
+        """ویرایش مشخصات ماموریت"""
+        if not kwargs:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        kwargs["updated_at"] = now
+        fields = [f"{k} = ?" for k in kwargs.keys()]
+        values = list(kwargs.values()) + [task_id]
+        try:
+            cursor.execute(f"UPDATE social_tasks SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error updating social task {task_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def delete_social_task(self, task_id: int) -> bool:
+        """حذف ماموریت و سوابق آن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM user_social_tasks WHERE task_id = ?", (task_id,))
+            cursor.execute("DELETE FROM social_tasks WHERE id = ?", (task_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting social task {task_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def toggle_social_task(self, task_id: int) -> bool:
+        """فعال یا غیرفعال‌سازی سریع ماموریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE social_tasks SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = ? WHERE id = ?", (now, task_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error toggling social task {task_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_user_social_tasks_progress(self, user_id: int, reseller_id: int = 0) -> list:
+        """
+        محاسبه وضعیت و پیشرفت زنده کلیه ماموریت‌ها برای کاربر مشخص
+        با کنترل خودکار وضعیت ارجاعات واقعی و قفل‌های ضدتقلب
+        """
+        tasks = self.get_social_tasks(reseller_id=reseller_id, active_only=True)
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # محاسبه تعداد کل ارجاعات معتبر کاربر جهت ماموریت‌های دعوت از دوستان
+        ref_count = 0
+        try:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT referred_id) as ref_count
+                FROM referrals
+                WHERE referrer_id = ? AND status != 'rejected'
+            """, (user_id,))
+            row_ref = cursor.fetchone()
+            if row_ref:
+                ref_count = int(row_ref["ref_count"] or 0)
+        except Exception as e_ref:
+            logger.debug(f"Error counting referrals for user {user_id}: {e_ref}")
+
+        # دریافت سوابق ثبت‌شده کاربر برای ماموریت‌ها
+        user_records = {}
+        try:
+            cursor.execute("SELECT * FROM user_social_tasks WHERE user_id = ?", (user_id,))
+            rows = cursor.fetchall()
+            for r in rows:
+                user_records[r["task_id"]] = dict(r)
+        except Exception as e_rec:
+            logger.debug(f"Error fetching user tasks records for {user_id}: {e_rec}")
+        finally:
+            conn.close()
+
+        result = []
+        for t in tasks:
+            tid = t["id"]
+            rec = user_records.get(tid, {})
+            status = rec.get("status", "pending")
+            is_claimed = (status == "claimed")
+            target_cnt = max(1, int(t.get("target_count") or 1))
+
+            cur_cnt = 0
+            if is_claimed:
+                cur_cnt = target_cnt
+                pct = 100
+                can_claim = False
+            elif t["task_type"] == "invite_friends":
+                cur_cnt = min(ref_count, target_cnt)
+                pct = min(100, int((cur_cnt / target_cnt) * 100))
+                can_claim = (ref_count >= target_cnt)
+            else:
+                cur_cnt = rec.get("progress_count", 0)
+                pct = min(100, int((cur_cnt / target_cnt) * 100))
+                can_claim = True
+
+            t_copy = dict(t)
+            t_copy["user_status"] = status
+            t_copy["is_claimed"] = is_claimed
+            t_copy["current_count"] = cur_cnt
+            t_copy["target_count"] = target_cnt
+            t_copy["progress_percent"] = pct
+            t_copy["can_claim"] = can_claim
+            t_copy["claimed_at"] = rec.get("claimed_at")
+            t_copy["reward_delivered"] = rec.get("reward_delivered")
+            result.append(t_copy)
+
+        return result
+
+    def verify_and_claim_social_task(self, user_id: int, task_id: int, proof_data: str = None,
+                                      chosen_sub_id: int = None, bot_token: str = None) -> dict:
+        """
+        موتور جامع اعتبارسنجی ضدتقلب و اهدای آنی پاداش ماموریت (حجم، کیف پول، کد تخفیف، اشتراک)
+        شامل بررسی رسمی عضویت در کانال از طریق Telegram API، تطبیق ارجاعات واقعی و قفل دریافت تکراری
+        """
+        task = self.get_social_task(task_id)
+        if not task or not task.get("is_active"):
+            return {"success": False, "error": "ماموریت مورد نظر یافت نشد یا در حال حاضر غیرفعال است."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # ۱. سپر ضد تقلب: قفل یک‌باره دریافت پاداش
+            cursor.execute("SELECT * FROM user_social_tasks WHERE user_id = ? AND task_id = ?", (user_id, task_id))
+            existing_rec = cursor.fetchone()
+            if existing_rec and existing_rec["status"] == "claimed":
+                return {"success": False, "error": "شما قبلاً پاداش این ماموریت را دریافت نموده‌اید."}
+
+            t_type = task.get("task_type")
+            target_cnt = max(1, int(task.get("target_count") or 1))
+
+            # ۲. اعتبارسنجی اختصاصی ضد تقلب بر اساس نوع ماموریت
+            if t_type == "join_channel":
+                target_ch = (task.get("target_channel_id") or "").strip()
+                if not target_ch and task.get("target_link"):
+                    m_link = re.search(r"t\.me/([^/?]+)", task["target_link"])
+                    if m_link:
+                        target_ch = f"@{m_link.group(1)}"
+                if not target_ch:
+                    target_ch = self.get_setting("mandatory_channel_id") or self.get_setting("bot_channel") or ""
+
+                if target_ch:
+                    chk = self.check_telegram_chat_member(target_ch, user_id, bot_token=bot_token)
+                    if not chk.get("is_member"):
+                        return {
+                            "success": False,
+                            "error": f"عضویت شما در کانال {target_ch} تأیید نشد. لطفاً ابتدا در کانال عضو شوید و سپس دکمه دریافت پاداش را کلیک فرمایید."
+                        }
+
+            elif t_type == "invite_friends":
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT referred_id) as ref_count
+                    FROM referrals
+                    WHERE referrer_id = ? AND status != 'rejected'
+                """, (user_id,))
+                ref_row = cursor.fetchone()
+                act_refs = int(ref_row["ref_count"] or 0) if ref_row else 0
+                if act_refs < target_cnt:
+                    rem = target_cnt - act_refs
+                    return {
+                        "success": False,
+                        "error": f"شما تاکنون {act_refs} از {target_cnt} نفر را دعوت کرده‌اید. هنوز {rem} دعوت دیگر تا تکمیل ماموریت باقی مانده است.",
+                        "progress": act_refs,
+                        "target": target_cnt
+                    }
+
+            elif t_type == "review_rating":
+                proof_clean = (proof_data or "").strip()
+                if len(proof_clean) < 3:
+                    return {
+                        "success": False,
+                        "error": "لطفاً دیدگاه، نظر یا امتیاز خود را در کادر مربوطه وارد نمایید."
+                    }
+
+            # ۳. اهدای آنی پاداش بر اساس نوع هدیه
+            r_type = task.get("reward_type", "traffic")
+            r_val = task.get("reward_value", "1")
+            delivered_text = ""
+
+            if r_type == "traffic":
+                sub_to_add = None
+                if chosen_sub_id:
+                    sub_to_add = self.get_subscription(chosen_sub_id)
+                if not sub_to_add:
+                    active_subs = [s for s in self.get_user_subscriptions(user_id) if s.get("status") == "active"]
+                    sub_to_add = active_subs[0] if active_subs else None
+
+                if sub_to_add:
+                    extra_gb = float(r_val)
+                    self.add_traffic_to_subscription(sub_to_add["id"], extra_gb)
+                    sub_title = sub_to_add.get("account_name") or f"اشتراک #{sub_to_add['id']}"
+                    delivered_text = f"{extra_gb:g} گیگابایت حجم هدیه با موفقیت به {sub_title} اضافه شد."
+                else:
+                    # اگر کاربر در لحظه دریافت هیچ اشتراک فعالی نداشت، معادل ریالی به کیف پول شارژ می‌شود
+                    equiv_wallet = int(float(r_val) * 10000)
+                    self.add_wallet_balance(user_id, equiv_wallet, f"هدیه نقدی ماموریت {task['title']} (معادل حجم هدیه)")
+                    delivered_text = f"مبلغ {equiv_wallet:,} تومان به عنوان پاداش به کیف پول شما واریز گردید."
+
+            elif r_type == "wallet":
+                w_amount = int(float(r_val))
+                self.add_wallet_balance(user_id, w_amount, f"پاداش ماموریت: {task['title']}", tx_type="quest_reward")
+                delivered_text = f"مبلغ {w_amount:,} تومان به موجودی کیف پول شما واریز شد."
+
+            elif r_type == "discount":
+                d_pct = int(float(r_val))
+                code = f"TASK{user_id}{secrets.token_hex(2).upper()}"
+                self.create_discount_code(code, discount_percent=d_pct, max_uses=1)
+                delivered_text = f"کد تخفیف اختصاصی {d_pct}٪ شما: {code}"
+
+            elif r_type == "plan":
+                delivered_text = f"اشتراک هدیه {task.get('plan_id') or r_val} با موفقیت ثبت شد."
+
+            # ۴. ثبت موفقیت‌آمیز در پایگاه داده
+            cursor.execute("""
+                INSERT INTO user_social_tasks (
+                    user_id, task_id, progress_count, status, proof_data, reward_delivered, claimed_at, created_at, updated_at
+                ) VALUES (?, ?, ?, 'claimed', ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, task_id) DO UPDATE SET
+                    progress_count = excluded.progress_count,
+                    status = 'claimed',
+                    proof_data = excluded.proof_data,
+                    reward_delivered = excluded.reward_delivered,
+                    claimed_at = excluded.claimed_at,
+                    updated_at = excluded.updated_at
+            """, (user_id, task_id, target_cnt, (proof_data or "").strip(), delivered_text, now, now, now))
+            conn.commit()
+
+            return {
+                "success": True,
+                "message": f"🎉 تبریک! {delivered_text}",
+                "reward_delivered": delivered_text,
+                "reward_type": r_type,
+                "reward_value": r_val
+            }
+        except Exception as e:
+            logger.error(f"Error verifying/claiming social task {task_id} for user {user_id}: {e}")
+            return {"success": False, "error": f"خطا در پردازش ماموریت: {str(e)}"}
+        finally:
+            conn.close()
+
     def get_vip_users_list(self) -> list:
-        """دریافت لیست تمام مشتریان پرمیوم همراه با آمار خرید و اشتراک‌های فعال"""
+        """دریافت لیست تمام مشتریان پرمیوم و اعضای سطوح وفاداری همراه با آمار خرید و اشتراک‌های فعال"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2960,11 +3726,22 @@ class Database:
                        COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_orders,
                        COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active'), 0) as active_subs
                 FROM users u
-                WHERE u.is_vip = 1
+                WHERE u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')
                 ORDER BY total_spent DESC, u.id DESC
             """)
             rows = cursor.fetchall()
-            return [dict(r) for r in rows]
+            user_list = []
+            for r in rows:
+                ud = dict(r)
+                tid = ud.get("telegram_id")
+                loyalty = self.get_user_loyalty_tier(tid) if tid else {}
+                ud["loyalty_tier"] = loyalty.get("tier", ud.get("vip_tier") or "none")
+                ud["tier_title"] = loyalty.get("title", "عادی")
+                ud["tier_badge_html"] = loyalty.get("badge_html", "")
+                ud["discount_percent"] = loyalty.get("discount_percent", 0)
+                ud["cashback_percent"] = loyalty.get("cashback_percent", ud.get("vip_custom_cashback") or 10)
+                user_list.append(ud)
+            return user_list
         except Exception as e:
             logger.error(f"Error fetching VIP users list: {e}")
             return []
@@ -24064,6 +24841,11 @@ class Database:
                 cursor.execute(f"SELECT * FROM lucky_wheel_prizes WHERE {where_fb} ORDER BY id ASC")
                 prizes = [dict(r) for r in cursor.fetchall()]
 
+            total_weight = sum(int(p.get("chance_weight") or 1) for p in prizes if p.get("is_active"))
+            for p in prizes:
+                w = int(p.get("chance_weight") or 1)
+                p["chance_percent"] = round((w / total_weight) * 100, 1) if (total_weight > 0 and p.get("is_active")) else 0
+
             return prizes
         except Exception as e:
             logger.error(f"Error getting lucky wheel prizes: {e}")
@@ -24073,7 +24855,8 @@ class Database:
 
     def add_lucky_wheel_prize(self, reseller_id: int, title: str, prize_type: str, prize_value: str,
                               chance_weight: int = 10, target_audience: str = 'all',
-                              slice_color: str = '#3b82f6', slice_icon: str = 'gift', is_active: int = 1) -> dict:
+                              slice_color: str = '#3b82f6', slice_icon: str = 'gift', is_active: int = 1,
+                              daily_limit: int = 0) -> dict:
         """افزودن جایزه جدید به گردونه شانس"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -24081,10 +24864,10 @@ class Database:
         try:
             cursor.execute("""
                 INSERT INTO lucky_wheel_prizes 
-                (reseller_id, title, prize_type, prize_value, chance_weight, target_audience, slice_color, slice_icon, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (reseller_id, title, prize_type, prize_value, chance_weight, target_audience, slice_color, slice_icon, is_active, daily_limit, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (int(reseller_id or 0), title.strip(), prize_type, str(prize_value).strip(),
-                  int(chance_weight or 1), target_audience, slice_color, slice_icon, int(is_active), now, now))
+                  int(chance_weight or 1), target_audience, slice_color, slice_icon, int(is_active), int(daily_limit or 0), now, now))
             conn.commit()
             return {"success": True, "prize_id": cursor.lastrowid}
         except Exception as e:
@@ -24098,7 +24881,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
-        allowed = {"title", "prize_type", "prize_value", "chance_weight", "target_audience", "slice_color", "slice_icon", "is_active"}
+        allowed = {"title", "prize_type", "prize_value", "chance_weight", "target_audience", "slice_color", "slice_icon", "is_active", "daily_limit"}
         updates = []
         params = []
         for k, v in kwargs.items():
