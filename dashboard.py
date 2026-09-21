@@ -4912,10 +4912,12 @@ def bot_menu_settings():
 
         if action == "save_domains" or bot_type == "domains":
             tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
-            troubleshoot_domain = request.form.get("troubleshoot_domain", "").strip().lower()
-            db.save_setting("tutorial_domain", tutorial_domain)
-            db.save_setting("troubleshoot_domain", troubleshoot_domain)
-            flash("دامنه‌های راهنمای اتصال و حل مشکلات اتصال با موفقیت ذخیره شدند.", "success")
+            clean_dom = ssl_manager.clean_domain(tutorial_domain)
+            db.save_setting("tutorial_domain", clean_dom)
+            db.save_setting("troubleshoot_domain", clean_dom)
+            if clean_dom:
+                ssl_manager.request_ssl_certificate(clean_dom)
+            flash("دامنه آموزش‌ها و عیب‌یابی اتصال با موفقیت ذخیره شد.", "success")
             return redirect(url_for("bot_menu_settings", tab=request.form.get("active_tab", "admin")))
 
         elif action == "save_admin_bot_config":
@@ -13711,12 +13713,23 @@ def settings():
             return redirect(url_for("settings"))
         elif action == "save_tutorial_settings":
             tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
-            troubleshoot_domain = request.form.get("troubleshoot_domain", "").strip().lower()
             tutorial_title = request.form.get("tutorial_title", "").strip()
-            db.save_setting("tutorial_domain", tutorial_domain)
-            db.save_setting("troubleshoot_domain", troubleshoot_domain)
-            db.save_setting("tutorial_title", tutorial_title)
-            flash("تنظیمات دامنه‌ها و عنوان پورتال آموزش‌ها با موفقیت ذخیره شد.", "success")
+            clean_dom = ssl_manager.clean_domain(tutorial_domain)
+            db.save_setting("tutorial_domain", clean_dom)
+            db.save_setting("troubleshoot_domain", clean_dom)
+            if tutorial_title:
+                db.save_setting("tutorial_title", tutorial_title)
+
+            ssl_msg = ""
+            if clean_dom:
+                logger.info(f"Requesting SSL certificate for tutorial & troubleshoot domain: {clean_dom}")
+                ssl_res = ssl_manager.request_ssl_certificate(clean_dom)
+                if ssl_res.get("success"):
+                    ssl_msg = f" همچنین گواهی امنیتی SSL با موفقیت فعال شد ({ssl_res.get('provider_name')})."
+                else:
+                    ssl_msg = f" (نکته SSL: {ssl_res.get('error', 'در حال صدور/بررسی')})"
+
+            flash(f"تنظیمات دامنه و عنوان پورتال جامع آموزش‌ها و عیب‌یابی با موفقیت ذخیره شد.{ssl_msg}", "success")
             return redirect(url_for("settings"))
         elif action == "save_online_gateway_settings":
             gw_enabled = request.form.get("online_gateway_enabled") == "on"
@@ -21903,7 +21916,29 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         raw = get_plans_dict()
         plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
 
-    troubleshoot_url = url_for("troubleshoot_wizard", _external=True)
+    # Dynamic Tutorial & Troubleshooting URL
+    tut_domain = ""
+    if reseller_id:
+        try:
+            r_data = db.get_reseller(reseller_id)
+            if r_data and r_data.get("tutorial_domain"):
+                tut_domain = r_data.get("tutorial_domain")
+        except Exception:
+            pass
+    if not tut_domain:
+        tut_domain = db.get_setting("tutorial_domain") or db.get_setting("troubleshoot_domain") or ""
+
+    if tut_domain:
+        tut_domain = str(tut_domain).strip()
+        if tut_domain.startswith("http://") or tut_domain.startswith("https://"):
+            troubleshoot_url = tut_domain.rstrip("/")
+        else:
+            troubleshoot_url = f"https://{tut_domain.rstrip('/')}"
+    else:
+        try:
+            troubleshoot_url = url_for("tutorials_portal", _external=True)
+        except Exception:
+            troubleshoot_url = url_for("troubleshoot_wizard", _external=True)
     portal_enable_renewal = str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true")
     portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
 
@@ -24705,6 +24740,23 @@ def run_dashboard(host="0.0.0.0", port=None, debug=False):
         threading.Thread(target=_run_periodic_queue_processor, daemon=True, name="SubscriptionQueueProcessor").start()
     except Exception as eq:
         logger.error(f"Error starting queue processor thread: {eq}")
+
+    # تمدید خودکار و هوشمند گواهی‌های SSL کلیه دامنه‌های سیستم (هر ۱۲ ساعت)
+    def _run_periodic_ssl_renewal():
+        time.sleep(30)  # تاخیر اولیه جهت لود کامل سرور و اتصالات شبکه
+        while True:
+            try:
+                logger.info("Executing periodic SSL certificate check and auto-renewal for all domains...")
+                res = ssl_manager.renew_all_ssl_certificates(threshold_days=30)
+                logger.info(f"Periodic SSL check completed: {len(res.get('renewed', []))} renewed, {len(res.get('skipped', []))} healthy, {len(res.get('failed', []))} failed")
+            except Exception as ex:
+                logger.error(f"Error in periodic SSL renewal worker: {ex}")
+            time.sleep(43200)  # هر ۱۲ ساعت یکبار
+
+    try:
+        threading.Thread(target=_run_periodic_ssl_renewal, daemon=True, name="SSLRenewalWorker").start()
+    except Exception as es:
+        logger.error(f"Error starting SSL renewal worker thread: {es}")
 
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 

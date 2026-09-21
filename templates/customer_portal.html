@@ -2337,15 +2337,15 @@
                 </button>
 
                 {% if actual_sub_url or single_url %}
-                <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR، لینک هوشمند و کانفیگ تکی">
+                <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR و کپی لینک اشتراک و کانفیگ">
                     <i class="fas fa-qrcode text-info me-1"></i>
-                    <span>دریافت کانفیگ و اشتراک ⚡</span>
+                    <span>QR / کپی لینک</span>
                 </button>
                 {% endif %}
 
                 {% if portal_show_troubleshoot and troubleshoot_url %}
-                <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" title="آموزش و رفع مشکل اتصال">
-                    <i class="fas fa-circle-question me-1"></i>راهنما و رفع مشکل
+                <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" title="آموزش و عیب‌یابی اتصال">
+                    <i class="fas fa-circle-question me-1"></i>آموزش و عیب‌یابی
                 </a>
                 {% endif %}
             </div>
@@ -3295,32 +3295,31 @@
                 </div>
             </div>
 
-            <!-- ردیف ۲ بنتو: بارانداز اتصال سریع به نرم‌افزارها و ابزارها -->
+            <!-- ردیف ۲ بنتو: ابزارهای اتصال سریع به نرم‌افزارها -->
             <div class="bento-card p-3 mb-3">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <span class="fw-bold small text-white"><i class="fas fa-plug text-primary me-1"></i> اتصال و ابزارهای سریع:</span>
-                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                    <span class="fw-bold small text-white text-nowrap"><i class="fas fa-plug text-primary me-1"></i> ابزارهای اتصال:</span>
+                    <div class="d-flex flex-wrap gap-1 align-items-center justify-content-start" style="direction: ltr;">
+                        {% if actual_sub_url or single_url %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR و کپی لینک اشتراک و کانفیگ">
+                            <i class="fas fa-qrcode text-info me-1"></i>
+                            <span>QR / کپی لینک</span>
+                        </button>
+                        {% endif %}
                         {% if actual_sub_url %}
                         <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i>Hiddify</a>
                         <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i>Streisand</a>
                         <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i>Happ</a>
                         <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i>V2box</a>
                         <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
-                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="بارکد QR"><i class="fas fa-qrcode me-1"></i>QR</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyText('{{ actual_sub_url }}', 'لینک اشتراک')"><i class="fas fa-link me-1"></i>کپی ساب</button>
                         {% endif %}
-                        {% if single_url %}
-                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')"><i class="fas fa-bolt me-1"></i>تکی</button>
+                        {% if troubleshoot_url %}
+                        <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace d-inline-flex align-items-center gap-1" style="font-size: 11px;" title="آموزش و عیب‌یابی اتصال">
+                            <i class="fas fa-circle-question me-1 text-warning"></i>آموزش و عیب‌یابی
+                        </a>
                         {% endif %}
                         <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal"><i class="fas fa-chart-line me-1"></i>آمار مصرف</button>
                         <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
-                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" onclick="openCustomerClubModal('ref')" title="کسب درآمد و پاداش"><i class="fas fa-coins text-warning me-1"></i>کسب درآمد</button>
-                        {% if actual_sub_url or single_url %}
-                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR، لینک هوشمند و کانفیگ تکی">
-                            <i class="fas fa-qrcode text-info me-1"></i>
-                            <span>دریافت کانفیگ و اشتراک ⚡</span>
-                        </button>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -3369,7 +3368,7 @@
                             <i class="fas fa-qrcode fs-5"></i>
                         </div>
                         <div>
-                            <h5 class="modal-title fw-bold mb-0" id="subConfigModalLabel">دریافت کانفیگ و اشتراک ⚡</h5>
+                            <h5 class="modal-title fw-bold mb-0" id="subConfigModalLabel">QR / کپی لینک اشتراک و کانفیگ ⚡</h5>
                             <small class="text-secondary">بارکد اتصال سریع، لینک سابسکریپشن هوشمند و کانفیگ مستقیم تکی</small>
                         </div>
                     </div>

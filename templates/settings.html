@@ -2517,24 +2517,14 @@ function escapeHtml(str) {
             <input type="hidden" name="action" value="save_tutorial_settings">
             
             <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی راهنمای اتصال (📖 Tutorial Domain)</label>
+                <div class="col-12">
+                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی آموزش‌ها و عیب‌یابی (📖 Tutorial & Troubleshoot Domain)</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light"><i class="fas fa-book-open text-primary"></i></span>
                         <input type="text" class="form-control font-monospace" name="tutorial_domain" 
-                               value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
+                               value="{{ tutorial_domain or troubleshoot_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
                     </div>
-                    <div class="form-text text-muted">آدرس پورتال آموزش‌های تصویری اتصال برای کاربران.</div>
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه اختصاصی حل مشکلات اتصال (🛠️ Troubleshoot Domain)</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-wrench text-warning"></i></span>
-                        <input type="text" class="form-control font-monospace" name="troubleshoot_domain" 
-                               value="{{ troubleshoot_domain }}" placeholder="مثال: fix.mydomain.com" dir="ltr">
-                    </div>
-                    <div class="form-text text-muted">آدرس سامانه ویزارد هوشمند عیب‌یابی و رفع قطعی اینترنت.</div>
+                    <div class="form-text text-muted">آدرس پورتال جامع آموزش‌های تصویری، راهنمای اتصال نرم‌افزارها و ویزارد هوشمند رفع مشکلات اتصال برای کاربران (گواهی امنیتی SSL به صورت خودکار برای این دامنه صادر و تمدید می‌شود).</div>
                 </div>
 
                 <div class="col-12">

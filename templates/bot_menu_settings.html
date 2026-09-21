@@ -387,36 +387,20 @@
                     <input type="hidden" name="active_tab" value="{{ active_tab }}">
 
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-bold small text-dark">
-                                <i class="fas fa-book-open text-primary me-1"></i> دامنه اختصاصی راهنمای اتصال (📖 آموزش‌ها):
+                                <i class="fas fa-book-open text-primary me-1"></i> دامنه یا ساب‌دامنه اختصاصی آموزش‌ها و عیب‌یابی (📖 راهنما و عیب‌یابی هوشمند):
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
                                 <input type="text" 
                                        name="tutorial_domain" 
                                        class="form-control font-monospace" 
-                                       value="{{ tutorial_domain }}" 
+                                       value="{{ tutorial_domain or troubleshoot_domain }}" 
                                        placeholder="مثال: help.mydomain.com یا https://help.mydomain.com" 
                                        dir="ltr">
                             </div>
-                            <div class="form-text text-muted small">هنگام کلیک روی دکمه «📖 راهنمای اتصال»، کاربر به این آدرس هدایت می‌شود.</div>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small text-dark">
-                                <i class="fas fa-wrench text-warning me-1"></i> دامنه اختصاصی حل مشکلات اتصال (🛠️ عیب‌یابی هوشمند):
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
-                                <input type="text" 
-                                       name="troubleshoot_domain" 
-                                       class="form-control font-monospace" 
-                                       value="{{ troubleshoot_domain }}" 
-                                       placeholder="مثال: fix.mydomain.com یا https://help.mydomain.com/troubleshoot" 
-                                       dir="ltr">
-                            </div>
-                            <div class="form-text text-muted small">هنگام کلیک روی دکمه «🛠️ حل مشکلات اتصال»، کاربر مستقیماً به این آدرس هدایت می‌شود.</div>
+                            <div class="form-text text-muted small">هنگام کلیک روی دکمه‌های «📖 راهنمای اتصال» یا «🛠️ حل مشکلات اتصال»، کاربر مستقیماً به این پورتال جامع هدایت می‌شود.</div>
                         </div>
                     </div>
 

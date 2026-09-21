@@ -283,3 +283,154 @@ def _save_ssl_success(res: dict):
         db.save_setting("ssl_updated_at", str(os.path.getmtime(res.get("cert_path", ""))) if os.path.exists(res.get("cert_path", "")) else "")
     except Exception as e:
         logger.warning(f"Error saving SSL settings to DB: {e}")
+
+
+def find_certificate_path(domain: str) -> Optional[str]:
+    """یافتن مسیر فایل سرتیفیکیت معتبر برای یک دامنه خاص"""
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return None
+
+    # ۱. مسیر استاندارد Let's Encrypt / Certbot در لینوکس
+    le_path = f"/etc/letsencrypt/live/{clean_d}/fullchain.pem"
+    if os.path.exists(le_path):
+        return le_path
+
+    # ۲. مسیر سرتیفیکیت‌های داخلی و خودامضا (data/certs)
+    local_path = os.path.join(CERTS_DIR, f"{clean_d}.crt")
+    if os.path.exists(local_path):
+        return local_path
+
+    # ۳. بررسی مسیر ثبت‌شده در تنظیمات دیتابیس
+    try:
+        ssl_dom = db.get_setting("ssl_domain")
+        if ssl_dom and clean_domain(ssl_dom) == clean_d:
+            db_path = db.get_setting("ssl_cert_path")
+            if db_path and os.path.exists(db_path):
+                return db_path
+    except Exception:
+        pass
+
+    return None
+
+
+def get_certificate_expiry_days(domain: str) -> Optional[float]:
+    """
+    محاسبه روزهای باقیمانده تا انقضای گواهی امنیتی SSL برای یک دامنه
+    اگر گواهی موجود نباشد None برمی‌گرداند.
+    """
+    cert_path = find_certificate_path(domain)
+    if not cert_path or not os.path.exists(cert_path):
+        return None
+
+    try:
+        from cryptography import x509
+        import datetime
+
+        with open(cert_path, "rb") as f:
+            cert = x509.load_pem_x509_certificate(f.read())
+
+        if hasattr(cert, "not_valid_after_utc"):
+            expiry_dt = cert.not_valid_after_utc
+        else:
+            expiry_dt = cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        diff = (expiry_dt - now).total_seconds() / 86400.0
+        return diff
+    except Exception as e:
+        logger.warning(f"Error reading SSL certificate expiry for {domain} from {cert_path}: {e}")
+        return 0.0
+
+
+def get_all_configured_domains() -> list[str]:
+    """
+    استخراج هوشمند کلیه دامنه‌ها و ساب‌دامنه‌های ثبت شده در سیستم:
+    - دامنه اصلی پنل / مشتری (custom_domain, panel_domain)
+    - دامنه آموزش‌ها و عیب‌یابی (tutorial_domain, troubleshoot_domain)
+    - دامنه صادرشده جاری (ssl_domain)
+    - کلیه دامنه‌های اختصاصی نمایندگان فعال (resellers.custom_domain, resellers.tutorial_domain)
+    """
+    raw_domains = []
+
+    # ۱. تنظیمات عمومی پنل
+    for key in ("custom_domain", "panel_domain", "tutorial_domain", "troubleshoot_domain", "ssl_domain"):
+        try:
+            val = db.get_setting(key)
+            if val:
+                raw_domains.append(str(val))
+        except Exception:
+            pass
+
+    # ۲. دامنه‌های اختصاصی نمایندگان
+    try:
+        conn = db.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT custom_domain, tutorial_domain FROM resellers WHERE status != 'deleted'")
+        for row in cur.fetchall():
+            if row["custom_domain"]:
+                raw_domains.append(str(row["custom_domain"]))
+            if row["tutorial_domain"]:
+                raw_domains.append(str(row["tutorial_domain"]))
+    except Exception as e:
+        logger.warning(f"Error collecting reseller domains for SSL: {e}")
+
+    # ۳. فیلترسازی، پالایش و حذف موارد تکراری و نامعتبر
+    unique_domains: list[str] = []
+    for d in raw_domains:
+        cleaned = clean_domain(d)
+        if not cleaned:
+            continue
+        # حذف آی‌پی‌ها و لوکال‌ها
+        if cleaned in ("localhost", "127.0.0.1") or re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", cleaned):
+            continue
+        if cleaned not in unique_domains:
+            unique_domains.append(cleaned)
+
+    return unique_domains
+
+
+def renew_all_ssl_certificates(threshold_days: int = 30) -> Dict[str, Any]:
+    """
+    بررسی هوشمند و تمدید خودکار کلیه گواهی‌های SSL سیستم:
+    - کلیه دامنه‌ها بررسی می‌شوند.
+    - در صورتی که گواهی موجود نباشد یا کمتر از threshold_days (پیش‌فرض ۳۰ روز) تا انقضای ۹۰ روزه آن مانده باشد،
+      به صورت خودکار از طریق Let's Encrypt / ZeroSSL یا Self-Signed تمدید می‌شود.
+    """
+    domains = get_all_configured_domains()
+    logger.info(f"Starting SSL renewal check for {len(domains)} configured domains (threshold: {threshold_days} days)...")
+
+    results: Dict[str, Any] = {
+        "checked_domains": domains,
+        "renewed": [],
+        "skipped": [],
+        "failed": []
+    }
+
+    for dom in domains:
+        try:
+            remaining_days = get_certificate_expiry_days(dom)
+            if remaining_days is None:
+                logger.info(f"[SSL Auto-Renewal] Domain '{dom}' has NO certificate. Requesting new certificate...")
+                res = request_ssl_certificate(dom)
+                if res.get("success"):
+                    results["renewed"].append({"domain": dom, "reason": "missing", "provider": res.get("provider")})
+                else:
+                    results["failed"].append({"domain": dom, "reason": "missing", "error": res.get("error")})
+            elif remaining_days <= threshold_days:
+                logger.info(f"[SSL Auto-Renewal] Domain '{dom}' certificate expires in {remaining_days:.1f} days (<= {threshold_days}). Renewing...")
+                res = request_ssl_certificate(dom)
+                if res.get("success"):
+                    results["renewed"].append({"domain": dom, "reason": f"expiring in {remaining_days:.1f}d", "provider": res.get("provider")})
+                else:
+                    results["failed"].append({"domain": dom, "reason": f"expiring in {remaining_days:.1f}d", "error": res.get("error")})
+            else:
+                logger.debug(f"[SSL Auto-Renewal] Domain '{dom}' certificate is healthy ({remaining_days:.1f} days remaining). Skipping.")
+                results["skipped"].append({"domain": dom, "remaining_days": round(remaining_days, 1)})
+        except Exception as e:
+            logger.error(f"[SSL Auto-Renewal] Unexpected error processing domain '{dom}': {e}")
+            results["failed"].append({"domain": dom, "error": str(e)})
+
+    logger.info(f"SSL renewal check completed: {len(results['renewed'])} renewed, {len(results['skipped'])} skipped, {len(results['failed'])} failed.")
+    return results
+
