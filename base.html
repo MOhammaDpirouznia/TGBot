@@ -56,11 +56,12 @@
             --sidebar-text: #334155;
             --sidebar-text-muted: #64748b;
             --sidebar-hover-bg: rgba(219, 228, 238, 0.7);
-            --body-bg: var(--palette-body-bg, #f8fafc);
-            --card-bg: var(--palette-card-bg, rgba(255, 255, 255, 0.78));
-            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.85));
+            --body-bg: var(--palette-body-bg, #f1f5f9);
+            --card-bg: var(--palette-card-bg, #ffffff);
+            --card-border: var(--palette-card-border, #cbd5e1);
+            --palette-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
             --text-main: var(--palette-text-main, #0f172a);
-            --text-muted: var(--palette-text-muted, #64748b);
+            --text-muted: var(--palette-text-muted, #475569);
         }
 
         .btn-primary {
@@ -277,10 +278,10 @@
             100% { transform: translate3d(45px, 35px, 0) scale(0.9); }
         }
 
-        {% if palette_config and palette_config.animation == 'static' %}
+        {% if not palette_css or (palette_config and (palette_config.animation == 'off' or palette_config.intensity == 'off' or palette_config.palette_id == 'classic_clean')) %}
+        .aura-mesh-container { display: none !important; opacity: 0 !important; visibility: hidden !important; }
+        {% elif palette_config and palette_config.animation == 'static' %}
         .aura-blob { animation: none !important; }
-        {% elif palette_config and (palette_config.animation == 'off' or palette_config.intensity == 'off') %}
-        .aura-mesh-container { display: none !important; }
         {% endif %}
 
         /* ─── کارت‌های شیشه‌ای مات مدرن (Frosted Glassmorphism Cards) ─── */
@@ -1784,7 +1785,7 @@
 
                 <!-- دسته‌بندی ۲: فروش و بازاریابی -->
                 {% if has_permission('plans') or has_permission('discounts') or has_permission('broadcast') or has_permission('users_view') %}
-                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'broadcast'] %}
+                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'admin_social_tasks_page', 'broadcast'] %}
                 <button class="sidebar-dropdown-toggle {% if is_marketing_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1811,7 +1812,10 @@
                         {% endif %}
                         {% if has_permission('users_view') %}
                         <a class="submenu-item {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
-                            <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
+                            <i class="fas fa-crown text-warning"></i> باشگاه مشتریان و سطوح VIP
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_social_tasks_page' %}active{% endif %}" href="{{ url_for('admin_social_tasks_page') }}">
+                            <i class="fas fa-tasks text-success"></i> ماموریت‌ها و پاداش‌ها
                         </a>
                         {% endif %}
                         {% if has_permission('broadcast') %}

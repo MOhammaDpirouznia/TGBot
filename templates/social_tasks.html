@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block title %}مدیریت ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">داشبورد</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('vip_settings') }}">باشگاه وفاداری</a></li>
+                <li class="breadcrumb-item active" aria-current="page">ماموریت‌های اجتماعی</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-bullhorn text-primary"></i>
+            ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی
+        </h1>
+        <p class="text-muted mb-0">تعریف و مدیریت ماموریت‌های تعاملی (عضویت کانال، دعوت ۵ تا ۱۰ دوست، نظرسنجی و لایک) با اعطای آنی حجم هدیه و شارژ کیف پول</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('vip_settings') }}" class="btn btn-outline-warning text-dark fw-bold shadow-sm">
+            <i class="fas fa-crown me-1"></i> باشگاه وفاداری (VIP)
+        </a>
+        <button type="button" class="btn btn-primary fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+            <i class="fas fa-plus-circle me-1"></i> تعریف ماموریت جدید
+        </button>
+    </div>
+</div>
+
+<!-- کارت‌های آماری شاخص‌های ماموریت‌ها -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-4 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-primary bg-opacity-10 border-start border-primary border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">کل ماموریت‌های تعریف‌شده</span>
+                    <h3 class="fw-bold text-primary font-monospace mb-0">{{ total_tasks }} ماموریت</h3>
+                </div>
+                <div class="bg-primary text-white rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-list-check fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-success bg-opacity-10 border-start border-success border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">ماموریت‌های فعال و آماده انجام</span>
+                    <h3 class="fw-bold text-success font-monospace mb-0">{{ total_active }} مورد</h3>
+                </div>
+                <div class="bg-success text-white rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-circle-check fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 col-sm-12">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-warning bg-opacity-10 border-start border-warning border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">کل جوایز اهدا شده به کاربران</span>
+                    <h3 class="fw-bold text-dark font-monospace mb-0">{{ total_claims }} پاداش</h3>
+                </div>
+                <div class="bg-warning text-dark rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-gift fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول لیست ماموریت‌ها -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-tasks text-primary me-2"></i>لیست کلیه ماموریت‌ها و پاداش‌ها</h5>
+        <span class="badge bg-secondary-subtle text-secondary border"><i class="fas fa-shield-halved me-1"></i>مجهز به سیستم ضد تقلب هوشمند</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ماموریت</th>
+                        <th>نوع ماموریت</th>
+                        <th>تعداد هدف</th>
+                        <th>نوع و مقدار پاداش</th>
+                        <th>کانال / لینک مقصد</th>
+                        <th>وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tasks %}
+                    <tr>
+                        <td class="ps-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-sm bg-light rounded-circle d-flex align-items-center justify-content-center border shadow-sm" style="width: 40px; height: 40px;">
+                                    <i class="fas {{ t.get('icon') or 'fa-gift' }} text-primary"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-dark">{{ t.get('title') }}</div>
+                                    <small class="text-muted text-truncate d-inline-block" style="max-width: 250px;">{{ t.get('description') or 'بدون توضیحات' }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if t.get('task_type') == 'join_channel' %}
+                                <span class="badge bg-info-subtle text-info border border-info"><i class="fab fa-telegram me-1"></i>عضویت کانال</span>
+                            {% elif t.get('task_type') == 'invite_friends' %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-users me-1"></i>دعوت دوستان</span>
+                            {% elif t.get('task_type') == 'review_rating' %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-star me-1"></i>ثبت نظر / امتیاز</span>
+                            {% elif t.get('task_type') == 'like_posts' %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger"><i class="fas fa-heart me-1"></i>لایک پست‌ها</span>
+                            {% elif t.get('task_type') == 'comment_posts' %}
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-comments me-1"></i>کامنت در کانال</span>
+                            {% elif t.get('task_type') == 'forward_post' %}
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary"><i class="fas fa-share-nodes me-1"></i>فوروارد پست</span>
+                            {% else %}
+                                <span class="badge bg-dark-subtle text-dark border"><i class="fas fa-puzzle-piece me-1"></i>سفارشی</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="fw-bold font-monospace fs-6">{{ t.get('target_count', 1) }}</span>
+                            <span class="text-muted small">
+                                {% if t.get('task_type') == 'invite_friends' %}نفر
+                                {% elif t.get('task_type') in ['like_posts', 'comment_posts'] %}پست
+                                {% else %}بار{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if t.get('reward_type') == 'traffic' %}
+                                <span class="badge bg-success px-2 py-1"><i class="fas fa-wifi me-1"></i>{{ t.get('reward_value') }} گیگابایت حجم</span>
+                            {% elif t.get('reward_type') == 'wallet' %}
+                                <span class="badge bg-primary px-2 py-1"><i class="fas fa-wallet me-1"></i>{{ "{:,}".format(t.get('reward_value')|int) }} تومان</span>
+                            {% elif t.get('reward_type') == 'discount' %}
+                                <span class="badge bg-warning text-dark px-2 py-1"><i class="fas fa-percent me-1"></i>{{ t.get('reward_value') }}٪ تخفیف</span>
+                            {% elif t.get('reward_type') == 'plan' %}
+                                <span class="badge bg-info text-dark px-2 py-1"><i class="fas fa-box-open me-1"></i>اشتراک هدیه</span>
+                            {% else %}
+                                <span class="badge bg-secondary px-2 py-1">{{ t.get('reward_value') }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if t.get('target_channel_id') %}
+                                <code>{{ t.get('target_channel_id') }}</code>
+                            {% elif t.get('target_link') %}
+                                <a href="{{ t.get('target_link') }}" target="_blank" class="small text-decoration-none"><i class="fas fa-external-link-alt me-1"></i>مشاهده لینک</a>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('admin_social_task_toggle', task_id=t.get('id')) }}" method="POST" class="d-inline">
+                                {% if t.get('is_active') %}
+                                    <button type="submit" class="btn btn-sm btn-success py-0 px-2 fw-bold" title="کلیک برای غیرفعال‌سازی">
+                                        <i class="fas fa-check me-1"></i>فعال
+                                    </button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="کلیک برای فعال‌سازی">
+                                        <i class="fas fa-pause me-1"></i>غیرفعال
+                                    </button>
+                                {% endif %}
+                            </form>
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" onclick="openEditTaskModal({{ t|tojson|safe }})" title="ویرایش">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <form action="{{ url_for('admin_social_task_delete', task_id=t.get('id')) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این ماموریت اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-danger" title="حذف">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-clipboard-list fs-2 d-block mb-2 opacity-50"></i>
+                            هنوز هیچ ماموریتی تعریف نشده است. از دکمه «تعریف ماموریت جدید» استفاده کنید.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال افزودن ماموریت جدید -->
+<div class="modal fade" id="addTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle me-2"></i>تعریف ماموریت جدید</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('admin_social_task_add') }}" method="POST">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold">عنوان ماموریت <span class="text-danger">*</span>:</label>
+                            <input type="text" class="form-control" name="title" placeholder="مثال: معرفی به ۵ دوست یا عضویت در کانال" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">نوع ماموریت <span class="text-danger">*</span>:</label>
+                            <select class="form-select" name="task_type" id="addTaskTypeSelect" onchange="handleTaskTypeChange('add')">
+                                <option value="join_channel">عضویت در کانال اطلاع‌رسانی</option>
+                                <option value="invite_friends">معرفی به دوستان (دعوت رفرال)</option>
+                                <option value="review_rating">ثبت نظر و امتیاز</option>
+                                <option value="like_posts">لایک پست‌های کانال</option>
+                                <option value="comment_posts">کامنت در پست‌های کانال</option>
+                                <option value="forward_post">فوروارد پست مشخص</option>
+                                <option value="custom">ماموریت سفارشی</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">تعداد هدف (مثلاً تعداد دوستان یا لایک‌ها) <span class="text-danger">*</span>:</label>
+                            <input type="number" class="form-control" name="target_count" id="addTargetCountInput" value="5" min="1" max="1000" required>
+                            <div class="form-text text-muted">می‌توانید تعداد را از ۵ به ۱۰ یا هر عدد دلخواهی تغییر دهید.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">آیدی کانال تلگرام برای بررسی عضویت:</label>
+                            <input type="text" class="form-control" name="target_channel_id" placeholder="@MyChannelName" dir="ltr">
+                            <div class="form-text text-muted">برای بررسی وضعیت عضویت از طریق API تلگرام (اختیاری)</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">لینک مقصد (کانال، گروه، پست یا سایت):</label>
+                            <input type="url" class="form-control" name="target_link" placeholder="https://t.me/MyChannel" dir="ltr">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">توضیحات و راهنمای ماموریت:</label>
+                            <textarea class="form-control" name="description" rows="2" placeholder="توضیح دهید کاربر برای دریافت این پاداش چه کاری باید انجام دهد..."></textarea>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">نوع پاداش هدیه <span class="text-danger">*</span>:</label>
+                            <select class="form-select" name="reward_type" id="addRewardTypeSelect" onchange="handleRewardTypeChange('add')">
+                                <option value="traffic">حجم ترافیک هدیه (گیگابایت)</option>
+                                <option value="wallet">شارژ مستقیم کیف پول (تومان)</option>
+                                <option value="discount">کد تخفیف اختصاصی (درصد)</option>
+                                <option value="plan">اشتراک کامل هدیه</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">مقدار پاداش <span class="text-danger">*</span>:</label>
+                            <input type="text" class="form-control" name="reward_value" id="addRewardValueInput" placeholder="مثال: 5 برای ۵ گیگ، 25000 برای تومان" value="5" required>
+                            <div class="form-text text-muted" id="addRewardHelpText">حجم به گیگابایت (مثلاً 5 برای 5GB)</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">آیکون نمایش:</label>
+                            <input type="text" class="form-control" name="icon" value="fa-gift" dir="ltr">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">برچسب نشان (Badge):</label>
+                            <input type="text" class="form-control" name="badge_text" placeholder="مثال: پاداش ۵ گیگابایت">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">ترتیب نمایش:</label>
+                            <input type="number" class="form-control" name="order_num" value="1" min="0">
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch pt-2">
+                                <input class="form-check-input" type="checkbox" name="is_active" value="1" id="addIsActiveCheck" checked>
+                                <label class="form-check-label fw-bold" for="addIsActiveCheck">ماموریت بلافاصله فعال و در پرتال مشتریان نمایش داده شود</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-check-circle me-1"></i> ایجاد ماموریت
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ویرایش ماموریت -->
+<div class="modal fade" id="editTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-edit me-2"></i>ویرایش ماموریت</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editTaskForm" method="POST" action="">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold">عنوان ماموریت <span class="text-danger">*</span>:</label>
+                            <input type="text" class="form-control" name="title" id="editTitleInput" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">نوع ماموریت <span class="text-danger">*</span>:</label>
+                            <select class="form-select" name="task_type" id="editTaskTypeSelect" onchange="handleTaskTypeChange('edit')">
+                                <option value="join_channel">عضویت در کانال اطلاع‌رسانی</option>
+                                <option value="invite_friends">معرفی به دوستان (دعوت رفرال)</option>
+                                <option value="review_rating">ثبت نظر و امتیاز</option>
+                                <option value="like_posts">لایک پست‌های کانال</option>
+                                <option value="comment_posts">کامنت در پست‌های کانال</option>
+                                <option value="forward_post">فوروارد پست مشخص</option>
+                                <option value="custom">ماموریت سفارشی</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">تعداد هدف (مثلاً تغییر از ۵ به ۱۰ نفر):</label>
+                            <input type="number" class="form-control" name="target_count" id="editTargetCountInput" min="1" max="1000" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">آیدی کانال تلگرام:</label>
+                            <input type="text" class="form-control" name="target_channel_id" id="editTargetChannelInput" dir="ltr">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">لینک مقصد:</label>
+                            <input type="url" class="form-control" name="target_link" id="editTargetLinkInput" dir="ltr">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">توضیحات و راهنمای ماموریت:</label>
+                            <textarea class="form-control" name="description" id="editDescriptionInput" rows="2"></textarea>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">نوع پاداش هدیه <span class="text-danger">*</span>:</label>
+                            <select class="form-select" name="reward_type" id="editRewardTypeSelect" onchange="handleRewardTypeChange('edit')">
+                                <option value="traffic">حجم ترافیک هدیه (گیگابایت)</option>
+                                <option value="wallet">شارژ مستقیم کیف پول (تومان)</option>
+                                <option value="discount">کد تخفیف اختصاصی (درصد)</option>
+                                <option value="plan">اشتراک کامل هدیه</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">مقدار پاداش <span class="text-danger">*</span>:</label>
+                            <input type="text" class="form-control" name="reward_value" id="editRewardValueInput" required>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">آیکون نمایش:</label>
+                            <input type="text" class="form-control" name="icon" id="editIconInput" dir="ltr">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">برچسب نشان (Badge):</label>
+                            <input type="text" class="form-control" name="badge_text" id="editBadgeTextInput">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">ترتیب نمایش:</label>
+                            <input type="number" class="form-control" name="order_num" id="editOrderNumInput" min="0">
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch pt-2">
+                                <input class="form-check-input" type="checkbox" name="is_active" value="1" id="editIsActiveCheck">
+                                <label class="form-check-label fw-bold" for="editIsActiveCheck">ماموریت فعال باشد</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-save me-1"></i> ذخیره تغییرات
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function handleTaskTypeChange(prefix) {
+    const typeSelect = document.getElementById(prefix + 'TaskTypeSelect');
+    const targetCount = document.getElementById(prefix + 'TargetCountInput');
+    if (typeSelect.value === 'invite_friends') {
+        if (targetCount.value == 1) targetCount.value = 5;
+    } else if (typeSelect.value === 'join_channel' || typeSelect.value === 'review_rating') {
+        targetCount.value = 1;
+    } else if (typeSelect.value === 'like_posts') {
+        if (targetCount.value == 1) targetCount.value = 10;
+    }
+}
+
+function handleRewardTypeChange(prefix) {
+    const rewardType = document.getElementById(prefix + 'RewardTypeSelect').value;
+    const help = document.getElementById(prefix + 'RewardHelpText');
+    if (!help) return;
+    if (rewardType === 'traffic') {
+        help.innerText = 'حجم به گیگابایت (مثلاً 5 برای 5GB)';
+    } else if (rewardType === 'wallet') {
+        help.innerText = 'مبلغ به تومان (مثلاً 25000 برای ۲۵ هزار تومان)';
+    } else if (rewardType === 'discount') {
+        help.innerText = 'درصد تخفیف (مثلاً 20 برای ۲۰٪ تخفیف)';
+    } else if (rewardType === 'plan') {
+        help.innerText = 'شناسه پلن یا نام بسته هدیه';
+    }
+}
+
+function openEditTaskModal(task) {
+    document.getElementById('editTaskForm').action = '/admin/social-tasks/edit/' + task.id;
+    document.getElementById('editTitleInput').value = task.title || '';
+    document.getElementById('editTaskTypeSelect').value = task.task_type || 'custom';
+    document.getElementById('editTargetCountInput').value = task.target_count || 1;
+    document.getElementById('editTargetChannelInput').value = task.target_channel_id || '';
+    document.getElementById('editTargetLinkInput').value = task.target_link || '';
+    document.getElementById('editDescriptionInput').value = task.description || '';
+    document.getElementById('editRewardTypeSelect').value = task.reward_type || 'traffic';
+    document.getElementById('editRewardValueInput').value = task.reward_value || '';
+    document.getElementById('editIconInput').value = task.icon || 'fa-gift';
+    document.getElementById('editBadgeTextInput').value = task.badge_text || '';
+    document.getElementById('editOrderNumInput').value = task.order_num || 0;
+    document.getElementById('editIsActiveCheck').checked = (task.is_active == 1);
+
+    const modal = new bootstrap.Modal(document.getElementById('editTaskModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

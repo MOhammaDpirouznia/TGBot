@@ -403,11 +403,12 @@ class Database:
             cursor.execute("SELECT COUNT(*) as count FROM social_tasks")
             st_count = cursor.fetchone()["count"]
             if st_count == 0:
+                now_str = get_now_iso()
                 starter_tasks = [
-                    (0, "عضویت در کانال اطلاع‌رسانی", "با عضویت در کانال رسمی، از جدیدترین اخبار و سرورها مطلع شده و حجم هدیه دریافت کنید.", "join_channel", 1, "", "https://t.me", "traffic", "2", None, "fa-bullhorn", "پاداش ۲ گیگابایت", 1, 1, now, now),
-                    (0, "معرفی به دوستان (۵ نفر)", "لینک اختصاصی خود را با دوستان به اشتراک بگذارید تا پس از ثبت‌نام ۵ نفر، ۵ گیگابایت حجم هدیه بگیرید.", "invite_friends", 5, "", "", "traffic", "5", None, "fa-users", "پاداش ۵ گیگابایت", 1, 2, now, now),
-                    (0, "ثبت نظر و امتیاز به کیفیت سرویس", "کیفیت خدمات، پینگ و سرعت اتصال را ارزیابی فرمایید و ۱ گیگابایت حجم هدیه دریافت نمایید.", "review_rating", 1, "", "", "traffic", "1", None, "fa-star", "پاداش ۱ گیگابایت", 1, 3, now, now),
-                    (0, "دنبال کردن و لایک پست‌های کانال", "پست‌های اخیر کانال را مشاهده کرده و برای دریافت ۲۰,۰۰۰ تومان شارژ کیف پول تایید نمایید.", "like_posts", 10, "", "https://t.me", "wallet", "20000", None, "fa-heart", "۲۰,۰۰۰ تومان شارژ", 1, 4, now, now)
+                    (0, "عضویت در کانال اطلاع‌رسانی", "با عضویت در کانال رسمی، از جدیدترین اخبار و سرورها مطلع شده و حجم هدیه دریافت کنید.", "join_channel", 1, "", "https://t.me", "traffic", "2", None, "fa-bullhorn", "پاداش ۲ گیگابایت", 1, 1, now_str, now_str),
+                    (0, "معرفی به دوستان (۵ نفر)", "لینک اختصاصی خود را با دوستان به اشتراک بگذارید تا پس از ثبت‌نام ۵ نفر، ۵ گیگابایت حجم هدیه بگیرید.", "invite_friends", 5, "", "", "traffic", "5", None, "fa-users", "پاداش ۵ گیگابایت", 1, 2, now_str, now_str),
+                    (0, "ثبت نظر و امتیاز به کیفیت سرویس", "کیفیت خدمات، پینگ و سرعت اتصال را ارزیابی فرمایید و ۱ گیگابایت حجم هدیه دریافت نمایید.", "review_rating", 1, "", "", "traffic", "1", None, "fa-star", "پاداش ۱ گیگابایت", 1, 3, now_str, now_str),
+                    (0, "دنبال کردن و لایک پست‌های کانال", "پست‌های اخیر کانال را مشاهده کرده و برای دریافت ۲۰,۰۰۰ تومان شارژ کیف پول تایید نمایید.", "like_posts", 10, "", "https://t.me", "wallet", "20000", None, "fa-heart", "۲۰,۰۰۰ تومان شارژ", 1, 4, now_str, now_str)
                 ]
                 cursor.executemany("""
                     INSERT INTO social_tasks (
@@ -416,6 +417,7 @@ class Database:
                         is_active, order_num, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, starter_tasks)
+                conn.commit()
         except Exception as e_seed:
             logger.debug(f"Error seeding initial social tasks: {e_seed}")
 
@@ -3561,7 +3563,7 @@ class Database:
                 cur_cnt = target_cnt
                 pct = 100
                 can_claim = False
-            elif t["task_type"] == "invite_friends":
+            elif t["task_type"] in ("invite_friends", "referral"):
                 cur_cnt = min(ref_count, target_cnt)
                 pct = min(100, int((cur_cnt / target_cnt) * 100))
                 can_claim = (ref_count >= target_cnt)
@@ -3572,8 +3574,10 @@ class Database:
 
             t_copy = dict(t)
             t_copy["user_status"] = status
+            t_copy["status"] = "claimed" if is_claimed else status
             t_copy["is_claimed"] = is_claimed
             t_copy["current_count"] = cur_cnt
+            t_copy["progress_count"] = cur_cnt
             t_copy["target_count"] = target_cnt
             t_copy["progress_percent"] = pct
             t_copy["can_claim"] = can_claim
@@ -3624,7 +3628,7 @@ class Database:
                             "error": f"عضویت شما در کانال {target_ch} تأیید نشد. لطفاً ابتدا در کانال عضو شوید و سپس دکمه دریافت پاداش را کلیک فرمایید."
                         }
 
-            elif t_type == "invite_friends":
+            elif t_type in ("invite_friends", "referral"):
                 cursor.execute("""
                     SELECT COUNT(DISTINCT referred_id) as ref_count
                     FROM referrals

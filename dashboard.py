@@ -4675,6 +4675,7 @@ def admin_set_user_vip(telegram_id):
         is_vip = request.form.get("is_vip") == "1"
         days_str = request.form.get("vip_days", "").strip()
         custom_cb_str = request.form.get("custom_cashback", "").strip()
+        vip_tier = request.form.get("vip_tier")
         
         expire_at = None
         if is_vip and days_str and days_str.isdigit() and int(days_str) > 0:
@@ -4682,7 +4683,7 @@ def admin_set_user_vip(telegram_id):
             
         custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
         
-        db.set_user_vip(telegram_id, is_vip=is_vip, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb)
+        db.set_user_vip(telegram_id, is_vip=is_vip, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
         flash("تنظیمات کاربری VIP با موفقیت ذخیره شد.", "success")
 
     next_url = request.form.get("next") or request.referrer or url_for("user_detail", telegram_id=telegram_id)
@@ -4707,10 +4708,30 @@ def vip_settings():
             "priority_support": request.form.get("priority_support") == "1",
             "vip_server_access": request.form.get("vip_server_access") == "1",
             "free_config_regen": request.form.get("free_config_regen") == "1",
-            "show_badge": request.form.get("show_badge") == "1"
+            "show_badge": request.form.get("show_badge") == "1",
+            # سطوح سه‌گانه وفاداری
+            "bronze_threshold_tomans": int(request.form.get("bronze_threshold_tomans") or 300000),
+            "bronze_threshold_gb": int(request.form.get("bronze_threshold_gb") or 30),
+            "bronze_discount_percent": int(request.form.get("bronze_discount_percent") or 5),
+            "bronze_cashback_percent": int(request.form.get("bronze_cashback_percent") or 5),
+            "silver_threshold_tomans": int(request.form.get("silver_threshold_tomans") or 800000),
+            "silver_threshold_gb": int(request.form.get("silver_threshold_gb") or 80),
+            "silver_discount_percent": int(request.form.get("silver_discount_percent") or 10),
+            "silver_cashback_percent": int(request.form.get("silver_cashback_percent") or 10),
+            "gold_threshold_tomans": int(request.form.get("gold_threshold_tomans") or 1500000),
+            "gold_threshold_gb": int(request.form.get("gold_threshold_gb") or 150),
+            "gold_discount_percent": int(request.form.get("gold_discount_percent") or 15),
+            "gold_cashback_percent": int(request.form.get("gold_cashback_percent") or 15),
+            # هدایای مناسبتی (تولد و سالگرد)
+            "birthday_reward_enabled": request.form.get("birthday_reward_enabled") in ("1", "on"),
+            "birthday_reward_type": request.form.get("birthday_reward_type", "traffic"),
+            "birthday_reward_val": request.form.get("birthday_reward_val", "5"),
+            "anniversary_reward_enabled": request.form.get("anniversary_reward_enabled") in ("1", "on"),
+            "anniversary_reward_type": request.form.get("anniversary_reward_type", "traffic"),
+            "anniversary_reward_val": request.form.get("anniversary_reward_val", "5")
         }
         db.save_vip_settings(settings_data)
-        flash("تنظیمات و مزایای مشتریان پرمیوم با موفقیت ذخیره شد.", "success")
+        flash("تنظیمات باشگاه مشتریان، سطوح وفاداری و پاداش‌ها با موفقیت ذخیره شد.", "success")
         return redirect(url_for("vip_settings"))
 
     vip_sets = db.get_vip_settings()
@@ -4762,9 +4783,120 @@ def admin_vip_user_add():
 
     custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
 
-    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb)
-    flash(f"کاربر {tg_id} با موفقیت به لیست مشتریان پرمیوم (VIP) افزوده شد.", "success")
+    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
+    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
+    flash(f"کاربر {tg_id} با موفقیت به لیست مشتریان پرمیوم (VIP - سطح {vip_tier}) افزوده شد.", "success")
     return redirect(url_for("vip_settings"))
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🎯 مدیریت ماموریت‌های کسب حجم رایگان و پاداش اجتماعی (Social Tasks)
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/admin/social-tasks", methods=["GET"])
+@admin_required
+def admin_social_tasks_page():
+    """مدیریت جامع ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی"""
+    tasks = db.get_social_tasks(reseller_id=0, active_only=False)
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    total_claims = 0
+    total_active = sum(1 for t in tasks if t.get("is_active"))
+    try:
+        cursor.execute("SELECT COUNT(*) as total FROM user_social_tasks WHERE status = 'claimed'")
+        row = cursor.fetchone()
+        if row:
+            total_claims = int(row["total"] or 0)
+    except Exception:
+        total_claims = 0
+    finally:
+        conn.close()
+
+    plans_dict = get_plans_dict()
+    return render_template(
+        "social_tasks.html",
+        tasks=tasks,
+        total_tasks=len(tasks),
+        total_active=total_active,
+        total_claims=total_claims,
+        plans=plans_dict
+    )
+
+@app.route("/admin/social-tasks/add", methods=["POST"])
+@admin_required
+def admin_social_task_add():
+    """افزودن ماموریت جدید توسط مدیر با قابلیت تغییر تعداد هدف و انواع جوایز"""
+    title = request.form.get("title", "").strip()
+    task_type = request.form.get("task_type", "custom").strip()
+    reward_type = request.form.get("reward_type", "traffic").strip()
+    reward_value = request.form.get("reward_value", "1").strip()
+    target_count = max(1, int(request.form.get("target_count") or 1))
+    description = request.form.get("description", "").strip()
+    target_channel_id = request.form.get("target_channel_id", "").strip()
+    target_link = request.form.get("target_link", "").strip()
+    plan_id = request.form.get("plan_id", "").strip() or None
+    icon = request.form.get("icon", "fa-gift").strip()
+    badge_text = request.form.get("badge_text", "").strip()
+    order_num = int(request.form.get("order_num") or 0)
+    is_active = 1 if request.form.get("is_active") in ("1", "on") else 0
+
+    if not title:
+        flash("عنوان ماموریت الزامی است.", "danger")
+        return redirect(url_for("admin_social_tasks_page"))
+
+    new_id = db.add_social_task(
+        title=title, task_type=task_type, reward_type=reward_type, reward_value=reward_value,
+        target_count=target_count, description=description, target_channel_id=target_channel_id,
+        target_link=target_link, plan_id=plan_id, icon=icon, badge_text=badge_text,
+        is_active=is_active, order_num=order_num, reseller_id=0
+    )
+    if new_id:
+        flash(f"ماموریت «{title}» با موفقیت به سامانه افزوده شد.", "success")
+    else:
+        flash("خطا در ایجاد ماموریت.", "danger")
+    return redirect(url_for("admin_social_tasks_page"))
+
+@app.route("/admin/social-tasks/edit/<int:task_id>", methods=["POST"])
+@admin_required
+def admin_social_task_edit(task_id: int):
+    """ویرایش مشخصات ماموریت (تغییر تعداد هدف مثل ۵ به ۱۰، تغییر جایزه، لینک و ...)"""
+    update_data = {
+        "title": request.form.get("title", "").strip(),
+        "task_type": request.form.get("task_type", "custom").strip(),
+        "reward_type": request.form.get("reward_type", "traffic").strip(),
+        "reward_value": request.form.get("reward_value", "1").strip(),
+        "target_count": max(1, int(request.form.get("target_count") or 1)),
+        "description": request.form.get("description", "").strip(),
+        "target_channel_id": request.form.get("target_channel_id", "").strip(),
+        "target_link": request.form.get("target_link", "").strip(),
+        "plan_id": request.form.get("plan_id", "").strip() or None,
+        "icon": request.form.get("icon", "fa-gift").strip(),
+        "badge_text": request.form.get("badge_text", "").strip(),
+        "order_num": int(request.form.get("order_num") or 0),
+        "is_active": 1 if request.form.get("is_active") in ("1", "on") else 0
+    }
+    ok = db.update_social_task(task_id, **update_data)
+    if ok:
+        flash("ماموریت با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash("خطا در ویرایش ماموریت.", "danger")
+    return redirect(url_for("admin_social_tasks_page"))
+
+@app.route("/admin/social-tasks/toggle/<int:task_id>", methods=["POST"])
+@admin_required
+def admin_social_task_toggle(task_id: int):
+    """تغییر وضعیت فعال/غیرفعال ماموریت"""
+    db.toggle_social_task(task_id)
+    flash("وضعیت فعال بودن ماموریت بروزرسانی شد.", "success")
+    return redirect(url_for("admin_social_tasks_page"))
+
+@app.route("/admin/social-tasks/delete/<int:task_id>", methods=["POST"])
+@admin_required
+def admin_social_task_delete(task_id: int):
+    """حذف کامل ماموریت"""
+    db.delete_social_task(task_id)
+    flash("ماموریت با موفقیت حذف گردید.", "info")
+    return redirect(url_for("admin_social_tasks_page"))
 
 
 @app.route("/admin/bot-menu", methods=["GET", "POST"])
@@ -13596,11 +13728,32 @@ def settings():
             flash("تنظیمات درگاه پرداخت آنلاین شاپرک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_vip_settings":
-            vip_enabled = request.form.get("vip_auto_enabled") == "on"
-            vip_threshold = int(request.form.get("vip_auto_threshold", 1000000) or 1000000)
-            vip_cashback = int(request.form.get("vip_cashback_percent", 10) or 10)
-            db.save_vip_settings(vip_enabled, vip_threshold, vip_cashback)
-            flash("تنظیمات باشگاه مشتریان پریمیوم (VIP) و کش‌بک با موفقیت ذخیره شد.", "success")
+            vip_enabled = request.form.get("vip_auto_enabled") in ("on", "1")
+            vip_data = {
+                "auto_enabled": vip_enabled,
+                "auto_threshold": int(request.form.get("vip_auto_threshold", 1000000) or 1000000),
+                "cashback_percent": int(request.form.get("vip_cashback_percent", 10) or 10),
+                "bronze_threshold_tomans": int(request.form.get("vip_bronze_threshold_tomans") or 300000),
+                "bronze_threshold_gb": int(request.form.get("vip_bronze_threshold_gb") or 30),
+                "bronze_discount_percent": int(request.form.get("vip_bronze_discount_percent") or 5),
+                "bronze_cashback_percent": int(request.form.get("vip_bronze_cashback_percent") or 5),
+                "silver_threshold_tomans": int(request.form.get("vip_silver_threshold_tomans") or 800000),
+                "silver_threshold_gb": int(request.form.get("vip_silver_threshold_gb") or 80),
+                "silver_discount_percent": int(request.form.get("vip_silver_discount_percent") or 10),
+                "silver_cashback_percent": int(request.form.get("vip_silver_cashback_percent") or 10),
+                "gold_threshold_tomans": int(request.form.get("vip_gold_threshold_tomans") or 1500000),
+                "gold_threshold_gb": int(request.form.get("vip_gold_threshold_gb") or 150),
+                "gold_discount_percent": int(request.form.get("vip_gold_discount_percent") or 15),
+                "gold_cashback_percent": int(request.form.get("vip_gold_cashback_percent") or 15),
+                "birthday_reward_enabled": request.form.get("vip_birthday_reward_enabled") in ("on", "1"),
+                "birthday_reward_type": request.form.get("vip_birthday_reward_type", "traffic"),
+                "birthday_reward_val": request.form.get("vip_birthday_reward_val", "5"),
+                "anniversary_reward_enabled": request.form.get("vip_anniversary_reward_enabled") in ("on", "1"),
+                "anniversary_reward_type": request.form.get("vip_anniversary_reward_type", "traffic"),
+                "anniversary_reward_val": request.form.get("vip_anniversary_reward_val", "5")
+            }
+            db.save_vip_settings(vip_data)
+            flash("تنظیمات باشگاه وفاداری، سطوح تخفیف و جوایز تولد/سالگرد با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_refund_settings":
             refund_enabled = request.form.get("refund_enabled") == "on"
@@ -21895,8 +22048,18 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     else:
         lucky_wheel_enabled = lucky_wheel_global_enabled
 
+    target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
+    loyalty_tier_info = db.get_user_loyalty_tier(target_tg_id) if target_tg_id else {
+        "tier": "none", "title": "عادی", "badge": "عضو عادی", "badge_html": '<span class="badge bg-secondary">عادی</span>',
+        "discount_percent": 0, "cashback_percent": 0, "next_tier": "bronze", "next_tier_title": "برنزی",
+        "remaining_tomans": 300000, "progress_percent": 0, "birthday": None
+    }
+    user_social_tasks = db.get_user_social_tasks_progress(target_tg_id or 0, reseller_id=reseller_id or 0) if target_tg_id else []
+
     return render_template(
         "customer_portal.html",
+        loyalty_tier_info=loyalty_tier_info,
+        user_social_tasks=user_social_tasks,
         lucky_wheel_enabled=lucky_wheel_enabled,
         sub=safe_sub,
         token=token,
@@ -22190,7 +22353,17 @@ def customer_create_invoice(token: str):
     if not price:
         price = 100000
 
-    # پردازش و اعتبارسنجی کد تخفیف
+    user_id = sub.get("telegram_id") or 0
+
+    # ۱. اعمال خودکار تخفیف دائم سطوح وفاداری مشتریان (Bronze 5%, Silver 10%, Gold 15%)
+    vip_loyalty = db.get_user_loyalty_tier(user_id) if user_id else {}
+    vip_disc_pct = vip_loyalty.get("discount_percent", 0)
+    vip_disc_amount = 0
+    if vip_disc_pct > 0 and price > 0:
+        vip_disc_amount = int(round((price * vip_disc_pct) / 100))
+        price = max(0, price - vip_disc_amount)
+
+    # ۲. پردازش و اعتبارسنجی کد تخفیف
     raw_discount_code = request.form.get("discount_code", "").strip().upper()
     discount_val = 0
     valid_discount_code = None
@@ -22206,7 +22379,6 @@ def customer_create_invoice(token: str):
             flash(f"کد تخفیف نامعتبر: {chk_res.get('error', 'این کد تخفیف برای شما معتبر نیست.')}", "warning")
 
     now_iso = get_now_iso()
-    user_id = sub.get("telegram_id") or 0
     account_name = sub.get("account_name") or f"sub_{sub_id}"
 
     # ۱. حالت ویژه: مبلغ صفر ریال (۱۰۰٪ تخفیف یا رایگان)
@@ -23880,6 +24052,128 @@ def api_portal_lucky_wheel_assign_traffic(token: str):
         "success": True,
         "message": f"حجم {res.get('added_gb')} گیگابایت با موفقیت به اشتراک #{target_sub_id} اضافه گردید! 🎉"
     })
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🎁 ای‌پی‌آی پورتال مشتریان: باشگاه وفاداری و ماموریت‌های رایگان
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/api/portal/<token>/vip-info", methods=["GET"])
+def api_portal_vip_info(token: str):
+    """دریافت اطلاعات سطح وفاداری مشتری، تخفیف دائم، پیشرفت و بررسی هدایای مناسبتی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    user_id = sub.get("telegram_id")
+    if not user_id:
+        return jsonify({
+            "success": True,
+            "loyalty": {
+                "tier": "none", "title": "عادی", "badge": "عضو عادی", "discount_percent": 0,
+                "cashback_percent": 0, "next_tier": "bronze", "next_tier_title": "برنزی",
+                "remaining_tomans": 300000, "progress_percent": 0
+            },
+            "rewards_granted": []
+        })
+
+    loyalty = db.get_user_loyalty_tier(user_id)
+    # بررسی و شارژ خودکار پاداش روز تولد یا سالگرد عضویت در صورت انطباق با امروز
+    granted = db.process_vip_anniversary_and_birthday_rewards(user_id)
+    return jsonify({
+        "success": True,
+        "loyalty": loyalty,
+        "rewards_granted": granted
+    })
+
+@app.route("/api/portal/<token>/profile/birthday", methods=["POST"])
+def api_portal_set_birthday(token: str):
+    """ثبت یا ویرایش تاریخ تولد توسط کاربر در پرتال جهت دریافت هدیه سالانه"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    user_id = sub.get("telegram_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "شناسه کاربری جهت ثبت تاریخ تولد نامعتبر است."}), 400
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    birthday = str(data.get("birthday") or "").strip()
+    if not birthday:
+        return jsonify({"success": False, "error": "لطفاً تاریخ تولد معتبر وارد فرمایید."}), 400
+
+    ok = db.set_user_birthday(user_id, birthday)
+    # بررسی فوری اینکه آیا امروز روز تولد کاربر است تا پاداش را اعطا کند
+    granted = db.process_vip_anniversary_and_birthday_rewards(user_id)
+    return jsonify({
+        "success": ok,
+        "birthday": birthday,
+        "message": "تاریخ تولد شما با موفقیت ثبت شد.",
+        "rewards_granted": granted
+    })
+
+@app.route("/api/portal/<token>/social-tasks", methods=["GET"])
+def api_portal_social_tasks(token: str):
+    """دریافت لیست ماموریت‌های فعال برای پرتال مشتریان همراه با پیشرفت زنده و وضعیت دریافت"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    user_id = sub.get("telegram_id") or 0
+    reseller_id = sub.get("reseller_id") or 0
+    tasks = db.get_user_social_tasks_progress(user_id, reseller_id=reseller_id)
+    return jsonify({
+        "success": True,
+        "tasks": tasks
+    })
+
+@app.route("/api/portal/<token>/social-tasks/verify-claim", methods=["POST"])
+def api_portal_social_tasks_claim(token: str):
+    """بررسی ضدتقلب و اهدای آنی پاداش ماموریت اجتماعی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    user_id = sub.get("telegram_id") or 0
+    if not user_id:
+        return jsonify({"success": False, "error": "جهت دریافت پاداش ماموریت‌ها، باید از طریق ربات یا حساب تلگرام خود وارد شده باشید."}), 400
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    task_id = int(data.get("task_id") or 0)
+    proof_data = str(data.get("proof") or "").strip()
+    target_sub_id = int(data.get("subscription_id") or sub["id"])
+
+    if not task_id:
+        return jsonify({"success": False, "error": "شناسه ماموریت مشخص نشده است."}), 400
+
+    reseller_id = sub.get("reseller_id") or 0
+    bot_token = None
+    if reseller_id:
+        r_info = db.get_reseller(reseller_id) or {}
+        bot_token = r_info.get("bot_token")
+
+    result = db.verify_and_claim_social_task(
+        user_id=user_id,
+        task_id=task_id,
+        proof_data=proof_data,
+        chosen_sub_id=target_sub_id,
+        bot_token=bot_token
+    )
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result)
 
 
 # ─── مدیریت جوایز و تنظیمات گردونه شانس توسط ادمین ───

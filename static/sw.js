@@ -1,5 +1,5 @@
 // Service Worker for Antigravity / HiddiBot Progressive Web App (PWA)
-const CACHE_NAME = 'hiddibot-pwa-v1';
+const CACHE_NAME = 'hiddibot-pwa-v2';
 const STATIC_ASSETS = [
   '/',
   '/avatars/Logo.webp',
@@ -37,6 +37,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
+
+  // درخواست‌های کراس‌اورجین (مانند تلگرام و CDNها) نباید توسط سرویس ورکر رهگیری یا مسدود شوند
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
   // فقط درخواست‌های GET کش شوند
   if (req.method !== 'GET') {

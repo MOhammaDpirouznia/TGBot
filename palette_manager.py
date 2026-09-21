@@ -24,18 +24,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #00d2ff 0%, #3b82f6 50%, #d946ef 100%)"
         },
         "light": {
-            "body_bg": "#f8fafc",
-            "card_bg": "rgba(255, 255, 255, 0.76)",
-            "card_border": "rgba(255, 255, 255, 0.85)",
-            "card_border_subtle": "rgba(226, 232, 240, 0.75)",
-            "card_shadow": "0 14px 38px -10px rgba(37, 99, 235, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
+            "body_bg": "#f1f5f9",
+            "card_bg": "#ffffff",
+            "card_border": "#cbd5e1",
+            "card_border_subtle": "#e2e8f0",
+            "card_shadow": "0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04)",
             "text_main": "#0f172a",
             "text_muted": "#475569",
-            "chip_bg": "rgba(255, 255, 255, 0.7)",
-            "chip_border": "rgba(226, 232, 240, 0.9)",
-            "blob1_color": "rgba(0, 210, 255, 0.38)",
-            "blob2_color": "rgba(217, 70, 239, 0.32)",
-            "blob3_color": "rgba(59, 130, 246, 0.28)",
+            "chip_bg": "#f8fafc",
+            "chip_border": "#cbd5e1",
+            "blob1_color": "rgba(0, 210, 255, 0.22)",
+            "blob2_color": "rgba(217, 70, 239, 0.18)",
+            "blob3_color": "rgba(59, 130, 246, 0.16)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -70,18 +70,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #84cc16 100%)"
         },
         "light": {
-            "body_bg": "#f7faf8",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.85)",
-            "card_border_subtle": "rgba(209, 250, 229, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(16, 185, 129, 0.09), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#062e20",
-            "text_muted": "#405b50",
-            "chip_bg": "rgba(255, 255, 255, 0.72)",
-            "chip_border": "rgba(209, 250, 229, 0.95)",
-            "blob1_color": "rgba(16, 185, 129, 0.36)",
-            "blob2_color": "rgba(6, 182, 212, 0.30)",
-            "blob3_color": "rgba(132, 204, 22, 0.26)",
+            "body_bg": "#f0fdf4",
+            "card_bg": "#ffffff",
+            "card_border": "#a7f3d0",
+            "card_border_subtle": "#d1fae5",
+            "card_shadow": "0 4px 20px -2px rgba(6, 95, 70, 0.08), 0 2px 6px -1px rgba(6, 95, 70, 0.04)",
+            "text_main": "#064e3b",
+            "text_muted": "#047857",
+            "chip_bg": "#f0fdf4",
+            "chip_border": "#a7f3d0",
+            "blob1_color": "rgba(16, 185, 129, 0.20)",
+            "blob2_color": "rgba(6, 182, 212, 0.18)",
+            "blob3_color": "rgba(132, 204, 22, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -116,18 +116,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #f43f5e 0%, #f97316 50%, #8b5cf6 100%)"
         },
         "light": {
-            "body_bg": "#fff8f6",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.88)",
-            "card_border_subtle": "rgba(254, 226, 226, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(225, 29, 72, 0.09), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#260e14",
-            "text_muted": "#5e3e46",
-            "chip_bg": "rgba(255, 255, 255, 0.72)",
-            "chip_border": "rgba(254, 215, 170, 0.8)",
-            "blob1_color": "rgba(244, 63, 94, 0.35)",
-            "blob2_color": "rgba(249, 115, 22, 0.30)",
-            "blob3_color": "rgba(139, 92, 246, 0.24)",
+            "body_bg": "#fff1f2",
+            "card_bg": "#ffffff",
+            "card_border": "#fecdd3",
+            "card_border_subtle": "#ffe4e6",
+            "card_shadow": "0 4px 20px -2px rgba(159, 18, 57, 0.08), 0 2px 6px -1px rgba(159, 18, 57, 0.04)",
+            "text_main": "#881337",
+            "text_muted": "#be123c",
+            "chip_bg": "#fff1f2",
+            "chip_border": "#fecdd3",
+            "blob1_color": "rgba(244, 63, 94, 0.20)",
+            "blob2_color": "rgba(249, 115, 22, 0.18)",
+            "blob3_color": "rgba(139, 92, 246, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -162,18 +162,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #8b5cf6 0%, #c026d3 50%, #3b82f6 100%)"
         },
         "light": {
-            "body_bg": "#faf7ff",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.88)",
-            "card_border_subtle": "rgba(237, 233, 254, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(124, 58, 237, 0.09), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#1e1338",
-            "text_muted": "#51436e",
-            "chip_bg": "rgba(255, 255, 255, 0.72)",
-            "chip_border": "rgba(237, 233, 254, 0.9)",
-            "blob1_color": "rgba(139, 92, 246, 0.36)",
-            "blob2_color": "rgba(192, 38, 211, 0.30)",
-            "blob3_color": "rgba(59, 130, 246, 0.25)",
+            "body_bg": "#f5f3ff",
+            "card_bg": "#ffffff",
+            "card_border": "#ddd6fe",
+            "card_border_subtle": "#ede9fe",
+            "card_shadow": "0 4px 20px -2px rgba(91, 33, 182, 0.08), 0 2px 6px -1px rgba(91, 33, 182, 0.04)",
+            "text_main": "#3b0764",
+            "text_muted": "#6d28d9",
+            "chip_bg": "#f5f3ff",
+            "chip_border": "#ddd6fe",
+            "blob1_color": "rgba(139, 92, 246, 0.20)",
+            "blob2_color": "rgba(192, 38, 211, 0.18)",
+            "blob3_color": "rgba(59, 130, 246, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -208,18 +208,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #0ea5e9 0%, #14b8a6 50%, #38bdf8 100%)"
         },
         "light": {
-            "body_bg": "#f4f9fd",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.88)",
-            "card_border_subtle": "rgba(224, 242, 254, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(2, 132, 199, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#082f49",
-            "text_muted": "#475569",
-            "chip_bg": "rgba(255, 255, 255, 0.72)",
-            "chip_border": "rgba(224, 242, 254, 0.9)",
-            "blob1_color": "rgba(14, 165, 233, 0.36)",
-            "blob2_color": "rgba(20, 184, 166, 0.30)",
-            "blob3_color": "rgba(56, 189, 248, 0.26)",
+            "body_bg": "#f0f9ff",
+            "card_bg": "#ffffff",
+            "card_border": "#bae6fd",
+            "card_border_subtle": "#e0f2fe",
+            "card_shadow": "0 4px 20px -2px rgba(3, 105, 161, 0.08), 0 2px 6px -1px rgba(3, 105, 161, 0.04)",
+            "text_main": "#0c4a6e",
+            "text_muted": "#0284c7",
+            "chip_bg": "#f0f9ff",
+            "chip_border": "#bae6fd",
+            "blob1_color": "rgba(14, 165, 233, 0.20)",
+            "blob2_color": "rgba(20, 184, 166, 0.18)",
+            "blob3_color": "rgba(56, 189, 248, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -254,18 +254,18 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #475569 0%, #64748b 50%, #94a3b8 100%)"
         },
         "light": {
-            "body_bg": "#f8fafc",
-            "card_bg": "rgba(255, 255, 255, 0.82)",
-            "card_border": "rgba(255, 255, 255, 0.9)",
-            "card_border_subtle": "rgba(226, 232, 240, 0.85)",
-            "card_shadow": "0 14px 38px -10px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.03)",
+            "body_bg": "#f1f5f9",
+            "card_bg": "#ffffff",
+            "card_border": "#cbd5e1",
+            "card_border_subtle": "#e2e8f0",
+            "card_shadow": "0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04)",
             "text_main": "#0f172a",
             "text_muted": "#475569",
-            "chip_bg": "rgba(255, 255, 255, 0.75)",
-            "chip_border": "rgba(203, 213, 225, 0.85)",
-            "blob1_color": "rgba(100, 116, 139, 0.24)",
-            "blob2_color": "rgba(148, 163, 184, 0.20)",
-            "blob3_color": "rgba(56, 189, 248, 0.16)",
+            "chip_bg": "#f8fafc",
+            "chip_border": "#cbd5e1",
+            "blob1_color": "rgba(100, 116, 139, 0.16)",
+            "blob2_color": "rgba(148, 163, 184, 0.14)",
+            "blob3_color": "rgba(56, 189, 248, 0.12)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -300,17 +300,17 @@ PALETTES: Dict[str, Dict[str, Any]] = {
         },
         "light": {
             "body_bg": "#fff1f2",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.88)",
-            "card_border_subtle": "rgba(254, 226, 226, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(225, 29, 72, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#1c1917",
-            "text_muted": "#57534e",
-            "chip_bg": "rgba(255, 255, 255, 0.7)",
-            "chip_border": "rgba(254, 226, 226, 0.9)",
-            "blob1_color": "rgba(244, 63, 94, 0.36)",
-            "blob2_color": "rgba(251, 146, 60, 0.30)",
-            "blob3_color": "rgba(225, 29, 72, 0.25)",
+            "card_bg": "#ffffff",
+            "card_border": "#fecdd3",
+            "card_border_subtle": "#ffe4e6",
+            "card_shadow": "0 4px 20px -2px rgba(159, 18, 57, 0.08), 0 2px 6px -1px rgba(159, 18, 57, 0.04)",
+            "text_main": "#881337",
+            "text_muted": "#be123c",
+            "chip_bg": "#fff1f2",
+            "chip_border": "#fecdd3",
+            "blob1_color": "rgba(244, 63, 94, 0.20)",
+            "blob2_color": "rgba(251, 146, 60, 0.18)",
+            "blob3_color": "rgba(225, 29, 72, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -345,17 +345,17 @@ PALETTES: Dict[str, Dict[str, Any]] = {
         },
         "light": {
             "body_bg": "#f0fdf4",
-            "card_bg": "rgba(255, 255, 255, 0.78)",
-            "card_border": "rgba(255, 255, 255, 0.88)",
-            "card_border_subtle": "rgba(220, 252, 231, 0.8)",
-            "card_shadow": "0 14px 38px -10px rgba(16, 185, 129, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
-            "text_main": "#1e293b",
-            "text_muted": "#64748b",
-            "chip_bg": "rgba(255, 255, 255, 0.7)",
-            "chip_border": "rgba(220, 252, 231, 0.9)",
-            "blob1_color": "rgba(52, 211, 153, 0.36)",
-            "blob2_color": "rgba(253, 224, 71, 0.30)",
-            "blob3_color": "rgba(16, 185, 129, 0.25)",
+            "card_bg": "#ffffff",
+            "card_border": "#a7f3d0",
+            "card_border_subtle": "#d1fae5",
+            "card_shadow": "0 4px 20px -2px rgba(6, 95, 70, 0.08), 0 2px 6px -1px rgba(6, 95, 70, 0.04)",
+            "text_main": "#064e3b",
+            "text_muted": "#047857",
+            "chip_bg": "#f0fdf4",
+            "chip_border": "#a7f3d0",
+            "blob1_color": "rgba(52, 211, 153, 0.20)",
+            "blob2_color": "rgba(253, 224, 71, 0.18)",
+            "blob3_color": "rgba(16, 185, 129, 0.15)",
             "mesh_blend": "multiply"
         },
         "dark": {
@@ -390,15 +390,15 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%)"
         },
         "light": {
-            "body_bg": "#f8fafc",
+            "body_bg": "#f1f5f9",
             "card_bg": "#ffffff",
-            "card_border": "rgba(0, 0, 0, 0.08)",
-            "card_border_subtle": "rgba(0, 0, 0, 0.06)",
-            "card_shadow": "0 10px 25px -5px rgba(0, 0, 0, 0.05)",
-            "text_main": "#1e293b",
-            "text_muted": "#64748b",
-            "chip_bg": "#f1f5f9",
-            "chip_border": "rgba(0, 0, 0, 0.08)",
+            "card_border": "#cbd5e1",
+            "card_border_subtle": "#e2e8f0",
+            "card_shadow": "0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04)",
+            "text_main": "#0f172a",
+            "text_muted": "#475569",
+            "chip_bg": "#f8fafc",
+            "chip_border": "#cbd5e1",
             "blob1_color": "transparent",
             "blob2_color": "transparent",
             "blob3_color": "transparent",
@@ -484,21 +484,31 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         light_opacity = "0"
         dark_opacity = "0"
         glass_blur = "0px"
+        minimal_mesh_css = """
+    .aura-mesh-container {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+    }
+    """
     elif intensity == "subtle":
         blur_val = "100px"
-        light_opacity = "0.55"
+        light_opacity = "0.25"
         dark_opacity = "0.6"
         glass_blur = "12px"
+        minimal_mesh_css = ""
     elif intensity == "high":
         blur_val = "70px"
-        light_opacity = "1.25"
+        light_opacity = "0.50"
         dark_opacity = "1.3"
         glass_blur = "24px"
+        minimal_mesh_css = ""
     else: # normal
         blur_val = "85px"
-        light_opacity = "1.0"
+        light_opacity = "0.35"
         dark_opacity = "1.0"
         glass_blur = "18px"
+        minimal_mesh_css = ""
 
     l = data["light"]
     d = data["dark"]
@@ -546,5 +556,6 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         --aura-opacity: {dark_opacity};
         --aura-blend: {d['mesh_blend']};
     }}
+    {minimal_mesh_css}
     """
     return css

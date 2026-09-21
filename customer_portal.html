@@ -14,7 +14,41 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="{{ brand_title or 'پرتال اشتراک' }}">
     <link rel="apple-touch-icon" href="{{ logo_url or '/avatars/Logo.webp' }}">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- لودر هوشمند وب‌اپ تلگرام با فال‌بک امن برای دستگاه‌های اندروید و عدم مسدودی در شبکه ایران -->
+    <script>
+        window.Telegram = window.Telegram || {};
+        window.Telegram.WebApp = window.Telegram.WebApp || {
+            ready: function() {},
+            expand: function() {},
+            close: function() {},
+            MainButton: { show: function(){}, hide: function(){}, setText: function(){} },
+            BackButton: { show: function(){}, hide: function(){}, onClick: function(){} },
+            HapticFeedback: { impactOccurred: function(){}, notificationOccurred: function(){}, selectionChanged: function(){} },
+            onEvent: function() {},
+            offEvent: function() {},
+            sendData: function() {},
+            setHeaderColor: function() {},
+            setBackgroundColor: function() {},
+            openLink: function(url) { window.open(url, '_blank'); },
+            openTelegramLink: function(url) { window.open(url, '_blank'); }
+        };
+        (function() {
+            var isTg = {% if is_webapp %}true{% else %}false{% endif %};
+            if (!isTg) {
+                try {
+                    if (window.TelegramWebviewProxy || (navigator.userAgent && /Telegram/i.test(navigator.userAgent)) || window.location.hash.indexOf('tgWebAppData') !== -1 || window.location.search.indexOf('tg_id') !== -1) {
+                        isTg = true;
+                    }
+                } catch(e) {}
+            }
+            if (isTg) {
+                var s = document.createElement('script');
+                s.src = 'https://telegram.org/js/telegram-web-app.js';
+                s.async = true;
+                document.head.appendChild(s);
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" rel="stylesheet" type="text/css" />
@@ -27,20 +61,31 @@
             --primary: var(--palette-primary, #2563eb);
             --primary-hover: var(--palette-primary-hover, #1d4ed8);
             --bs-primary: var(--palette-primary, #2563eb);
-            --body-bg: var(--palette-body-bg, #f8fafc);
-            --card-bg: var(--palette-card-bg, rgba(255, 255, 255, 0.78));
-            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.85));
+            --body-bg: var(--palette-body-bg, #f1f5f9);
+            --card-bg: var(--palette-card-bg, #ffffff);
+            --card-border: var(--palette-card-border, #cbd5e1);
+            --palette-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
             --text-main: var(--palette-text-main, #0f172a);
-            --text-muted: var(--palette-text-muted, #64748b);
+            --text-muted: var(--palette-text-muted, #475569);
         }
 
         [data-bs-theme="dark"] {
             --body-bg: var(--palette-body-bg, #070b14);
             --card-bg: var(--palette-card-bg, rgba(15, 23, 42, 0.74));
             --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.09));
+            --palette-card-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.65), 0 0 25px rgba(37, 99, 235, 0.12);
             --text-main: var(--palette-text-main, #f8fafc);
             --text-muted: var(--palette-text-muted, #94a3b8);
         }
+
+        /* در حالت بدون پالت و مینیمال: پس‌زمینه کاملاً یکدست و بدون لکه نوری */
+        {% if not palette_css or (palette_config and (palette_config.palette_id == 'classic_clean' or palette_config.intensity == 'off')) %}
+        .aura-mesh-container {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+        }
+        {% endif %}
 
         html {
             background-color: var(--body-bg);
@@ -177,48 +222,69 @@
             box-shadow: var(--palette-card-shadow, 0 10px 30px rgba(0, 0, 0, 0.3));
         }
 
-        /* استایل‌های اختصاصی حالت روشن (Light Mode Overrides) */
+        /* ─── استایل‌های اختصاصی حالت روشن (Light Mode High-Contrast Overrides) ─── */
+        [data-bs-theme="light"] .glass-card,
+        [data-bs-theme="light"] .bento-card,
+        :root:not([data-bs-theme="dark"]) .glass-card,
+        :root:not([data-bs-theme="dark"]) .bento-card {
+            background: var(--card-bg, #ffffff) !important;
+            border: 1px solid var(--card-border, #cbd5e1) !important;
+            box-shadow: var(--palette-card-shadow, 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04)) !important;
+        }
+
+        [data-bs-theme="light"] .bento-card:hover,
+        :root:not([data-bs-theme="dark"]) .bento-card:hover {
+            box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06) !important;
+            border-color: var(--primary, #2563eb) !important;
+        }
+
         [data-bs-theme="light"] .text-white {
-            color: var(--text-main) !important;
+            color: var(--text-main, #0f172a) !important;
         }
         [data-bs-theme="light"] .text-white-50 {
-            color: var(--text-muted) !important;
+            color: var(--text-muted, #475569) !important;
         }
         [data-bs-theme="light"] .text-secondary {
-            color: var(--text-muted) !important;
+            color: var(--text-muted, #475569) !important;
         }
         [data-bs-theme="light"] .btn-outline-light {
             color: #1e293b !important;
-            background: rgba(255, 255, 255, 0.72) !important;
-            border-color: rgba(0, 0, 0, 0.12) !important;
+            background: #ffffff !important;
+            border-color: #cbd5e1 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
         [data-bs-theme="light"] .btn-outline-light:hover {
-            background: #ffffff !important;
-            color: var(--primary) !important;
-            border-color: var(--primary) !important;
+            background: #f8fafc !important;
+            color: var(--primary, #2563eb) !important;
+            border-color: var(--primary, #2563eb) !important;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
-        [data-bs-theme="light"] .border-secondary {
-            border-color: rgba(0, 0, 0, 0.08) !important;
+        [data-bs-theme="light"] .border-secondary,
+        [data-bs-theme="light"] .border-opacity-25,
+        [data-bs-theme="light"] .border-opacity-50 {
+            border-color: #cbd5e1 !important;
+            --bs-border-opacity: 1 !important;
         }
         [data-bs-theme="light"] .server-status-card {
-            background: rgba(255, 255, 255, 0.76) !important;
-            border-color: rgba(255, 255, 255, 0.88) !important;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05) !important;
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06) !important;
         }
         [data-bs-theme="light"] .plan-card {
-            background: rgba(255, 255, 255, 0.65) !important;
-            border-color: rgba(0, 0, 0, 0.08) !important;
+            background: #ffffff !important;
+            border: 1.5px solid #cbd5e1 !important;
             color: #0f172a !important;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
         }
         [data-bs-theme="light"] .plan-card:hover {
-            background: rgba(255, 255, 255, 0.95) !important;
-            border-color: var(--primary) !important;
+            background: #f8fafc !important;
+            border-color: var(--primary, #2563eb) !important;
             box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12) !important;
         }
         [data-bs-theme="light"] .plan-card.selected {
             border-color: #10b981 !important;
-            background: rgba(16, 185, 129, 0.12) !important;
+            background: #f0fdf4 !important;
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.2) !important;
         }
         /* ─── استایل‌های لایه‌بندی مودال در پورتال مشتری ─── */
         .modal {
@@ -240,12 +306,12 @@
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6) !important;
         }
         [data-bs-theme="light"] .modal-content {
-            background: rgba(255, 255, 255, 0.98) !important;
+            background: #ffffff !important;
             backdrop-filter: blur(20px) saturate(180%);
             -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid #cbd5e1 !important;
             color: #0f172a !important;
-            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.15) !important;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15) !important;
         }
         [data-bs-theme="light"] .bg-black.bg-opacity-10,
         [data-bs-theme="light"] .bg-black.bg-opacity-20,
@@ -254,7 +320,23 @@
         [data-bs-theme="light"] .bg-black.bg-opacity-40,
         [data-bs-theme="light"] .bg-black.bg-opacity-50,
         [data-bs-theme="light"] .bg-black.bg-opacity-60 {
-            background-color: rgba(0, 0, 0, 0.04) !important;
+            background-color: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+        }
+        [data-bs-theme="light"] .loyalty-tier-card,
+        [data-bs-theme="light"] .social-task-card,
+        [data-bs-theme="light"] .portal-subs-card {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06) !important;
+        }
+        [data-bs-theme="light"] .progress {
+            background-color: #e2e8f0 !important;
+        }
+        [data-bs-theme="light"] .badge.bg-dark {
+            background-color: #f1f5f9 !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
         }
 
         /* ─── استایل نوبت و بسته‌های صف رزرو شده در تم روشن و تیره ─── */
@@ -1723,14 +1805,43 @@
             </div>
         </div>
     </div>
+    <script>
+        // تضمین رفع فوری و ۱۰۰٪ بدون گیر اسپلش اسکرین در هر شرایط شبکه یا اختلال دستگاه
+        (function() {
+            var splashDismissTimer = setTimeout(function() {
+                var sp = document.getElementById('portalSplashScreen');
+                if (sp && !sp.classList.contains('fade-out')) {
+                    sp.classList.add('fade-out');
+                    setTimeout(function() {
+                        sp.classList.add('hidden');
+                        sp.style.display = 'none';
+                    }, 450);
+                }
+            }, 2400);
+            window.addEventListener('DOMContentLoaded', function() {
+                setTimeout(function() {
+                    var sp = document.getElementById('portalSplashScreen');
+                    if (sp && !sp.classList.contains('fade-out')) {
+                        sp.classList.add('fade-out');
+                        setTimeout(function() {
+                            sp.classList.add('hidden');
+                            sp.style.display = 'none';
+                        }, 450);
+                    }
+                }, 1600);
+            });
+        })();
+    </script>
     {% endif %}
 
     <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
+    {% if palette_config and palette_config.palette_id != 'classic_clean' and palette_config.intensity != 'off' %}
     <div class="aura-mesh-container" aria-hidden="true">
         <div class="aura-blob aura-blob-1"></div>
         <div class="aura-blob aura-blob-2"></div>
         <div class="aura-blob aura-blob-3"></div>
     </div>
+    {% endif %}
 
     <div class="container portal-container">
         <!-- نوار بالایی هدر: دکمه خرید جدید، گردونه شانس، نصب PWA، تم و پشتیبانی -->
@@ -1747,6 +1858,13 @@
                 <button type="button" class="btn btn-sm text-dark rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold lucky-wheel-btn" id="openLuckyWheelBtn" onclick="openLuckyWheelModal()" style="font-size: 0.82rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none; box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);">
                     <i class="fas fa-dharmachakra fa-spin-pulse" style="--fa-animation-duration: 4s;"></i>
                     <span>گردونه شانس 🎁</span>
+                </button>
+                {% endif %}
+                {% if user_social_tasks %}
+                <!-- دکمه ماموریت‌ها و جوایز -->
+                <button type="button" class="btn btn-sm text-white rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold" data-bs-toggle="modal" data-bs-target="#socialTasksModal" onclick="window.tgHaptic && window.tgHaptic('light');" style="font-size: 0.82rem; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);">
+                    <i class="fas fa-tasks"></i>
+                    <span>ماموریت و هدیه 🎯</span>
                 </button>
                 {% endif %}
                 <!-- دکمه نصب اپلیکیشن PWA -->
@@ -2121,8 +2239,53 @@
                 </a>
                 {% endif %}
             </div>
+        <!-- نوار وضعیت سطح وفاداری و باشگاه مشتریان (Loyalty Tier Bar) -->
+        {% if loyalty_tier_info %}
+        <div class="p-3 mb-3 rounded-3 shadow-sm" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="small text-secondary fw-bold">سطح وفاداری:</span>
+                    {{ loyalty_tier_info.badge_html | safe }}
+                    {% if loyalty_tier_info.discount_percent > 0 %}
+                    <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill" style="font-size: 0.73rem;">
+                        <i class="fas fa-tags me-1"></i>{{ loyalty_tier_info.discount_percent }}٪ تخفیف دائم
+                    </span>
+                    {% endif %}
+                    {% if loyalty_tier_info.cashback_percent > 0 %}
+                    <span class="badge bg-info-subtle text-info border border-info px-2 py-1 rounded-pill" style="font-size: 0.73rem;">
+                        <i class="fas fa-coins me-1"></i>{{ loyalty_tier_info.cashback_percent }}٪ کش‌بک
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    {% if loyalty_tier_info.birthday %}
+                    <span class="badge bg-dark text-info border border-secondary px-2 py-1 rounded-pill" style="font-size: 0.73rem;">
+                        <i class="fas fa-cake-candles me-1"></i>تولد: {{ loyalty_tier_info.birthday }}
+                    </span>
+                    {% else %}
+                    <button type="button" class="btn btn-xs btn-outline-info rounded-pill py-1 px-2" style="font-size: 0.73rem;" data-bs-toggle="modal" data-bs-target="#birthdayModal">
+                        <i class="fas fa-cake-candles me-1"></i>ثبت تولد (دریافت هدیه)
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if loyalty_tier_info.next_tier %}
+            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1" style="font-size: 0.75rem;">
+                <span>پیشرفت تا سطح {{ loyalty_tier_info.next_tier_title }}:</span>
+                <span>{{ loyalty_tier_info.progress_percent }}٪ (نیاز به {{ "{:,}".format(loyalty_tier_info.remaining_tomans) }} تومان خرید دیگر)</span>
+            </div>
+            <div class="progress" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 6px;">
+                <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ loyalty_tier_info.progress_percent }}%;"></div>
+            </div>
+            {% else %}
+            <div class="small text-warning" style="font-size: 0.75rem;">
+                <i class="fas fa-crown me-1"></i>شما در بالاترین سطح باشگاه مشتریان قرار دارید و کلیه تخفیف‌ها به صورت خودکار اعمال می‌شوند.
+            </div>
+            {% endif %}
         </div>
-        
+        {% endif %}
+
         <!-- نوار پیشرفت مصرف حجم -->
         {% set used_gb = sub.get('data_used', 0) | float %}
         {% set total_gb = sub.get('data_limit', 0) | float %}
@@ -2703,6 +2866,107 @@
     </div>
     {% endmacro %}
 
+    {% macro macro_social_tasks_card() %}
+    {% if user_social_tasks and user_social_tasks|length > 0 %}
+    <div class="glass-card p-4 mb-4 border border-success border-opacity-25" id="card-social-tasks-section">
+        <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-success border-opacity-25 flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-success text-white rounded-circle p-2 d-inline-flex align-items-center justify-content-center shadow-sm" style="width: 32px; height: 32px;">
+                    <i class="fas fa-tasks"></i>
+                </span>
+                <div>
+                    <h6 class="fw-bold text-success mb-0">ماموریت‌های کسب حجم رایگان و پاداش</h6>
+                    <small class="text-secondary" style="font-size: 0.75rem;">با انجام هر ماموریت، بلافاصله حجم هدیه یا اعتبار نقدی دریافت کنید!</small>
+                </div>
+            </div>
+            <span class="badge bg-success bg-opacity-20 text-success border border-success px-2 py-1 rounded-pill small">
+                <i class="fas fa-gift me-1"></i>پاداش آنی و مستقیم
+            </span>
+        </div>
+
+        <div class="row g-3">
+            {% for task in user_social_tasks %}
+            <div class="col-md-6">
+                <div class="p-3 rounded-3 h-100 d-flex flex-column justify-content-between shadow-sm" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="rounded-circle p-2 d-flex align-items-center justify-content-center text-white shadow-sm flex-shrink-0" style="width: 38px; height: 38px; background: {% if task.task_type == 'telegram_channel' %}#0088cc{% elif task.task_type == 'referral' %}#f59e0b{% elif task.task_type == 'review' %}#10b981{% else %}#8b5cf6{% endif %};">
+                                    {% if task.task_type == 'telegram_channel' %}
+                                        <i class="fab fa-telegram-plane"></i>
+                                    {% elif task.task_type == 'referral' %}
+                                        <i class="fas fa-users"></i>
+                                    {% elif task.task_type == 'review' %}
+                                        <i class="fas fa-star"></i>
+                                    {% else %}
+                                        <i class="fas fa-award"></i>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold text-white mb-0" style="font-size: 0.9rem;">{{ task.title }}</h6>
+                                    <small class="text-secondary d-block mt-1" style="font-size: 0.75rem;">{{ task.description }}</small>
+                                </div>
+                            </div>
+                            <span class="badge bg-warning text-dark fw-bold font-monospace px-2 py-1 rounded-pill flex-shrink-0" style="font-size: 0.74rem;">
+                                {% if task.reward_type == 'traffic' %}
+                                    +{{ task.reward_value }} GB
+                                {% elif task.reward_type == 'wallet' %}
+                                    +{{ "{:,}".format(task.reward_value|int) }} ت
+                                {% elif task.reward_type == 'discount' %}
+                                    {{ task.reward_value }}٪ تخفیف
+                                {% else %}
+                                    پاداش
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        {% if task.task_type == 'referral' %}
+                        <div class="mt-2 mb-2 p-2 rounded" style="background: rgba(0,0,0,0.2);">
+                            <div class="d-flex justify-content-between small text-secondary mb-1" style="font-size: 0.72rem;">
+                                <span>پیشرفت دعوت: {{ task.progress_count }} از {{ task.target_count }} نفر</span>
+                                <span>{{ task.progress_percent }}٪</span>
+                            </div>
+                            <div class="progress" style="height: 5px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                                <div class="progress-bar bg-info" style="width: {{ task.progress_percent }}%;"></div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-flex align-items-center justify-content-between gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25 flex-wrap">
+                        <div>
+                            {% if task.target_url and task.status != 'claimed' %}
+                            <a href="{{ task.target_url }}" target="_blank" class="btn btn-xs btn-outline-info rounded-pill py-1 px-2" style="font-size: 0.75rem;" onclick="window.tgHaptic && window.tgHaptic('light');">
+                                <i class="fas fa-external-link-alt me-1"></i>لینک انجام کار
+                            </a>
+                            {% elif task.task_type == 'referral' and task.status != 'claimed' %}
+                            <button type="button" class="btn btn-xs btn-outline-warning rounded-pill py-1 px-2" style="font-size: 0.75rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal">
+                                <i class="fas fa-user-plus me-1"></i>لینک معرفی
+                            </button>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            {% if task.status == 'claimed' %}
+                            <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill" style="font-size: 0.75rem;">
+                                <i class="fas fa-circle-check me-1"></i>پاداش دریافت شد
+                            </span>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-success rounded-pill px-3 py-1 fw-bold shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.78rem;" onclick="claimSocialTask({{ task.id }}, this)">
+                                <i class="fas fa-gift"></i>
+                                <span>بررسی و دریافت پاداش</span>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endmacro %}
+
     <!-- فلش پیام‌ها -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -2768,6 +3032,7 @@
         </div>
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
+        {{ macro_social_tasks_card() }}
         {{ macro_server_status() }}
         {{ macro_support_card() }}
 
@@ -2788,6 +3053,7 @@
                 {{ macro_debt_card() }}
                 {{ macro_invoice_card() }}
                 {{ macro_renewal_card() }}
+                {{ macro_social_tasks_card() }}
             </div>
         </div>
 
@@ -2817,6 +3083,7 @@
             <div id="tabSubStatus" class="portal-tab-pane {% if not (invoice and invoice.get('status') == 'pending') %}active{% endif %}">
                 {{ macro_sub_card() }}
                 {{ macro_queue_card() }}
+                {{ macro_social_tasks_card() }}
             </div>
 
             <div id="tabRenewPlans" class="portal-tab-pane {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}">
@@ -2955,6 +3222,11 @@
                 {{ macro_renewal_card() }}
             </div>
 
+            <!-- ردیف ماموریت‌ها و جوایز -->
+            <div class="mb-3">
+                {{ macro_social_tasks_card() }}
+            </div>
+
             <!-- ردیف ۴ بنتو: پشتیبانی و وضعیت سرور -->
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
@@ -2974,6 +3246,7 @@
         {{ macro_queue_card() }}
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
+        {{ macro_social_tasks_card() }}
         {{ macro_support_card() }}
 
     {% endif %}
@@ -3009,6 +3282,56 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- مودال ثبت تاریخ تولد مشتری جهت شارژ خودکار هدیه -->
+    <div class="modal fade" id="birthdayModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content glass-card border-0 text-white p-3 shadow-lg">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-bold"><i class="fas fa-cake-candles text-warning me-1"></i> ثبت تاریخ تولد (هدیه ویژه)</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <p class="small text-secondary mb-3">با ثبت روز و ماه تولد، سیستم باشگاه مشتریان در روز تولدتان به صورت خودکار ترافیک یا اعتبار نقدی به شما هدیه می‌دهد! 🎂</p>
+                    <div class="mb-3">
+                        <label class="form-label small text-light fw-bold">تاریخ تولد (روز / ماه):</label>
+                        <input type="text" id="userBirthdayInput" class="form-control font-monospace text-center" placeholder="مثال: 05/12 یا 1380/05/12" value="{{ loyalty_tier_info.birthday or '' }}">
+                        <div class="form-text text-secondary" style="font-size: 0.72rem;">فقط کافیست روز و ماه (مثل ۰۵/۱۲) یا سال را وارد فرمایید.</div>
+                    </div>
+                    <div id="birthdayAlert" class="alert d-none py-2 small mb-3"></div>
+                    <button type="button" class="btn btn-warning w-100 text-dark fw-bold shadow-sm" id="saveBirthdayBtn" onclick="submitUserBirthday()">
+                        <i class="fas fa-check me-1"></i> ذخیره تاریخ تولد
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال ماموریت‌ها و جوایز اجتماعی (در دسترس از دکمه هدر) -->
+    <div class="modal fade" id="socialTasksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content glass-card border-0 text-white p-2 p-md-3 shadow-lg">
+                <div class="modal-header border-secondary border-opacity-25 pb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar-sm bg-success bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-success p-2" style="width: 42px; height: 42px;">
+                            <i class="fas fa-tasks fs-5"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0">ماموریت‌های کسب حجم رایگان و پاداش</h5>
+                            <small class="text-secondary">ماموریت‌های زیر را انجام داده و فوراً هدیه خود را دریافت کنید</small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    {{ macro_social_tasks_card() }}
+                </div>
+                <div class="modal-footer border-0 pt-0 justify-content-center">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن پنجره</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- مودال پاپ‌آپ جامع سیستم کسب درآمد و دعوت از دوستان -->
     {% if customer_ref_enabled %}
@@ -6002,6 +6325,104 @@ function renderLuckyWheelPrizesGrid(prizes) {
         `;
         grid.appendChild(col);
     });
+// ═════════════════════════════════════════════════════════════════════
+// 🎯 مدیریت ماموریت‌های پاداش اجتماعی و ثبت تاریخ تولد (Social Tasks & VIP)
+// ═════════════════════════════════════════════════════════════════════
+
+async function claimSocialTask(taskId, btn) {
+    if (!taskId) return;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی...';
+    try {
+        const res = await fetch('/api/portal/' + PORTAL_TOKEN + '/social-tasks/verify-claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            launchWheelConfetti();
+            btn.className = 'btn btn-sm btn-secondary disabled';
+            btn.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i> پاداش دریافت شد';
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'تبریک! 🎉',
+                    text: data.message || 'پاداش با موفقیت به حساب شما اضافه شد!',
+                    confirmButtonText: 'عالیه',
+                    timer: 4000
+                });
+            } else {
+                alert('🎉 ' + (data.message || 'پاداش با موفقیت به حساب شما اضافه شد!'));
+            }
+            setTimeout(() => { window.location.reload(); }, 2200);
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'عدم احراز شرایط',
+                    text: data.error || 'شرایط دریافت پاداش این ماموریت هنوز تکمیل نشده است.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            } else {
+                alert('⚠️ ' + (data.error || 'شرایط دریافت پاداش این ماموریت هنوز تکمیل نشده است.'));
+            }
+        }
+    } catch(e) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        alert('خطا در برقراری ارتباط با سرور.');
+    }
+}
+
+async function submitUserBirthday() {
+    const bdayInput = document.getElementById('userBirthdayInput');
+    const alertBox = document.getElementById('birthdayAlert');
+    const saveBtn = document.getElementById('saveBirthdayBtn');
+    const val = bdayInput ? bdayInput.value.trim() : '';
+    if (!val) {
+        if (alertBox) {
+            alertBox.className = 'alert alert-warning py-2 small mb-3';
+            alertBox.innerText = 'لطفاً تاریخ تولد خود را وارد فرمایید.';
+            alertBox.classList.remove('d-none');
+        }
+        return;
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        const res = await fetch('/api/portal/' + PORTAL_TOKEN + '/profile/birthday', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ birthday: val })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (alertBox) {
+                alertBox.className = 'alert alert-success py-2 small mb-3';
+                alertBox.innerText = data.message || 'تاریخ تولد با موفقیت ثبت شد!';
+                alertBox.classList.remove('d-none');
+            }
+            launchWheelConfetti();
+            setTimeout(() => { window.location.reload(); }, 1500);
+        } else {
+            if (saveBtn) saveBtn.disabled = false;
+            if (alertBox) {
+                alertBox.className = 'alert alert-danger py-2 small mb-3';
+                alertBox.innerText = data.error || 'خطا در ثبت تاریخ تولد';
+                alertBox.classList.remove('d-none');
+            }
+        }
+    } catch(e) {
+        if (saveBtn) saveBtn.disabled = false;
+        if (alertBox) {
+            alertBox.className = 'alert alert-danger py-2 small mb-3';
+            alertBox.innerText = 'خطا در برقراری ارتباط با سرور: ' + e;
+            alertBox.classList.remove('d-none');
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -6327,9 +6748,10 @@ window.tgHaptic = function(type = 'light') {
         setTimeout(dismissSplash, remaining);
     }
 
-    if (document.readyState === 'complete') {
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
         onReady();
     } else {
+        document.addEventListener('DOMContentLoaded', onReady);
         window.addEventListener('load', onReady);
     }
 

@@ -2552,64 +2552,192 @@ function escapeHtml(str) {
 
     </div>
 </div>
-<!-- کارت ۷: باشگاه مشتریان (VIP) -->
+<!-- کارت ۷: باشگاه مشتریان و سطوح وفاداری (VIP Loyalty Tiers) -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-vip-club">
     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
         <div class="d-flex align-items-center gap-2">
             <i class="fas fa-chevron-down settings-toggle-chevron"></i>
             <h5 class="mb-0 text-warning fw-bold">
-                <i class="fas fa-crown text-warning me-2"></i> باشگاه مشتریان (VIP)
+                <i class="fas fa-crown text-warning me-2"></i> باشگاه مشتریان و سطوح وفاداری (VIP Loyalty Tiers)
             </h5>
         </div>
         <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-warning text-dark"><i class="fas fa-coins me-1"></i>سیستم وفاداری و پاداش نقدی</span>
-    </div>
-    <div class="card-body p-4">
-        <p class="text-muted">
-
+            <a href="{{ url_for('vip_settings') }}" class="btn btn-sm btn-outline-warning text-dark fw-bold me-1" onclick="event.stopPropagation();">
+                <i class="fas fa-arrow-up-right-from-square me-1"></i> مدیریت اعضا و تنظیمات پیشرفته
+            </a>
+            <span class="badge bg-warning text-dark"><i class="fas fa-gem me-1"></i>سطوح ۳گانه و تخفیف دائمی</span>
         </div>
     </div>
     <div class="card-body p-4 settings-card-body">
-            با فعال بودن این قابلیت، سیستم به صورت خودکار کاربرانی که مجموع خریدهای موفق آن‌ها به سقف تعیین‌شده برسد را به عنوان <strong>کاربر ویژه (VIP)</strong> ارتقا داده و در خریدهای بعدی درصد مشخصی از مبلغ خرید را به صورت <strong>کش‌بک (Cashback)</strong> آنی به کیف پول آن‌ها واریز می‌کند.
+        <p class="text-muted mb-4">
+            با فعال بودن این قابلیت، سیستم به صورت خودکار کاربران را بر اساس سقف خریدهای موفق و ترافیک به سطوح <strong>برنزی</strong>، <strong>نقره‌ای</strong> و <strong>طلایی</strong> ارتقا داده و تخفیف‌های دائمی (۵ تا ۱۵٪) و هدایای تولد و سالگرد را برای آن‌ها فعال می‌نماید.
         </p>
 
         <form action="{{ url_for('settings') }}" method="POST">
             <input type="hidden" name="action" value="save_vip_settings">
             
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <div class="form-check form-switch pt-4">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="form-check form-switch pt-2">
                         <input class="form-check-input" type="checkbox" name="vip_auto_enabled" id="vip_auto_enabled" {% if vip_settings.get('auto_enabled') %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="vip_auto_enabled">ارتقای خودکار کاربران به VIP فعال باشد</label>
+                        <label class="form-check-label fw-bold" for="vip_auto_enabled">ارتقای خودکار کاربران به سطوح وفاداری فعال باشد</label>
                     </div>
-                </div>
-
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">حداقل مجموع خریدهای کاربر جهت ارتقای خودکار (تومان):</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" name="vip_auto_threshold" 
-                               value="{{ vip_settings.get('auto_threshold', 1000000) }}" placeholder="1000000" min="0" step="50000">
-                        <span class="input-group-text">تومان</span>
-                    </div>
-                    <div class="form-text text-muted">پیش‌فرض: ۱,۰۰۰,۰۰۰ تومان</div>
-                </div>
-
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">درصد بازگشت وجه کش‌بک پیش‌فرض (Cashback %):</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" name="vip_cashback_percent" 
-                               value="{{ vip_settings.get('cashback_percent', 10) }}" placeholder="10" min="0" max="100">
-                        <span class="input-group-text">درصد ٪</span>
-                    </div>
-                    <div class="form-text text-muted">درصد واریز خودکار به کیف پول در هر خرید تایید شده</div>
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-warning fw-bold px-4">
-                <i class="fas fa-save me-1"></i> ذخیره تنظیمات باشگاه مشتریان VIP
+            <!-- سطوح سه‌گانه وفاداری -->
+            <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="fas fa-layer-group text-warning me-1"></i>سقف خرید و مزایای سطوح وفاداری:</h6>
+            <div class="row g-3 mb-4">
+                <!-- سطح برنزی -->
+                <div class="col-md-4">
+                    <div class="card p-3 h-100 border" style="border-color: #cd7f32 !important; background: rgba(205, 127, 50, 0.05);">
+                        <div class="fw-bold mb-2" style="color: #a05a18;"><i class="fas fa-medal me-1"></i>🥉 سطح برنزی</div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">حداقل خرید (تومان):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_bronze_threshold_tomans" value="{{ vip_settings.get('bronze_threshold_tomans', 300000) }}" step="50000">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">یا حداقل حجم (GB):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_bronze_threshold_gb" value="{{ vip_settings.get('bronze_threshold_gb', 30) }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">تخفیف دائم خرید (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_bronze_discount_percent" value="{{ vip_settings.get('bronze_discount_percent', 5) }}" min="0" max="100">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted mb-1">کش‌بک کیف‌پول (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_bronze_cashback_percent" value="{{ vip_settings.get('bronze_cashback_percent', 5) }}" min="0" max="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- سطح نقره‌ای -->
+                <div class="col-md-4">
+                    <div class="card p-3 h-100 border" style="border-color: #94a3b8 !important; background: rgba(148, 163, 184, 0.08);">
+                        <div class="fw-bold mb-2 text-secondary"><i class="fas fa-star me-1"></i>🥈 سطح نقره‌ای</div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">حداقل خرید (تومان):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_silver_threshold_tomans" value="{{ vip_settings.get('silver_threshold_tomans', 800000) }}" step="50000">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">یا حداقل حجم (GB):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_silver_threshold_gb" value="{{ vip_settings.get('silver_threshold_gb', 80) }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">تخفیف دائم خرید (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_silver_discount_percent" value="{{ vip_settings.get('silver_discount_percent', 10) }}" min="0" max="100">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted mb-1">کش‌بک کیف‌پول (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_silver_cashback_percent" value="{{ vip_settings.get('silver_cashback_percent', 10) }}" min="0" max="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- سطح طلایی -->
+                <div class="col-md-4">
+                    <div class="card p-3 h-100 border" style="border-color: #f59e0b !important; background: rgba(245, 158, 11, 0.08);">
+                        <div class="fw-bold mb-2 text-warning-emphasis"><i class="fas fa-crown text-warning me-1"></i>🥇 سطح طلایی</div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">حداقل خرید (تومان):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_gold_threshold_tomans" value="{{ vip_settings.get('gold_threshold_tomans', 1500000) }}" step="50000">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">یا حداقل حجم (GB):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_gold_threshold_gb" value="{{ vip_settings.get('gold_threshold_gb', 150) }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted mb-1">تخفیف دائم خرید (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_gold_discount_percent" value="{{ vip_settings.get('gold_discount_percent', 15) }}" min="0" max="100">
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted mb-1">کش‌بک کیف‌پول (٪):</label>
+                            <input type="number" class="form-control form-control-sm" name="vip_gold_cashback_percent" value="{{ vip_settings.get('gold_cashback_percent', 15) }}" min="0" max="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- هدایای تولد و سالگرد -->
+            <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="fas fa-gift text-danger me-1"></i>هدایای خودکار تولد و سالگرد:</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="vip_birthday_reward_enabled" id="vip_birthday_reward_enabled" {% if vip_settings.get('birthday_reward_enabled') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vip_birthday_reward_enabled">🎂 هدیه روز تولد کاربر</label>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">نوع هدیه:</label>
+                                <select name="vip_birthday_reward_type" class="form-select form-select-sm">
+                                    <option value="traffic" {% if vip_settings.get('birthday_reward_type') == 'traffic' %}selected{% endif %}>ترافیک هدیه (GB)</option>
+                                    <option value="wallet" {% if vip_settings.get('birthday_reward_type') == 'wallet' %}selected{% endif %}>شارژ کیف‌پول (تومان)</option>
+                                    <option value="discount" {% if vip_settings.get('birthday_reward_type') == 'discount' %}selected{% endif %}>کد تخفیف (٪)</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">مقدار هدیه:</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" name="vip_birthday_reward_val" value="{{ vip_settings.get('birthday_reward_val', '5') }}" placeholder="5">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="vip_anniversary_reward_enabled" id="vip_anniversary_reward_enabled" {% if vip_settings.get('anniversary_reward_enabled') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vip_anniversary_reward_enabled">🎉 هدیه سالگرد عضویت</label>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">نوع هدیه:</label>
+                                <select name="vip_anniversary_reward_type" class="form-select form-select-sm">
+                                    <option value="traffic" {% if vip_settings.get('anniversary_reward_type') == 'traffic' %}selected{% endif %}>ترافیک هدیه (GB)</option>
+                                    <option value="wallet" {% if vip_settings.get('anniversary_reward_type') == 'wallet' %}selected{% endif %}>شارژ کیف‌پول (تومان)</option>
+                                    <option value="discount" {% if vip_settings.get('anniversary_reward_type') == 'discount' %}selected{% endif %}>کد تخفیف (٪)</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">مقدار هدیه:</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" name="vip_anniversary_reward_val" value="{{ vip_settings.get('anniversary_reward_val', '5') }}" placeholder="5">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-warning fw-bold px-4 shadow-sm">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات باشگاه وفاداری و سطوح VIP
             </button>
         </form>
+    </div>
+</div>
 
+<!-- کارت ۷-ب: ماموریت‌های کسب حجم رایگان و پاداش اجتماعی (Social Tasks) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-social-tasks">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-success fw-bold">
+                <i class="fas fa-tasks text-success me-2"></i> ماموریت‌های کسب حجم رایگان و جوایز (Social Tasks & Quests)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('admin_social_tasks_page') }}" class="btn btn-sm btn-success fw-bold" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt me-1"></i> مدیریت ماموریت‌ها و پاداش‌ها
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted">
+            سیستم ماموریت‌ها به کاربران اجازه می‌دهد در ازای کارهایی نظیر: <strong>عضویت در کانال تلگرام</strong>، <strong>دعوت ۵ الی ۱۰ نفر از دوستان</strong>، <strong>ثبت نظر و امتیاز</strong> یا <strong>لایک و تعامل در کانال</strong> پاداش‌های آنی (حجم هدیه، شارژ کیف‌پول یا کد تخفیف) دریافت کنند.
+        </p>
+        <div class="alert alert-info d-flex align-items-center justify-content-between mb-0 py-2">
+            <span class="small"><i class="fas fa-shield-alt text-info me-1"></i> مجهز به سیستم ضد تقلب (Anti-Fraud) هوشمند با اعتبارسنجی خودکار تلگرام و قفل یکبار مصرف جوایز.</span>
+            <a href="{{ url_for('admin_social_tasks_page') }}" class="btn btn-sm btn-outline-info">مشاهده لیست ماموریت‌ها</a>
+        </div>
     </div>
 </div>
 
