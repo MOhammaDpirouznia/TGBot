@@ -339,6 +339,140 @@
             border: 1px solid #cbd5e1 !important;
         }
 
+        /* ─── دکمه طلایی و چشمک‌زن/نبض‌دار باشگاه مشتریان (Golden Pulsing Customer Club Button) ─── */
+        .customer-club-btn {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+            color: #1e1b4b !important;
+            border: 1px solid rgba(255, 255, 255, 0.45) !important;
+            font-weight: 800 !important;
+            box-shadow: 0 0 14px rgba(245, 158, 11, 0.55), 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+            position: relative;
+            overflow: hidden;
+            animation: clubGoldPulse 2.2s infinite alternate ease-in-out;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .customer-club-btn:hover {
+            transform: translateY(-2px) scale(1.04);
+            box-shadow: 0 0 24px rgba(251, 191, 36, 0.9), 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+            color: #000000 !important;
+        }
+        .customer-club-btn:active {
+            transform: scale(0.97);
+        }
+        @keyframes clubGoldPulse {
+            0% {
+                box-shadow: 0 0 8px rgba(245, 158, 11, 0.45), 0 0 0 0 rgba(245, 158, 11, 0.4);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 0 22px rgba(251, 191, 36, 0.85), 0 0 0 5px rgba(245, 158, 11, 0.2);
+                transform: scale(1.03);
+            }
+            100% {
+                box-shadow: 0 0 8px rgba(245, 158, 11, 0.45), 0 0 0 0 rgba(245, 158, 11, 0);
+                transform: scale(1);
+            }
+        }
+        .customer-club-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(60deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%);
+            transform: rotate(25deg);
+            animation: goldShimmer 3.8s infinite;
+            pointer-events: none;
+        }
+        @keyframes goldShimmer {
+            0% { transform: translateX(-100%) rotate(25deg); }
+            25%, 100% { transform: translateX(100%) rotate(25deg); }
+        }
+
+        /* استایل تب‌های مودال باشگاه مشتریان */
+        .club-modal-tabs .nav-link {
+            color: var(--text-muted, #94a3b8);
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .club-modal-tabs .nav-link:hover {
+            color: var(--text-main, #ffffff);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .club-modal-tabs .nav-link.active {
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35) !important;
+        }
+        [data-bs-theme="light"] .club-modal-tabs .nav-link {
+            color: #475569 !important;
+        }
+        [data-bs-theme="light"] .club-modal-tabs .nav-link.active {
+            background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+            color: #0f172a !important;
+        }
+
+        /* استایل تب‌های دریافت کانفیگ و ساب */
+        .sub-config-tabs .nav-link {
+            color: var(--text-muted, #94a3b8);
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .sub-config-tabs .nav-link:hover {
+            color: var(--text-main, #ffffff);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .sub-config-tabs .nav-link.active {
+            background: var(--primary, #2563eb) !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+        }
+        [data-bs-theme="light"] .sub-config-tabs .nav-link {
+            color: #475569 !important;
+        }
+        [data-bs-theme="light"] .sub-config-tabs .nav-link.active {
+            background: var(--primary, #2563eb) !important;
+            color: #ffffff !important;
+        }
+
+        [data-bs-theme="light"] #customerClubModal .modal-content,
+        [data-bs-theme="light"] #subConfigModal .modal-content {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12) !important;
+        }
+        [data-bs-theme="light"] #customerClubModal .modal-header,
+        [data-bs-theme="light"] #subConfigModal .modal-header {
+            border-bottom-color: #f1f5f9 !important;
+        }
+        [data-bs-theme="light"] #customerClubModal .text-white,
+        [data-bs-theme="light"] #subConfigModal .text-white {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] #customerClubModal .text-secondary,
+        [data-bs-theme="light"] #subConfigModal .text-secondary {
+            color: #64748b !important;
+        }
+        [data-bs-theme="light"] #customerClubModal .btn-close-white,
+        [data-bs-theme="light"] #subConfigModal .btn-close-white {
+            filter: invert(1) grayscale(100%) brightness(20%) !important;
+        }
+        [data-bs-theme="light"] #customerClubModal .bg-black.bg-opacity-30,
+        [data-bs-theme="light"] #subConfigModal .bg-black.bg-opacity-30 {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+        [data-bs-theme="light"] #customerClubModal input.bg-dark,
+        [data-bs-theme="light"] #subConfigModal input.bg-dark {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+
         /* ─── استایل نوبت و بسته‌های صف رزرو شده در تم روشن و تیره ─── */
         .portal-queue-card {
             border-radius: 20px;
@@ -1853,18 +1987,11 @@
                     <span>خرید اشتراک</span>
                 </button>
                 {% endif %}
-                {% if lucky_wheel_enabled %}
-                <!-- دکمه گردونه شانس -->
-                <button type="button" class="btn btn-sm text-dark rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold lucky-wheel-btn" id="openLuckyWheelBtn" onclick="openLuckyWheelModal()" style="font-size: 0.82rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none; box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);">
-                    <i class="fas fa-dharmachakra fa-spin-pulse" style="--fa-animation-duration: 4s;"></i>
-                    <span>گردونه شانس 🎁</span>
-                </button>
-                {% endif %}
-                {% if user_social_tasks %}
-                <!-- دکمه ماموریت‌ها و جوایز -->
-                <button type="button" class="btn btn-sm text-white rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold" data-bs-toggle="modal" data-bs-target="#socialTasksModal" onclick="window.tgHaptic && window.tgHaptic('light');" style="font-size: 0.82rem; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);">
-                    <i class="fas fa-tasks"></i>
-                    <span>ماموریت و هدیه 🎯</span>
+                {% if lucky_wheel_enabled or user_social_tasks or customer_ref_enabled %}
+                <!-- دکمه طلایی و نبض‌دار باشگاه مشتریان (شامل رفرال، ماموریت و گردونه شانس) -->
+                <button type="button" class="btn btn-sm text-dark rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold customer-club-btn" id="openCustomerClubBtn" onclick="openCustomerClubModal('ref')" style="font-size: 0.83rem;" title="باشگاه مشتریان، کسب درآمد و جوایز شگفت‌انگیز">
+                    <i class="fas fa-crown text-dark"></i>
+                    <span>باشگاه مشتریان 👑</span>
                 </button>
                 {% endif %}
                 <!-- دکمه نصب اپلیکیشن PWA -->
@@ -2209,27 +2336,10 @@
                     <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
                 </button>
 
-                {% if customer_ref_enabled %}
-                <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal" title="کسب درآمد و دعوت از دوستان">
-                    <i class="fas fa-gift me-1 text-warning"></i>کسب درآمد
-                </button>
-                {% endif %}
-
-                {% if sub_url %}
-                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ sub_url }}', 'لینک اشتراک')" title="کپی لینک ساب">
-                    <i class="fas fa-link me-1 text-primary"></i>کپی ساب
-                </button>
-                {% endif %}
-
-                {% if single_url %}
-                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')" title="کپی کانفیگ تکی">
-                    <i class="fas fa-bolt me-1 text-warning"></i>کانفیگ تکی
-                </button>
-                {% endif %}
-
-                {% if actual_sub_url %}
-                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#qrCodeModal" title="مشاهده بارکد QR">
-                    <i class="fas fa-qrcode me-1 text-info"></i>بارکد QR
+                {% if actual_sub_url or single_url %}
+                <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR، لینک هوشمند و کانفیگ تکی">
+                    <i class="fas fa-qrcode text-info me-1"></i>
+                    <span>دریافت کانفیگ و اشتراک ⚡</span>
                 </button>
                 {% endif %}
 
@@ -2940,7 +3050,7 @@
                                 <i class="fas fa-external-link-alt me-1"></i>لینک انجام کار
                             </a>
                             {% elif task.task_type == 'referral' and task.status != 'claimed' %}
-                            <button type="button" class="btn btn-xs btn-outline-warning rounded-pill py-1 px-2" style="font-size: 0.75rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal">
+                            <button type="button" class="btn btn-xs btn-outline-warning rounded-pill py-1 px-2" style="font-size: 0.75rem;" onclick="openCustomerClubModal('ref')">
                                 <i class="fas fa-user-plus me-1"></i>لینک معرفی
                             </button>
                             {% endif %}
@@ -3032,7 +3142,6 @@
         </div>
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
-        {{ macro_social_tasks_card() }}
         {{ macro_server_status() }}
         {{ macro_support_card() }}
 
@@ -3053,7 +3162,6 @@
                 {{ macro_debt_card() }}
                 {{ macro_invoice_card() }}
                 {{ macro_renewal_card() }}
-                {{ macro_social_tasks_card() }}
             </div>
         </div>
 
@@ -3083,7 +3191,6 @@
             <div id="tabSubStatus" class="portal-tab-pane {% if not (invoice and invoice.get('status') == 'pending') %}active{% endif %}">
                 {{ macro_sub_card() }}
                 {{ macro_queue_card() }}
-                {{ macro_social_tasks_card() }}
             </div>
 
             <div id="tabRenewPlans" class="portal-tab-pane {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}">
@@ -3199,16 +3306,20 @@
                         <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i>Happ</a>
                         <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i>V2box</a>
                         <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
-                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#qrCodeModal"><i class="fas fa-qrcode text-info me-1"></i>QR</button>
-                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ actual_sub_url }}', 'لینک اشتراک')"><i class="fas fa-link text-primary me-1"></i>کپی ساب</button>
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="بارکد QR"><i class="fas fa-qrcode me-1"></i>QR</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyText('{{ actual_sub_url }}', 'لینک اشتراک')"><i class="fas fa-link me-1"></i>کپی ساب</button>
                         {% endif %}
                         {% if single_url %}
-                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')"><i class="fas fa-bolt text-warning me-1"></i>تکی</button>
+                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')"><i class="fas fa-bolt me-1"></i>تکی</button>
                         {% endif %}
                         <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal"><i class="fas fa-chart-line me-1"></i>آمار مصرف</button>
                         <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
-                        {% if customer_ref_enabled %}
-                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#customerReferralModal" title="کسب درآمد و دعوت از دوستان"><i class="fas fa-gift text-warning me-1"></i>کسب درآمد</button>
+                        <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" onclick="openCustomerClubModal('ref')" title="کسب درآمد و پاداش"><i class="fas fa-coins text-warning me-1"></i>کسب درآمد</button>
+                        {% if actual_sub_url or single_url %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR، لینک هوشمند و کانفیگ تکی">
+                            <i class="fas fa-qrcode text-info me-1"></i>
+                            <span>دریافت کانفیگ و اشتراک ⚡</span>
+                        </button>
                         {% endif %}
                     </div>
                 </div>
@@ -3220,11 +3331,6 @@
             <!-- ردیف ۳ بنتو: تمدید و انتخاب بسته‌ها -->
             <div class="mb-3">
                 {{ macro_renewal_card() }}
-            </div>
-
-            <!-- ردیف ماموریت‌ها و جوایز -->
-            <div class="mb-3">
-                {{ macro_social_tasks_card() }}
             </div>
 
             <!-- ردیف ۴ بنتو: پشتیبانی و وضعیت سرور -->
@@ -3246,41 +3352,112 @@
         {{ macro_queue_card() }}
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
-        {{ macro_social_tasks_card() }}
         {{ macro_support_card() }}
 
     {% endif %}
 
-    <!-- مودال نمایش بارکد QR (همواره در دسترس کلیه قالب‌ها) -->
-    {% if actual_sub_url %}
-    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content glass-card border-0 text-white p-3">
-                <div class="modal-header border-0 pb-0">
-                    <h6 class="modal-title fw-bold"><i class="fas fa-qrcode text-info me-1"></i> بارکد اتصال سریع</h6>
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- ⚡ مودال هوشمند و دو زبانه دریافت کانفیگ و اشتراک (Sub & Single Config Modal) -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    {% if actual_sub_url or single_url %}
+    <div class="modal fade" id="subConfigModal" tabindex="-1" aria-labelledby="subConfigModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content glass-card border-0 text-white p-2 p-md-3 shadow-lg">
+                <div class="modal-header border-secondary border-opacity-25 pb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 42px; height: 42px;">
+                            <i class="fas fa-qrcode fs-5"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0" id="subConfigModalLabel">دریافت کانفیگ و اشتراک ⚡</h5>
+                            <small class="text-secondary">بارکد اتصال سریع، لینک سابسکریپشن هوشمند و کانفیگ مستقیم تکی</small>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body text-center pt-3">
-                    <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید:</p>
-                    <div class="p-2 bg-white rounded-3 d-inline-block shadow mb-2">
-                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={{ actual_sub_url|urlencode }}" alt="QR Code" class="img-fluid" style="width: 200px; height: 200px;">
-                    </div>
-                    <div class="small text-muted font-monospace mt-1 text-truncate" style="max-width: 220px; margin: 0 auto;">
-                        {{ sub.get('account_name') }}
-                    </div>
-                    <div class="d-flex flex-wrap gap-1 justify-content-center mt-3">
-                        <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
-                        <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
-                        <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-xs btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i> Happ</a>
-                        <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i> V2box</a>
-                    </div>
+
+                <!-- تب‌های انتخاب سابسکریپشن یا کانفیگ تکی -->
+                <div class="px-3 pt-3">
+                    <ul class="nav nav-pills sub-config-tabs gap-2 justify-content-center p-1 rounded-4 bg-black bg-opacity-30 border border-secondary border-opacity-25" role="tablist">
+                        {% if actual_sub_url %}
+                        <li class="nav-item flex-grow-1 text-center" role="presentation">
+                            <button class="nav-link active w-100 py-2 px-3 fw-bold rounded-3" id="tab-sub-btn" data-bs-toggle="pill" data-bs-target="#tab-sub-pane" type="button" role="tab" aria-selected="true">
+                                <i class="fas fa-qrcode me-1 text-primary"></i> لینک هوشمند سابسکریپشن
+                            </button>
+                        </li>
+                        {% endif %}
+                        {% if single_url %}
+                        <li class="nav-item flex-grow-1 text-center" role="presentation">
+                            <button class="nav-link {% if not actual_sub_url %}active{% endif %} w-100 py-2 px-3 fw-bold rounded-3" id="tab-single-btn" data-bs-toggle="pill" data-bs-target="#tab-single-pane" type="button" role="tab" aria-selected="{% if not actual_sub_url %}true{% else %}false{% endif %}">
+                                <i class="fas fa-bolt me-1 text-warning"></i> کانفیگ مستقیم (تکی)
+                            </button>
+                        </li>
+                        {% endif %}
+                    </ul>
                 </div>
+
+                <div class="modal-body p-3 p-md-4 tab-content text-center">
+                    <!-- تب ۱: لینک هوشمند سابسکریپشن -->
+                    {% if actual_sub_url %}
+                    <div class="tab-pane fade show active" id="tab-sub-pane" role="tabpanel" aria-labelledby="tab-sub-btn">
+                        <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید یا لینک زیر را کپی کنید:</p>
+                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-3" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ actual_sub_url|urlencode }}" alt="QR سابسکریپشن" class="img-fluid" style="width: 220px; height: 220px; display: block;">
+                        </div>
+                        {% if sub.get('account_name') %}
+                        <div class="small text-muted font-monospace mb-2 text-truncate" style="max-width: 280px; margin: 0 auto;">
+                            <i class="fas fa-user-circle me-1 text-info"></i>{{ sub.get('account_name') }}
+                        </div>
+                        {% endif %}
+                        <div class="w-100 max-w-lg mx-auto mb-3" style="max-width: 550px;">
+                            <div class="input-group mb-2">
+                                <input type="text" id="subModalUrlInput" class="form-control text-center font-monospace small bg-dark text-info border-secondary border-opacity-50" readonly value="{{ actual_sub_url }}" style="direction: ltr;">
+                                <button class="btn btn-primary btn-sm px-3 fw-bold" type="button" onclick="copyText('{{ actual_sub_url }}', 'لینک هوشمند سابسکریپشن')">
+                                    <i class="fas fa-copy me-1"></i> کپی لینک
+                                </button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1 justify-content-center mt-3">
+                                <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
+                                <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-xs btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i> Happ</a>
+                                <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i> V2box</a>
+                                <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-xs btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i> v2rayNG</a>
+                                <a href="{{ actual_sub_url }}" target="_blank" class="btn btn-xs btn-outline-light py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-external-link-alt me-1"></i> صفحه وب ساب</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- تب ۲: کانفیگ مستقیم تکی -->
+                    {% if single_url %}
+                    <div class="tab-pane fade {% if not actual_sub_url %}show active{% endif %}" id="tab-single-pane" role="tabpanel" aria-labelledby="tab-single-btn">
+                        <p class="small text-secondary mb-3">کانفیگ مستقیم برای اتصال سریع بدون سابسکریپشن:</p>
+                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-3" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ single_url|urlencode }}" alt="QR کانفیگ تکی" class="img-fluid" style="width: 220px; height: 220px; display: block;">
+                        </div>
+                        <div class="w-100 max-w-lg mx-auto mb-3" style="max-width: 550px;">
+                            <div class="input-group mb-2">
+                                <input type="text" id="singleModalUrlInput" class="form-control text-center font-monospace small bg-dark text-warning border-secondary border-opacity-50" readonly value="{{ single_url }}" style="direction: ltr;">
+                                <button class="btn btn-warning btn-sm px-3 fw-bold text-dark" type="button" onclick="copyText('{{ single_url }}', 'کانفیگ مستقیم تکی')">
+                                    <i class="fas fa-copy me-1"></i> کپی کانفیگ
+                                </button>
+                            </div>
+                            <small class="text-secondary d-block mt-2" style="font-size: 0.75rem;">
+                                <i class="fas fa-info-circle text-warning me-1"></i> این کانفیگ را می‌توانید مستقیماً در نرم‌افزارهای v2rayNG, V2box, Shadowrocket یا v2rayN وارد کنید.
+                            </small>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
                 <div class="modal-footer border-0 pt-0 justify-content-center">
-                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن پنجره</button>
                 </div>
             </div>
         </div>
     </div>
+    <!-- المان سازگاری برای فراخوانی‌های قدیمی بارکد -->
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true" style="display: none;"></div>
     {% endif %}
 
     <!-- مودال ثبت تاریخ تولد مشتری جهت شارژ خودکار هدیه -->
@@ -3307,178 +3484,262 @@
         </div>
     </div>
 
-    <!-- مودال ماموریت‌ها و جوایز اجتماعی (در دسترس از دکمه هدر) -->
-    <div class="modal fade" id="socialTasksModal" tabindex="-1" aria-hidden="true">
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 👑 مودال جامع ۳ زبانه باشگاه مشتریان (Customer Club Modal)       -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div class="modal fade" id="customerClubModal" tabindex="-1" aria-labelledby="customerClubModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-            <div class="modal-content glass-card border-0 text-white p-2 p-md-3 shadow-lg">
+            <div class="modal-content glass-card border-warning border-opacity-50 text-white shadow-lg position-relative overflow-hidden" style="background: rgba(15, 23, 42, 0.97); backdrop-filter: blur(25px); border-radius: 24px;">
                 <div class="modal-header border-secondary border-opacity-25 pb-3">
                     <div class="d-flex align-items-center gap-2">
-                        <div class="avatar-sm bg-success bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-success p-2" style="width: 42px; height: 42px;">
-                            <i class="fas fa-tasks fs-5"></i>
+                        <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center text-dark shadow-sm" style="width: 42px; height: 42px; background: linear-gradient(135deg, #fbbf24, #f59e0b);">
+                            <i class="fas fa-crown fs-5"></i>
                         </div>
                         <div>
-                            <h5 class="modal-title fw-bold mb-0">ماموریت‌های کسب حجم رایگان و پاداش</h5>
-                            <small class="text-secondary">ماموریت‌های زیر را انجام داده و فوراً هدیه خود را دریافت کنید</small>
-                        </div>
-                    </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-3">
-                    {{ macro_social_tasks_card() }}
-                </div>
-                <div class="modal-footer border-0 pt-0 justify-content-center">
-                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن پنجره</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- مودال پاپ‌آپ جامع سیستم کسب درآمد و دعوت از دوستان -->
-    {% if customer_ref_enabled %}
-    <div class="modal fade" id="customerReferralModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-            <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
-                <div class="modal-header border-secondary border-opacity-25 pb-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="avatar-sm bg-warning bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-warning p-2" style="width: 42px; height: 42px;">
-                            <i class="fas fa-gift fs-5"></i>
-                        </div>
-                        <div>
-                            <h5 class="modal-title fw-bold mb-0">کسب درآمد و دعوت از دوستان</h5>
-                            <small class="text-secondary">دوستان خود را دعوت کنید و با هر خرید بسته آن‌ها، پاداش نقدی دریافت نمایید</small>
+                            <h5 class="modal-title fw-bold text-warning mb-0" id="customerClubModalLabel">باشگاه مشتریان و جوایز 👑</h5>
+                            <small class="text-secondary">کسب درآمد نقدی، هدایای ترافیکی و گردونه شانس اختصاصی</small>
                         </div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
-                <div class="modal-body py-3">
-                    <!-- کارت‌های ۴گانه آمار کاربر -->
-                    <div class="row g-2 mb-4">
-                        <div class="col-6 col-md-3">
-                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
-                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">👥 دعوت‌شده‌ها</span>
-                                <span class="fw-bold fs-5 text-info">{{ customer_ref_stats.total_invites }}</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
-                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">✅ خریدهای موفق</span>
-                                <span class="fw-bold fs-5 text-success">{{ customer_ref_stats.rewarded_invites }}</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
-                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💰 مجموع پاداش</span>
-                                <span class="fw-bold fs-5 text-warning">{{ "{:,}".format(customer_ref_stats.total_reward) }}</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
-                                <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💳 کیف پول فعلی</span>
-                                <span class="fw-bold fs-5 text-primary">{{ "{:,}".format(customer_ref_stats.wallet_balance) }}</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- بخش لینک اختصاصی دعوت وب‌سایت (دامنه) -->
-                    <div class="p-3 rounded-3 mb-3" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25);">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <label class="form-label small fw-bold text-info mb-0">
-                                <i class="fas fa-globe me-1"></i> لینک اختصاصی دعوت وب‌سایت:
-                            </label>
-                            <span class="badge bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25 small" style="font-size: 0.7rem;">دامنه سایت</span>
-                        </div>
-                        {% if customer_web_ref_link %}
-                        <div class="input-group mb-2">
-                            <input type="text" class="form-control font-monospace text-info text-center text-md-start bg-dark border-secondary border-opacity-50" style="font-size: 0.85rem;" value="{{ customer_web_ref_link }}" readonly id="customerWebRefLinkInput">
-                            <button class="btn btn-primary px-3" type="button" onclick="copyText('{{ customer_web_ref_link }}', 'لینک دعوت وب‌سایت')">
-                                <i class="fas fa-copy me-1"></i>کپی لینک
+                <!-- تب‌های سه‌گانه باشگاه مشتریان -->
+                <div class="px-3 pt-3">
+                    <ul class="nav nav-pills club-modal-tabs gap-2 justify-content-center p-1 rounded-4 bg-black bg-opacity-30 border border-secondary border-opacity-25" role="tablist">
+                        <li class="nav-item flex-grow-1 text-center" role="presentation">
+                            <button class="nav-link active w-100 py-2 px-2 fw-bold rounded-3" id="tab-club-ref-btn" data-bs-toggle="pill" data-bs-target="#tab-club-ref-pane" type="button" role="tab" aria-selected="true">
+                                <i class="fas fa-coins me-1"></i> دعوت و کسب درآمد 💰
                             </button>
+                        </li>
+                        <li class="nav-item flex-grow-1 text-center" role="presentation">
+                            <button class="nav-link w-100 py-2 px-2 fw-bold rounded-3" id="tab-club-tasks-btn" data-bs-toggle="pill" data-bs-target="#tab-club-tasks-pane" type="button" role="tab" aria-selected="false">
+                                <i class="fas fa-tasks me-1"></i> ماموریت و هدیه 🎯
+                            </button>
+                        </li>
+                        <li class="nav-item flex-grow-1 text-center" role="presentation">
+                            <button class="nav-link w-100 py-2 px-2 fw-bold rounded-3" id="tab-club-wheel-btn" data-bs-toggle="pill" data-bs-target="#tab-club-wheel-pane" type="button" role="tab" aria-selected="false">
+                                <i class="fas fa-dharmachakra me-1"></i> گردونه شانس 🎡
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="modal-body p-3 p-md-4 tab-content">
+                    <!-- تب ۱: دعوت از دوستان و کسب درآمد (پیش‌فرض) -->
+                    <div class="tab-pane fade show active" id="tab-club-ref-pane" role="tabpanel" aria-labelledby="tab-club-ref-btn">
+                        {% if customer_ref_enabled %}
+                        <!-- کارت‌های ۴گانه آمار کاربر -->
+                        <div class="row g-2 mb-4">
+                            <div class="col-6 col-md-3">
+                                <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                    <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">👥 دعوت‌شده‌ها</span>
+                                    <span class="fw-bold fs-5 text-info">{{ customer_ref_stats.total_invites }}</span>
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                    <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">✅ خریدهای موفق</span>
+                                    <span class="fw-bold fs-5 text-success">{{ customer_ref_stats.rewarded_invites }}</span>
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">نفر</small>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                    <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💰 مجموع پاداش</span>
+                                    <span class="fw-bold fs-5 text-warning">{{ "{:,}".format(customer_ref_stats.total_reward) }}</span>
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="p-3 rounded-3 text-center" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                    <span class="d-block text-secondary small mb-1" style="font-size: 0.75rem;">💳 کیف پول فعلی</span>
+                                    <span class="fw-bold fs-5 text-primary">{{ "{:,}".format(customer_ref_stats.wallet_balance) }}</span>
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">تومان</small>
+                                </div>
+                            </div>
                         </div>
-                        <small class="text-secondary d-block" style="font-size: 0.75rem;">
-                            دوستان شما با کلیک روی این لینک مستقیماً وارد فرم ثبت‌نام شده و به صورت خودکار به عنوان زیرمجموعه شما ثبت می‌شوند.
-                        </small>
+
+                        <!-- بخش لینک اختصاصی دعوت وب‌سایت (دامنه) -->
+                        <div class="p-3 rounded-3 mb-3" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25);">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <label class="form-label small fw-bold text-info mb-0">
+                                    <i class="fas fa-globe me-1"></i> لینک اختصاصی دعوت وب‌سایت:
+                                </label>
+                                <span class="badge bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25 small" style="font-size: 0.7rem;">دامنه سایت</span>
+                            </div>
+                            {% if customer_web_ref_link %}
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control font-monospace text-info text-center text-md-start bg-dark border-secondary border-opacity-50" style="font-size: 0.85rem;" value="{{ customer_web_ref_link }}" readonly id="customerWebRefLinkInput">
+                                <button class="btn btn-primary px-3" type="button" onclick="copyText('{{ customer_web_ref_link }}', 'لینک دعوت وب‌سایت')">
+                                    <i class="fas fa-copy me-1"></i>کپی لینک
+                                </button>
+                            </div>
+                            <small class="text-secondary d-block" style="font-size: 0.75rem;">
+                                دوستان شما با کلیک روی این لینک مستقیماً وارد فرم ثبت‌نام شده و به صورت خودکار به عنوان زیرمجموعه شما ثبت می‌شوند.
+                            </small>
+                            {% else %}
+                            <div class="alert alert-secondary py-2 small mb-0">
+                                شناسه یا شماره تماسی برای شما ثبت نشده است. لطفاً ابتدا در سایت ثبت‌نام نمایید یا شماره تماس خود را ثبت کنید.
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- بخش شماره تماس / کد معرف در فرم ثبت‌نام -->
+                        {% if customer_ref_code %}
+                        <div class="p-3 rounded-3 mb-3" style="background: rgba(16, 185, 129, 0.08); border: 1px dashed rgba(16, 185, 129, 0.3);">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <label class="form-label small fw-bold text-success mb-0">
+                                    <i class="fas fa-id-card me-1"></i> شماره تماس / کد معرف شما در فرم ثبت‌نام:
+                                </label>
+                                <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 small" style="font-size: 0.7rem;">کادر معرف</span>
+                            </div>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace text-success text-center text-md-start bg-dark border-secondary border-opacity-50 fw-bold" style="font-size: 1rem; letter-spacing: 1px;" value="{{ customer_ref_code }}" readonly id="customerRefCodeInput">
+                                <button class="btn btn-success px-3" type="button" onclick="copyText('{{ customer_ref_code }}', 'کد معرف')">
+                                    <i class="fas fa-copy me-1"></i>کپی کد معرف
+                                </button>
+                            </div>
+                            <small class="text-secondary d-block mt-2" style="font-size: 0.75rem;">
+                                کافی است دوستان شما هنگام عضویت در سایت، این کد یا شماره تماس را در کادر معرف وارد نمایند.
+                            </small>
+                        </div>
+                        {% endif %}
+
+                        <!-- بخش لینک اختصاصی ربات تلگرام -->
+                        {% if customer_ref_link %}
+                        <div class="p-3 rounded-3 mb-4" style="background: rgba(245, 158, 11, 0.07); border: 1px dashed rgba(245, 158, 11, 0.3);">
+                            <label class="form-label small fw-bold text-warning mb-2">
+                                <i class="fab fa-telegram-plane me-1"></i> لینک اختصاصی دعوت در ربات تلگرام:
+                            </label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control font-monospace text-warning text-center text-md-start bg-dark border-secondary border-opacity-50" style="font-size: 0.85rem;" value="{{ customer_ref_link }}" readonly id="customerRefLinkInput">
+                                <button class="btn btn-warning px-3" type="button" onclick="copyText('{{ customer_ref_link }}', 'لینک دعوت تلگرام')">
+                                    <i class="fas fa-copy me-1"></i>کپی لینک
+                                </button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-md-start mt-2">
+                                <a href="https://t.me/share/url?url={{ customer_ref_link|urlencode }}&text={{ 'خرید فیلترشکن پرسرعت، پایدار و بدون قطعی'|urlencode }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3">
+                                    <i class="fab fa-telegram-plane me-1"></i>اشتراک‌گذاری در تلگرام
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- شرایط و قوانین پاداش -->
+                        <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);">
+                            <h6 class="fw-bold small text-white mb-2"><i class="fas fa-info-circle text-info me-1"></i> شرایط و قوانین یکپارچه دریافت پاداش:</h6>
+                            <ul class="text-secondary small mb-0 ps-3" style="font-size: 0.8rem; line-height: 1.8;">
+                                <li>قوانین و پورسانت برای <b>لینک دامنه سایت</b>، <b>شماره تماس در کادر معرف</b> و <b>ربات تلگرام</b> کاملاً یکسان بوده و به صورت آنی به کیف پول شما واریز می‌شود.</li>
+                                {% if customer_ref_cfg.reward_type == 'percent' %}
+                                <li>به ازای هر خرید موفق دوستان شما، <b class="text-white">{{ customer_ref_cfg.reward_amount }}٪</b> از مبلغ فاکتور خرید فوراً به کیف پول شما اضافه می‌شود.</li>
+                                {% else %}
+                                <li>به ازای هر خرید موفق دوستان شما، مبلغ <b class="text-white">{{ "{:,}".format(customer_ref_cfg.reward_amount) }} تومان</b> پاداش نقدی فوراً به کیف پول شما واریز خواهد شد.</li>
+                                {% endif %}
+                                {% if customer_ref_cfg.min_purchase_amount > 0 %}
+                                <li>حداقل مبلغ خرید برای تعلق پاداش: <b class="text-white">{{ "{:,}".format(customer_ref_cfg.min_purchase_amount) }} تومان</b> می‌باشد.</li>
+                                {% endif %}
+                                <li>موجودی کیف پول شما به صورت خودکار در خریدهای بعدی یا تمدید <b>بسته‌ها</b> اعمال شده و از مبلغ فاکتور کسر می‌گردد.</li>
+                                <li>پاداش صرفاً به خریدهای معتبر و قطعی <b>بسته‌ها</b> تعلق می‌گیرد و برای اکانت‌های تست رایگان پاداشی ثبت نخواهد شد.</li>
+                                {% if customer_ref_cfg.custom_terms %}
+                                <li class="text-info mt-1">{{ customer_ref_cfg.custom_terms }}</li>
+                                {% endif %}
+                            </ul>
+                        </div>
                         {% else %}
-                        <div class="alert alert-secondary py-2 small mb-0">
-                            شناسه یا شماره تماسی برای شما ثبت نشده است. لطفاً ابتدا در سایت ثبت‌نام نمایید یا شماره تماس خود را ثبت کنید.
+                        <div class="text-center py-5">
+                            <div class="avatar-md bg-warning bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center text-warning mb-3" style="width: 60px; height: 60px;">
+                                <i class="fas fa-coins fs-3"></i>
+                            </div>
+                            <h6 class="fw-bold text-white mb-2">سیستم کسب درآمد غیرفعال است</h6>
+                            <p class="text-secondary small mb-0">سیستم کسب درآمد و دعوت از دوستان در حال حاضر برای این حساب غیرفعال می‌باشد.</p>
                         </div>
                         {% endif %}
                     </div>
 
-                    <!-- بخش شماره تماس / کد معرف در فرم ثبت‌نام -->
-                    {% if customer_ref_code %}
-                    <div class="p-3 rounded-3 mb-3" style="background: rgba(16, 185, 129, 0.08); border: 1px dashed rgba(16, 185, 129, 0.3);">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <label class="form-label small fw-bold text-success mb-0">
-                                <i class="fas fa-id-card me-1"></i> شماره تماس / کد معرف شما در فرم ثبت‌نام:
-                            </label>
-                            <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 small" style="font-size: 0.7rem;">کادر معرف</span>
-                        </div>
-                        <div class="input-group">
-                            <input type="text" class="form-control font-monospace text-success text-center text-md-start bg-dark border-secondary border-opacity-50 fw-bold" style="font-size: 1rem; letter-spacing: 1px;" value="{{ customer_ref_code }}" readonly id="customerRefCodeInput">
-                            <button class="btn btn-success px-3" type="button" onclick="copyText('{{ customer_ref_code }}', 'کد معرف')">
-                                <i class="fas fa-copy me-1"></i>کپی کد معرف
-                            </button>
-                        </div>
-                        <small class="text-secondary d-block mt-2" style="font-size: 0.75rem;">
-                            کافی است دوستان شما هنگام عضویت در سایت، این کد یا شماره تماس را در کادر معرف وارد نمایند.
-                        </small>
+                    <!-- تب ۲: ماموریت‌های پاداش و حجم رایگان -->
+                    <div class="tab-pane fade" id="tab-club-tasks-pane" role="tabpanel" aria-labelledby="tab-club-tasks-btn">
+                        {{ macro_social_tasks_card() }}
                     </div>
-                    {% endif %}
 
-                    <!-- بخش لینک اختصاصی ربات تلگرام -->
-                    {% if customer_ref_link %}
-                    <div class="p-3 rounded-3 mb-4" style="background: rgba(245, 158, 11, 0.07); border: 1px dashed rgba(245, 158, 11, 0.3);">
-                        <label class="form-label small fw-bold text-warning mb-2">
-                            <i class="fab fa-telegram-plane me-1"></i> لینک اختصاصی دعوت در ربات تلگرام:
-                        </label>
-                        <div class="input-group mb-2">
-                            <input type="text" class="form-control font-monospace text-warning text-center text-md-start bg-dark border-secondary border-opacity-50" style="font-size: 0.85rem;" value="{{ customer_ref_link }}" readonly id="customerRefLinkInput">
-                            <button class="btn btn-warning px-3" type="button" onclick="copyText('{{ customer_ref_link }}', 'لینک دعوت تلگرام')">
-                                <i class="fas fa-copy me-1"></i>کپی لینک
-                            </button>
+                    <!-- تب ۳: گردونه شانس و جوایز روزانه -->
+                    <div class="tab-pane fade text-center" id="tab-club-wheel-pane" role="tabpanel" aria-labelledby="tab-club-wheel-btn">
+                        <!-- پیام وضعیت / لودینگ -->
+                        <div id="luckyWheelLoading" class="py-4">
+                            <div class="spinner-border text-warning mb-2" role="status"></div>
+                            <div class="text-secondary small">در حال بارگذاری جوایز گردونه...</div>
                         </div>
-                        <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-md-start mt-2">
-                            <a href="https://t.me/share/url?url={{ customer_ref_link|urlencode }}&text={{ 'خرید فیلترشکن پرسرعت، پایدار و بدون قطعی'|urlencode }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3">
-                                <i class="fab fa-telegram-plane me-1"></i>اشتراک‌گذاری در تلگرام
-                            </a>
-                        </div>
-                    </div>
-                    {% endif %}
 
-                    <!-- قوانین و راهنمای سیستم پاداش -->
-                    <div class="p-3 rounded-3" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);">
-                        <h6 class="fw-bold small text-white mb-2"><i class="fas fa-info-circle text-info me-1"></i> شرایط و قوانین یکپارچه دریافت پاداش:</h6>
-                        <ul class="text-secondary small mb-0 ps-3" style="font-size: 0.8rem; line-height: 1.8;">
-                            <li>قوانین و پورسانت برای <b>لینک دامنه سایت</b>، <b>شماره تماس در کادر معرف</b> و <b>ربات تلگرام</b> کاملاً یکسان بوده و به صورت آنی به کیف پول شما واریز می‌شود.</li>
-                            {% if customer_ref_cfg.reward_type == 'percent' %}
-                            <li>به ازای هر خرید موفق دوستان شما، <b class="text-white">{{ customer_ref_cfg.reward_amount }}٪</b> از مبلغ فاکتور خرید فوراً به کیف پول شما اضافه می‌شود.</li>
-                            {% else %}
-                            <li>به ازای هر خرید موفق دوستان شما، مبلغ <b class="text-white">{{ "{:,}".format(customer_ref_cfg.reward_amount) }} تومان</b> پاداش نقدی فوراً به کیف پول شما واریز خواهد شد.</li>
-                            {% endif %}
-                            {% if customer_ref_cfg.min_purchase_amount > 0 %}
-                            <li>حداقل مبلغ خرید برای تعلق پاداش: <b class="text-white">{{ "{:,}".format(customer_ref_cfg.min_purchase_amount) }} تومان</b> می‌باشد.</li>
-                            {% endif %}
-                            <li>موجودی کیف پول شما به صورت خودکار در خریدهای بعدی یا تمدید <b>بسته‌ها</b> اعمال شده و از مبلغ فاکتور کسر می‌گردد.</li>
-                            <li>پاداش صرفاً به خریدهای معتبر و قطعی <b>بسته‌ها</b> تعلق می‌گیرد و برای اکانت‌های تست رایگان پاداشی ثبت نخواهد شد.</li>
-                            {% if customer_ref_cfg.custom_terms %}
-                            <li class="text-info mt-1">{{ customer_ref_cfg.custom_terms }}</li>
-                            {% endif %}
-                        </ul>
+                        <div id="luckyWheelContainer" class="d-none">
+                            <!-- پیام خطا یا غیرفعال بودن -->
+                            <div id="luckyWheelDisabledAlert" class="alert alert-warning border-warning border-opacity-25 bg-warning bg-opacity-10 text-white rounded-3 small d-none mb-3"></div>
+
+                            <!-- بخش کانتینر گردونه با اشاره‌گر فیزیکی -->
+                            <div class="position-relative d-inline-block mx-auto mb-3" style="width: 320px; height: 320px;">
+                                <!-- نشانگر / عقربه بالای گردونه -->
+                                <div class="lucky-wheel-pointer" style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 20; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));">
+                                    <i class="fas fa-location-pin text-warning fs-1" style="transform: rotate(180deg); color: #fbbf24 !important;"></i>
+                                </div>
+
+                                <!-- المان Canvas گردونه -->
+                                <canvas id="luckyWheelCanvas" width="320" height="320" style="width: 320px; height: 320px; border-radius: 50%; box-shadow: 0 0 30px rgba(245, 158, 11, 0.25), inset 0 0 15px rgba(0,0,0,0.6); border: 5px solid rgba(251, 191, 36, 0.4);"></canvas>
+
+                                <!-- دکمه وسط گردونه (Center Hub) -->
+                                <div class="lucky-wheel-center-hub position-absolute top-50 start-50 translate-middle rounded-circle shadow-lg d-flex align-items-center justify-content-center" style="width: 68px; height: 68px; background: radial-gradient(circle, #fbbf24, #d97706); border: 3px solid #fff; cursor: pointer; z-index: 10;" onclick="spinLuckyWheel()">
+                                    <i class="fas fa-gift text-dark fs-4"></i>
+                                </div>
+                            </div>
+
+                            <!-- دکمه چرخش اصلی و تایمر معکوس -->
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-warning text-dark fw-bold rounded-pill px-5 py-2 shadow-lg fs-6" id="btnDoSpinWheel" onclick="spinLuckyWheel()" style="background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none;">
+                                    <i class="fas fa-play me-1"></i> چرخاندن گردونه
+                                </button>
+                                <div id="luckyWheelCooldownText" class="text-secondary small mt-2 d-none">
+                                    <i class="fas fa-hourglass-half text-warning me-1"></i>
+                                    <span>زمان تا شانس بعدی: </span>
+                                    <span id="luckyWheelCountdown" class="text-warning fw-bold font-monospace">--:--:--</span>
+                                </div>
+                            </div>
+
+                            <!-- بخش انتخاب اشتراک مقصد در صورت داشتن چند اشتراک فعال و برنده شدن حجم -->
+                            <div id="luckyWheelSubChoiceBox" class="p-3 bg-black bg-opacity-40 rounded-3 border border-warning border-opacity-50 text-start d-none mb-3">
+                                <div class="fw-bold text-warning small mb-2 d-flex align-items-center gap-2">
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>حجم هدیه به کدام اشتراک شما اضافه شود؟</span>
+                                </div>
+                                <p class="text-secondary small mb-2" style="font-size: 0.75rem;">شما بیش از یک اشتراک فعال دارید. لطفاً یکی از اشتراک‌های زیر را انتخاب فرمایید:</p>
+                                <select class="form-select form-select-sm bg-dark text-white border-secondary mb-2" id="luckyWheelSubSelect"></select>
+                                <button type="button" class="btn btn-sm btn-success rounded-pill px-4 fw-bold" id="btnConfirmSubChoice" onclick="confirmSubTrafficChoice()">
+                                    <i class="fas fa-plus me-1"></i> شارژ حجم روی اشتراک انتخابی
+                                </button>
+                            </div>
+
+                            <!-- پیام یا نتیجه نهایی جایزه -->
+                            <div id="luckyWheelResultAlert" class="alert d-none rounded-3 small p-3 text-start"></div>
+
+                            <!-- لیست نمادین جوایز گردونه -->
+                            <div class="mt-3 pt-3 border-top border-secondary border-opacity-25 text-start">
+                                <div class="text-secondary small fw-bold mb-2"><i class="fas fa-trophy text-warning me-1"></i>جوایز شگفت‌انگیز این گردونه:</div>
+                                <div class="row g-2" id="luckyWheelPrizesGrid"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="modal-footer border-0 pt-0 justify-content-center">
+                <div class="modal-footer border-secondary border-opacity-25 py-2 justify-content-between">
+                    <small class="text-secondary" style="font-size: 0.72rem;">
+                        <i class="fas fa-crown text-warning me-1"></i>باشگاه مشتریان و سیستم پاداش یکپارچه
+                    </small>
                     <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
                 </div>
             </div>
         </div>
     </div>
-    {% endif %}
+
+    <!-- المان‌های سازگاری برای فراخوانی‌های قدیمی -->
+    <div class="modal fade" id="socialTasksModal" tabindex="-1" aria-hidden="true" style="display: none;"></div>
+    <div class="modal fade" id="customerReferralModal" tabindex="-1" aria-hidden="true" style="display: none;"></div>
 
 </div>
 
@@ -4289,97 +4550,8 @@
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════ -->
-<!-- 🎡 مودال پیشرفته گردونه شانس و پاداش روزانه (Lucky Wheel Modal) -->
-<!-- ══════════════════════════════════════════════════════════════ -->
-<div class="modal fade" id="luckyWheelModal" tabindex="-1" aria-labelledby="luckyWheelModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content glass-card border-warning border-opacity-50 text-white shadow-lg position-relative overflow-hidden" style="background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(25px); border-radius: 24px;">
-            <div class="modal-header border-secondary border-opacity-25 py-3">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="rounded-circle bg-warning bg-opacity-25 d-flex align-items-center justify-content-center text-warning" style="width: 40px; height: 40px;">
-                        <i class="fas fa-dharmachakra fs-5 fa-spin-pulse" style="--fa-animation-duration: 6s;"></i>
-                    </div>
-                    <div>
-                        <h5 class="modal-title fw-bold text-warning mb-0" id="luckyWheelModalLabel">گردونه شانس و پاداش روزانه</h5>
-                        <small class="text-secondary" style="font-size: 0.75rem;">هر ۲۴ ساعت یک‌بار شانس خود را برای جوایز ارزشمند امتحان کنید!</small>
-                    </div>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            
-            <div class="modal-body p-3 p-md-4 text-center">
-                <!-- پیام وضعیت / لودینگ -->
-                <div id="luckyWheelLoading" class="py-4">
-                    <div class="spinner-border text-warning mb-2" role="status"></div>
-                    <div class="text-secondary small">در حال بارگذاری جوایز گردونه...</div>
-                </div>
-
-                <div id="luckyWheelContainer" class="d-none">
-                    <!-- پیام خطا یا غیرفعال بودن -->
-                    <div id="luckyWheelDisabledAlert" class="alert alert-warning border-warning border-opacity-25 bg-warning bg-opacity-10 text-white rounded-3 small d-none mb-3"></div>
-
-                    <!-- بخش کانتینر گردونه با اشاره‌گر فیزیکی -->
-                    <div class="position-relative d-inline-block mx-auto mb-3" style="width: 320px; height: 320px;">
-                        <!-- نشانگر / عقربه بالای گردونه -->
-                        <div class="lucky-wheel-pointer" style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 20; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));">
-                            <i class="fas fa-location-pin text-warning fs-1" style="transform: rotate(180deg); color: #fbbf24 !important;"></i>
-                        </div>
-
-                        <!-- المان Canvas گردونه -->
-                        <canvas id="luckyWheelCanvas" width="320" height="320" style="width: 320px; height: 320px; border-radius: 50%; box-shadow: 0 0 30px rgba(245, 158, 11, 0.25), inset 0 0 15px rgba(0,0,0,0.6); border: 5px solid rgba(251, 191, 36, 0.4);"></canvas>
-
-                        <!-- دکمه وسط گردونه (Center Hub) -->
-                        <div class="lucky-wheel-center-hub position-absolute top-50 start-50 translate-middle rounded-circle shadow-lg d-flex align-items-center justify-content-center" style="width: 68px; height: 68px; background: radial-gradient(circle, #fbbf24, #d97706); border: 3px solid #fff; cursor: pointer; z-index: 10;" onclick="spinLuckyWheel()">
-                            <i class="fas fa-gift text-dark fs-4"></i>
-                        </div>
-                    </div>
-
-                    <!-- دکمه چرخش اصلی و تایمر معکوس -->
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-warning text-dark fw-bold rounded-pill px-5 py-2 shadow-lg fs-6" id="btnDoSpinWheel" onclick="spinLuckyWheel()" style="background: linear-gradient(135deg, #f59e0b, #fbbf24); border: none;">
-                            <i class="fas fa-play me-1"></i> چرخاندن گردونه
-                        </button>
-                        <div id="luckyWheelCooldownText" class="text-secondary small mt-2 d-none">
-                            <i class="fas fa-hourglass-half text-warning me-1"></i>
-                            <span>زمان تا شانس بعدی: </span>
-                            <span id="luckyWheelCountdown" class="text-warning fw-bold font-monospace">--:--:--</span>
-                        </div>
-                    </div>
-
-                    <!-- بخش انتخاب اشتراک مقصد در صورت داشتن چند اشتراک فعال و برنده شدن حجم -->
-                    <div id="luckyWheelSubChoiceBox" class="p-3 bg-black bg-opacity-40 rounded-3 border border-warning border-opacity-50 text-start d-none mb-3">
-                        <div class="fw-bold text-warning small mb-2 d-flex align-items-center gap-2">
-                            <i class="fas fa-check-circle"></i>
-                            <span>حجم هدیه به کدام اشتراک شما اضافه شود؟</span>
-                        </div>
-                        <p class="text-secondary small mb-2" style="font-size: 0.75rem;">شما بیش از یک اشتراک فعال دارید. لطفاً یکی از اشتراک‌های زیر را انتخاب فرمایید:</p>
-                        <select class="form-select form-select-sm bg-dark text-white border-secondary mb-2" id="luckyWheelSubSelect"></select>
-                        <button type="button" class="btn btn-sm btn-success rounded-pill px-4 fw-bold" id="btnConfirmSubChoice" onclick="confirmSubTrafficChoice()">
-                            <i class="fas fa-plus me-1"></i> شارژ حجم روی اشتراک انتخابی
-                        </button>
-                    </div>
-
-                    <!-- پیام یا نتیجه نهایی جایزه -->
-                    <div id="luckyWheelResultAlert" class="alert d-none rounded-3 small p-3 text-start"></div>
-
-                    <!-- لیست نمادین جوایز گردونه -->
-                    <div class="mt-3 pt-3 border-top border-secondary border-opacity-25 text-start">
-                        <div class="text-secondary small fw-bold mb-2"><i class="fas fa-trophy text-warning me-1"></i>جوایز شگفت‌انگیز این گردونه:</div>
-                        <div class="row g-2" id="luckyWheelPrizesGrid"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal-footer border-secondary border-opacity-25 py-2 justify-content-between">
-                <small class="text-secondary" style="font-size: 0.72rem;">
-                    <i class="fas fa-shield-alt text-success me-1"></i>محاسبه عادلانه شانس ۱۰۰٪ سمت سرور
-                </small>
-                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- المان سازگاری برای فراخوانی‌های قدیمی گردونه -->
+<div class="modal fade" id="luckyWheelModal" tabindex="-1" aria-hidden="true" style="display: none;"></div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- 🔍 مودال لایت‌باکس بزرگ‌نمایی عکس چت و تیکت (Chat Lightbox)     -->
@@ -5985,13 +6157,36 @@ function launchWheelConfetti() {
     }
 }
 
-// باز کردن مودال گردونه و دریافت تنظیمات از سرور
-function openLuckyWheelModal() {
-    const modalEl = document.getElementById("luckyWheelModal");
+// باز کردن مودال باشگاه مشتریان و سوییچ به تب درخواستی
+function openCustomerClubModal(tab = 'ref') {
+    if (window.tgHaptic) window.tgHaptic('light');
+    const modalEl = document.getElementById("customerClubModal");
     if (!modalEl || !window.bootstrap) return;
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 
+    let tabBtnId = 'tab-club-ref-btn';
+    if (tab === 'tasks') tabBtnId = 'tab-club-tasks-btn';
+    else if (tab === 'wheel') tabBtnId = 'tab-club-wheel-btn';
+
+    const tabBtn = document.getElementById(tabBtnId);
+    if (tabBtn) {
+        const bsTab = bootstrap.Tab.getOrCreateInstance(tabBtn);
+        bsTab.show();
+    }
+
+    if (tab === 'wheel') {
+        loadLuckyWheelData();
+    }
+}
+
+// برای سازگاری فراخوانی‌های قدیمی
+function openLuckyWheelModal() {
+    openCustomerClubModal('wheel');
+}
+
+// دریافت اطلاعات و بارگذاری جوایز گردونه شانس
+function loadLuckyWheelData() {
     const loadingEl = document.getElementById("luckyWheelLoading");
     const containerEl = document.getElementById("luckyWheelContainer");
     const alertEl = document.getElementById("luckyWheelDisabledAlert");
@@ -6023,8 +6218,10 @@ function openLuckyWheelModal() {
             luckyWheelPrizes = data.prizes || [];
             luckyWheelCanSpin = data.can_spin;
 
-            // رندر اسلایس‌های گردونه در بوم Canvas
-            drawLuckyWheel(luckyWheelCurrentRotation);
+            // رندر اسلایس‌های گردونه در بوم Canvas با تاخیر کوتاه جهت اطمینان از آماده بودن اندازه تب
+            setTimeout(() => {
+                drawLuckyWheel(luckyWheelCurrentRotation);
+            }, 60);
 
             // رندر لیست کارت‌های جوایز
             renderLuckyWheelPrizesGrid(luckyWheelPrizes);
@@ -6325,6 +6522,52 @@ function renderLuckyWheelPrizesGrid(prizes) {
         `;
         grid.appendChild(col);
     });
+}
+
+// گوش دادن به تغییر تب‌ها و بازهدایت رویدادهای مودال‌های قدیمی
+document.addEventListener("DOMContentLoaded", function() {
+    const wheelTabBtn = document.getElementById("tab-club-wheel-btn");
+    if (wheelTabBtn) {
+        wheelTabBtn.addEventListener("shown.bs.tab", function() {
+            loadLuckyWheelData();
+            setTimeout(() => {
+                drawLuckyWheel(luckyWheelCurrentRotation);
+            }, 60);
+        });
+    }
+
+    const qrModalEl = document.getElementById('qrCodeModal');
+    if (qrModalEl) {
+        qrModalEl.addEventListener('show.bs.modal', function(e) {
+            e.preventDefault();
+            const subModal = document.getElementById('subConfigModal');
+            if (subModal && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(subModal).show();
+            }
+        });
+    }
+    const refModalEl = document.getElementById('customerReferralModal');
+    if (refModalEl) {
+        refModalEl.addEventListener('show.bs.modal', function(e) {
+            e.preventDefault();
+            openCustomerClubModal('ref');
+        });
+    }
+    const tasksModalEl = document.getElementById('socialTasksModal');
+    if (tasksModalEl) {
+        tasksModalEl.addEventListener('show.bs.modal', function(e) {
+            e.preventDefault();
+            openCustomerClubModal('tasks');
+        });
+    }
+    const wheelModalEl = document.getElementById('luckyWheelModal');
+    if (wheelModalEl) {
+        wheelModalEl.addEventListener('show.bs.modal', function(e) {
+            e.preventDefault();
+            openCustomerClubModal('wheel');
+        });
+    }
+});
 // ═════════════════════════════════════════════════════════════════════
 // 🎯 مدیریت ماموریت‌های پاداش اجتماعی و ثبت تاریخ تولد (Social Tasks & VIP)
 // ═════════════════════════════════════════════════════════════════════

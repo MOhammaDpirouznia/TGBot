@@ -118,8 +118,8 @@ class TestResellerLastActivity(unittest.TestCase):
         self.assertEqual(res["ago"], "۱۵ دقیقه پیش")
 
         # 3 hours (same day)
-        dt_3h = now_tehran.replace(hour=max(0, now_tehran.hour - 3), minute=10)
-        if (now_tehran - dt_3h).total_seconds() < 86400 and now_tehran.date() == dt_3h.date():
+        if now_tehran.hour >= 3:
+            dt_3h = now_tehran - timedelta(hours=3)
             res = format_activity_time(dt_3h)
             self.assertIn("ساعت پیش", res["ago"])
 

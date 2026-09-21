@@ -58,3 +58,7 @@ desktop.ini
 
 # ─── Freebuff ───
 .freebuff/
+
+# ─── بسته مستقل UI ───
+ui_package/
+UI_Design_Package.zip
