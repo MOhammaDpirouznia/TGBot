@@ -14120,13 +14120,6 @@ def settings():
     vip_settings = db.get_vip_settings()
     refund_settings = db.get_refund_settings()
     all_resellers = db.get_all_resellers()
-    lucky_wheel_enabled = db.get_setting("lucky_wheel_enabled", "1") == "1"
-    lucky_wheel_cooldown_hours = int(db.get_setting("lucky_wheel_cooldown_hours", "24") or 24)
-    lucky_wheel_notify_admin = db.get_setting("lucky_wheel_notify_admin", "1") == "1"
-    lucky_wheel_title = db.get_setting("lucky_wheel_title", "گردونه شانس و پاداش روزانه")
-    lucky_wheel_desc = db.get_setting("lucky_wheel_desc", "هر ۲۴ ساعت شانس خود را امتحان کنید و حجم هدیه یا کد تخفیف برنده شوید!")
-    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=0, active_only=False)
-    lucky_wheel_history = db.get_lucky_wheel_history(limit=25)
     pwa_config = {
         "enabled": db.get_setting("pwa_enabled", "1") == "1",
         "app_name": db.get_setting("pwa_app_name", "پنل کاربری"),
@@ -14236,13 +14229,6 @@ def settings():
         vip_settings=vip_settings,
         refund_settings=refund_settings,
         all_resellers=all_resellers,
-        lucky_wheel_enabled=lucky_wheel_enabled,
-        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
-        lucky_wheel_notify_admin=lucky_wheel_notify_admin,
-        lucky_wheel_title=lucky_wheel_title,
-        lucky_wheel_desc=lucky_wheel_desc,
-        lucky_wheel_prizes=lucky_wheel_prizes,
-        lucky_wheel_history=lucky_wheel_history,
         pwa_config=pwa_config,
         store_branding_config=store_branding_config,
         customer_portal_config=customer_portal_config,
@@ -19188,24 +19174,10 @@ def reseller_branding():
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))
 
-    lucky_wheel_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") == "1"
-    lucky_wheel_cooldown_hours = int(db.get_setting(f"lucky_wheel_cooldown_hours_r_{reseller_id}", "24") or 24)
-    lucky_wheel_notify = db.get_setting(f"lucky_wheel_notify_r_{reseller_id}", "1") == "1"
-    lucky_wheel_title = db.get_setting(f"lucky_wheel_title_r_{reseller_id}", "")
-    lucky_wheel_desc = db.get_setting(f"lucky_wheel_desc_r_{reseller_id}", "")
-    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=False, include_fallback=False)
-    lucky_wheel_history = db.get_lucky_wheel_history(reseller_id=reseller_id, limit=25)
     return render_template(
         "reseller_branding.html", 
         reseller=reseller, 
-        available_palettes=get_all_palettes(),
-        lucky_wheel_enabled=lucky_wheel_enabled,
-        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
-        lucky_wheel_notify=lucky_wheel_notify,
-        lucky_wheel_title=lucky_wheel_title,
-        lucky_wheel_desc=lucky_wheel_desc,
-        lucky_wheel_prizes=lucky_wheel_prizes,
-        lucky_wheel_history=lucky_wheel_history
+        available_palettes=get_all_palettes()
     )
 
 
@@ -24813,8 +24785,32 @@ def api_portal_social_tasks_claim(token: str):
 @app.route("/admin/lucky-wheel")
 @permission_required("settings")
 def admin_lucky_wheel_page():
-    """مسیر مستقیم هدایت به تنظیمات گردونه شانس"""
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    """صفحه اختصاصی مدیریت گردونه شانس و جوایز روزانه مدیریت کل"""
+    lucky_wheel_enabled = db.get_setting("lucky_wheel_enabled", "1") == "1"
+    lucky_wheel_cooldown_hours = int(db.get_setting("lucky_wheel_cooldown_hours", "24") or 24)
+    lucky_wheel_notify_admin = db.get_setting("lucky_wheel_notify_admin", "1") == "1"
+    lucky_wheel_title = db.get_setting("lucky_wheel_title", "گردونه خوش‌شانسی و جوایز روزانه")
+    lucky_wheel_desc = db.get_setting("lucky_wheel_desc", "هر ۲۴ ساعت شانس خود را امتحان کنید و حجم هدیه یا کد تخفیف برنده شوید!")
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=0, active_only=False)
+    lucky_wheel_history = db.get_lucky_wheel_history(limit=25)
+
+    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
+    for p in lucky_wheel_prizes:
+        if total_weight > 0 and p.get("is_active"):
+            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
+        else:
+            p["chance_percent"] = 0
+
+    return render_template(
+        "admin_lucky_wheel.html",
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
+        lucky_wheel_notify_admin=lucky_wheel_notify_admin,
+        lucky_wheel_title=lucky_wheel_title,
+        lucky_wheel_desc=lucky_wheel_desc,
+        lucky_wheel_prizes=lucky_wheel_prizes,
+        lucky_wheel_history=lucky_wheel_history,
+    )
 
 @app.route("/admin/lucky-wheel/toggle", methods=["POST"])
 @permission_required("settings")
@@ -24823,7 +24819,7 @@ def admin_lucky_wheel_toggle():
     enabled = request.form.get("enabled", "0")
     db.set_setting("lucky_wheel_enabled", enabled)
     flash("تنظیمات وضعیت گردونه شانس با موفقیت بروزرسانی شد.", "success")
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    return redirect(url_for("admin_lucky_wheel_page"))
 
 @app.route("/admin/lucky-wheel/config", methods=["POST"])
 @permission_required("settings")
@@ -24844,7 +24840,7 @@ def admin_lucky_wheel_config():
         db.set_setting("lucky_wheel_desc", desc)
 
     flash("تنظیمات پیشرفته گردونه شانس با موفقیت ذخیره گردید.", "success")
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    return redirect(url_for("admin_lucky_wheel_page"))
 
 @app.route("/admin/lucky-wheel/prize/add", methods=["POST"])
 @permission_required("settings")
@@ -24862,7 +24858,7 @@ def admin_lucky_wheel_prize_add():
 
     if not title:
         flash("عنوان جایزه الزامی است.", "danger")
-        return redirect(url_for("settings", tab="lucky_wheel"))
+        return redirect(url_for("admin_lucky_wheel_page"))
 
     res = db.add_lucky_wheel_prize(
         reseller_id=0,
@@ -24880,7 +24876,7 @@ def admin_lucky_wheel_prize_add():
         flash("جایزه جدید با موفقیت به گردونه شانس افزوده شد.", "success")
     else:
         flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    return redirect(url_for("admin_lucky_wheel_page"))
 
 @app.route("/admin/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
 @permission_required("settings")
@@ -24913,7 +24909,7 @@ def admin_lucky_wheel_prize_edit(prize_id: int):
         flash("جایزه با موفقیت ویرایش شد.", "success")
     else:
         flash("خطا در ویرایش جایزه.", "danger")
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    return redirect(url_for("admin_lucky_wheel_page"))
 
 @app.route("/admin/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
 @permission_required("settings")
@@ -24924,15 +24920,46 @@ def admin_lucky_wheel_prize_delete(prize_id: int):
         flash("جایزه با موفقیت حذف گردید.", "info")
     else:
         flash("خطا در حذف جایزه.", "danger")
-    return redirect(url_for("settings", tab="lucky_wheel"))
+    return redirect(url_for("admin_lucky_wheel_page"))
 
 # ─── مدیریت جوایز و تنظیمات گردونه شانس توسط نماینده ───
 
 @app.route("/reseller/lucky-wheel")
 @reseller_required
 def reseller_lucky_wheel_page():
-    """مسیر مستقیم ورود به بخش گردونه شانس نماینده"""
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    """صفحه اختصاصی مدیریت گردونه شانس و جوایز نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("حساب نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_login"))
+
+    lucky_wheel_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") == "1"
+    lucky_wheel_cooldown_hours = int(db.get_setting(f"lucky_wheel_cooldown_hours_r_{reseller_id}", "24") or 24)
+    lucky_wheel_notify = db.get_setting(f"lucky_wheel_notify_r_{reseller_id}", "1") == "1"
+    lucky_wheel_title = db.get_setting(f"lucky_wheel_title_r_{reseller_id}", "")
+    lucky_wheel_desc = db.get_setting(f"lucky_wheel_desc_r_{reseller_id}", "")
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=False, include_fallback=False)
+    lucky_wheel_history = db.get_lucky_wheel_history(reseller_id=reseller_id, limit=25)
+
+    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
+    for p in lucky_wheel_prizes:
+        if total_weight > 0 and p.get("is_active"):
+            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
+        else:
+            p["chance_percent"] = 0
+
+    return render_template(
+        "reseller_lucky_wheel.html",
+        reseller=reseller,
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
+        lucky_wheel_notify=lucky_wheel_notify,
+        lucky_wheel_title=lucky_wheel_title,
+        lucky_wheel_desc=lucky_wheel_desc,
+        lucky_wheel_prizes=lucky_wheel_prizes,
+        lucky_wheel_history=lucky_wheel_history,
+    )
 
 @app.route("/reseller/lucky-wheel/toggle", methods=["POST"])
 @reseller_required
@@ -24942,7 +24969,7 @@ def reseller_lucky_wheel_toggle():
     enabled = request.form.get("enabled", "0")
     db.set_setting(f"lucky_wheel_enabled_r_{reseller_id}", enabled)
     flash("وضعیت گردونه شانس مشتریان شما با موفقیت بروز شد.", "success")
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    return redirect(url_for("reseller_lucky_wheel_page"))
 
 @app.route("/reseller/lucky-wheel/config", methods=["POST"])
 @reseller_required
@@ -24962,7 +24989,7 @@ def reseller_lucky_wheel_config():
     db.set_setting(f"lucky_wheel_desc_r_{reseller_id}", desc)
 
     flash("تنظیمات پیشرفته گردونه شانس شما با موفقیت ذخیره شد.", "success")
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    return redirect(url_for("reseller_lucky_wheel_page"))
 
 @app.route("/reseller/lucky-wheel/prize/add", methods=["POST"])
 @reseller_required
@@ -24981,7 +25008,7 @@ def reseller_lucky_wheel_prize_add():
 
     if not title:
         flash("عنوان جایزه الزامی است.", "danger")
-        return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+        return redirect(url_for("reseller_lucky_wheel_page"))
 
     res = db.add_lucky_wheel_prize(
         reseller_id=reseller_id,
@@ -24999,7 +25026,7 @@ def reseller_lucky_wheel_prize_add():
         flash("جایزه اختصاصی شما با موفقیت اضافه شد.", "success")
     else:
         flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    return redirect(url_for("reseller_lucky_wheel_page"))
 
 @app.route("/reseller/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
 @reseller_required
@@ -25033,7 +25060,7 @@ def reseller_lucky_wheel_prize_edit(prize_id: int):
         flash("جایزه اختصاصی با موفقیت ویرایش شد.", "success")
     else:
         flash("خطا در ویرایش جایزه.", "danger")
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    return redirect(url_for("reseller_lucky_wheel_page"))
 
 @app.route("/reseller/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
 @reseller_required
@@ -25045,7 +25072,7 @@ def reseller_lucky_wheel_prize_delete(prize_id: int):
         flash("جایزه اختصاصی با موفقیت حذف شد.", "info")
     else:
         flash("خطا در حذف جایزه.", "danger")
-    return redirect(url_for("reseller_branding") + "#card-lucky-wheel")
+    return redirect(url_for("reseller_lucky_wheel_page"))
 
 
 # ─── وب‌اپلیکیشن پیش‌رونده قابل نصب (PWA Core) ───

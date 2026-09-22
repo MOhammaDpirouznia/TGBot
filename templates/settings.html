@@ -19,10 +19,10 @@
     <!-- قرص‌های دسته‌بندی موضوعی -->
     <div class="d-flex align-items-center gap-2 overflow-x-auto pb-2 mb-2 settings-pills-bar" style="scrollbar-width: thin;">
         <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-2 text-nowrap settings-category-pill active shadow-sm" data-category="all" onclick="filterSettingsCategory('all', this)">
-            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">20</span>
+            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">19</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="infra" onclick="filterSettingsCategory('infra', this)">
-            <i class="fas fa-server me-1 text-primary"></i> متغیرهای زیرساخت و سرور <span class="badge bg-primary-subtle text-primary ms-1">1</span>
+            <i class="fas fa-server me-1 text-primary"></i> متغیرهای زیرساخت و سرور <span class="badge bg-primary-subtle text-primary ms-1">2</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="channels" onclick="filterSettingsCategory('channels', this)">
             <i class="fab fa-telegram me-1 text-primary"></i> کانال‌های اجباری <span class="badge bg-primary-subtle text-primary ms-1">1</span>
@@ -33,11 +33,8 @@
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="portals" onclick="filterSettingsCategory('portals', this)">
             <i class="fas fa-globe me-1 text-info"></i> پورتال‌ها و مشتری <span class="badge bg-info-subtle text-info ms-1">4</span>
         </button>
-        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="lucky_wheel" onclick="filterSettingsCategory('lucky_wheel', this)">
-            <i class="fas fa-dharmachakra me-1 text-warning"></i> گردونه شانس و پاداش <span class="badge bg-warning-subtle text-dark ms-1">1</span>
-        </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="security" onclick="filterSettingsCategory('security', this)">
-            <i class="fas fa-shield-halved me-1 text-danger"></i> امنیت و شبکه <span class="badge bg-danger-subtle text-danger ms-1">3</span>
+            <i class="fas fa-shield-halved me-1 text-danger"></i> امنیت و شبکه <span class="badge bg-danger-subtle text-danger ms-1">2</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="finance" onclick="filterSettingsCategory('finance', this)">
             <i class="fas fa-credit-card me-1 text-success"></i> مالی و درگاه‌ها <span class="badge bg-success-subtle text-success ms-1">3</span>
@@ -506,6 +503,212 @@ function generateRandomSecret() {
     if (input) {
         input.value = secret;
         alert('کلید تصادفی ۳۲ کاراکتری تولید گردید. برای اعمال، دکمه ذخیره متغیرهای زیرساخت را بزنید.');
+    }
+}
+</script>
+
+<!-- کارت ۱۰: قالب کانفیگ تکی -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="infra" id="card-vmess-config">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-bolt text-warning me-2"></i> قالب کانفیگ تکی
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success-subtle text-success fs-6">پشتیبانی از خروجی استاندارد vmess://</span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted">
+            شما می‌توانید یک فایل یا متن نمونه <strong>JSON پروتکل VMess</strong> را در کادر زیر قرار دهید. سیستم به طور خودکار هنگام درخواست مشتری یا همکار، شناسه <code>UUID</code> و <code>نام اکانت</code> مشتری را در متغیرهای <code>{uuid}</code> و <code>{name}</code> قرار داده و خروجی را به صورت یک لینک رمزنگاری‌شده استاندارد <strong><code>vmess://Base64...</code></strong> (همراه با بارکد QR) تولید و ارسال می‌کند.
+        </p>
+
+        <!-- ابزار هوشمند تبدیل مستقیم لینک vmess:// به JSON -->
+        <div class="card border border-dashed mb-4" style="background-color: rgba(99, 102, 241, 0.04); border-color: rgba(99, 102, 241, 0.25) !important;">
+            <div class="card-body py-3">
+                <label class="form-label fw-bold mb-2 small">
+                    <i class="fas fa-wand-magic-sparkles text-primary me-1"></i> ابزار هوشمند: تبدیل مستقیم لینک <code>vmess://</code> موجود به قالب JSON:
+                </label>
+                <div class="input-group">
+                    <input type="text" id="rawVmessInput" class="form-control font-monospace form-control-sm" placeholder="لینک کامل vmess://ey... خود را اینجا پیست کنید" style="direction: ltr; text-align: left;">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="convertVmessToTemplateJson()">
+                        <i class="fas fa-code me-1"></i> استخراج و درج در قالب JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_single_link_template">
+            
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label fw-bold mb-0">متن فایل نمونه JSON (قالب VMess):</label>
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none py-0" onclick="formatJsonEditor()">
+                        <i class="fas fa-align-left me-1"></i> مرتب‌سازی JSON (Format)
+                    </button>
+                </div>
+                <textarea id="singleLinkTemplateInput" name="single_link_template" class="form-control font-monospace" rows="12" placeholder='{\n  "v": "2",\n  "ps": "HiddiBot-{name}",\n  "add": "your-domain.com",\n  "port": "443",\n  "id": "{uuid}",\n  "aid": "0",\n  "scy": "auto",\n  "net": "ws",\n  "type": "none",\n  "host": "your-domain.com",\n  "path": "/ws",\n  "tls": "tls",\n  "sni": "your-domain.com",\n  "alpn": ""\n}' required style="direction: ltr; text-align: left; font-size: 0.9rem;">{{ single_link_template }}</textarea>
+            </div>
+
+            <!-- راهنمای متغیرها و جانمایی -->
+            <div class="p-3 mb-3 rounded border" style="background-color: rgba(0, 0, 0, 0.02);">
+                <h6 class="fw-bold mb-2"><i class="fas fa-info-circle text-primary me-1"></i> راهنمای متغیرهای جانمایی در فایل JSON:</h6>
+                <div class="row g-2 small">
+                    <div class="col-md-6">
+                        <div class="p-2 rounded border guide-box" style="background-color: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2) !important;">
+                            <code class="fw-bold text-danger">"id": "{uuid}"</code>
+                            <div class="text-muted mt-1">شناسه یکتای UUID اشتراک مشتری به صورت خودکار در این فیلد قرار می‌گیرد.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-2 rounded border guide-box" style="background-color: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2) !important;">
+                            <code class="fw-bold text-success">"ps": "HiddiBot-{name}"</code>
+                            <div class="text-muted mt-1">نام اکانت یا مشتری (ریمارک/عنوان نمایشی کانفیگ در نرم‌افزار).</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- قالب‌های آماده پیش‌فرض -->
+            <div class="mb-4">
+                <label class="form-label small text-muted fw-bold">نمونه قالب‌های آماده استاندارد VMess (کلیک برای جایگذاری):</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_ws')">
+                        <i class="fas fa-globe me-1"></i> VMess WebSocket TLS (Cloudflare)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_grpc')">
+                        <i class="fas fa-bolt me-1"></i> VMess gRPC TLS
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_tcp')">
+                        <i class="fas fa-network-wired me-1"></i> VMess TCP (HTTP Header)
+                    </button>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> ذخیره قالب لینک تکی
+                </button>
+                <button type="button" class="btn btn-outline-info" onclick="testLiveVmessOutput()">
+                    <i class="fas fa-play me-1"></i> آزمایش و پیش‌نمایش خروجی vmess://
+                </button>
+            </div>
+        </form>
+
+        <!-- باکس نمایش تست خروجی -->
+        <div id="testOutputBox" class="mt-3 p-3 rounded border" style="display: none; background-color: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.25) !important;">
+            <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> نتیجه خروجی استاندارد تولیدشده (با مقادیر تستی):</h6>
+            <div class="p-2 rounded border text-break font-monospace small" id="testOutputText" style="direction: ltr; text-align: left; background-color: rgba(0,0,0,0.08);"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const PRESETS = {
+    vmess_ws: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-{name}",
+        "add": "your-domain.com",
+        "port": "443",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "ws",
+        "type": "none",
+        "host": "your-domain.com",
+        "path": "/ws",
+        "tls": "tls",
+        "sni": "your-domain.com",
+        "alpn": ""
+    }, null, 2),
+    vmess_grpc: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-gRPC-{name}",
+        "add": "your-domain.com",
+        "port": "443",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "grpc",
+        "type": "gun",
+        "host": "your-domain.com",
+        "path": "vmess-grpc",
+        "tls": "tls",
+        "sni": "your-domain.com",
+        "alpn": ""
+    }, null, 2),
+    vmess_tcp: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-TCP-{name}",
+        "add": "your-domain.com",
+        "port": "80",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "tcp",
+        "type": "http",
+        "host": "your-domain.com",
+        "path": "/",
+        "tls": "",
+        "sni": "",
+        "alpn": ""
+    }, null, 2)
+};
+
+function loadPreset(key) {
+    if (PRESETS[key]) {
+        document.getElementById('singleLinkTemplateInput').value = PRESETS[key];
+    }
+}
+
+function formatJsonEditor() {
+    const editor = document.getElementById('singleLinkTemplateInput');
+    try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+        alert('متن وارد شده ساختار معتبر JSON ندارد: ' + e.message);
+    }
+}
+
+function convertVmessToTemplateJson() {
+    const input = document.getElementById('rawVmessInput').value.trim();
+    if (!input.startsWith('vmess://')) {
+        alert('لطفاً یک لینک معتبر که با vmess:// شروع می‌شود وارد کنید.');
+        return;
+    }
+    const b64 = input.replace('vmess://', '').trim();
+    try {
+        const decoded = atob(b64);
+        const obj = JSON.parse(decoded);
+        obj.id = "{uuid}";
+        obj.ps = obj.ps ? obj.ps.replace(/[a-zA-Z0-9_\-]+$/, '{name}') : "HiddiBot-{name}";
+        document.getElementById('singleLinkTemplateInput').value = JSON.stringify(obj, null, 2);
+        alert('✅ لینک با موفقیت رمزگشایی شد و متغیرهای {uuid} و {name} در قالب درج شدند!');
+    } catch (e) {
+        alert('خطا در رمزگشایی لینک VMess: ' + e.message);
+    }
+}
+
+function testLiveVmessOutput() {
+    const raw = document.getElementById('singleLinkTemplateInput').value.trim();
+    const testUuid = "11111111-2222-3333-4444-555555555555";
+    const testName = "Alex_Test";
+    try {
+        let replaced = raw.replaceAll('{uuid}', testUuid).replaceAll('{name}', testName);
+        let parsed = JSON.parse(replaced);
+        parsed.id = testUuid;
+        let compact = JSON.stringify(parsed);
+        let b64 = btoa(unescape(encodeURIComponent(compact)));
+        let finalVmess = "vmess://" + b64;
+        
+        document.getElementById('testOutputBox').style.display = 'block';
+        document.getElementById('testOutputText').innerText = finalVmess;
+    } catch (e) {
+        alert('خطا در تبدیل JSON به vmess://: ' + e.message);
     }
 }
 </script>
@@ -2919,267 +3122,6 @@ function escapeHtml(str) {
     </div>
 </div>
 
-<!-- کارت ۹: گردونه شانس و پاداش روزانه مشتریان (Lucky Wheel & Daily Rewards) -->
-<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="lucky_wheel portals" id="card-lucky-wheel">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
-        <div class="d-flex align-items-center gap-2">
-            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
-            <h5 class="mb-0 text-primary fw-bold">
-                <i class="fas fa-dharmachakra text-warning me-2"></i> گردونه شانس و پاداش روزانه مشتریان (Lucky Wheel)
-            </h5>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-warning text-dark"><i class="fas fa-gift me-1"></i>پاداش و وفاداری</span>
-        </div>
-    </div>
-    <div class="card-body p-4 settings-card-body">
-        <p class="text-muted mb-4">
-            سیستم گردونه شانس به کاربران امکان می‌دهد در فواصل زمانی مشخص (مثلاً هر ۲۴ ساعت) برای برنده شدن حجم هدیه، اشتراک کامل، کد تخفیف خرید و تمدید یا موجودی کیف پول شانس خود را امتحان کنند. شانس برنده شدن هر آیتم با وزن احتمالات سرور کنترل می‌شود و می‌توانید جوایز را به مشترکین فعال محدود کنید.
-        </p>
-
-        <!-- فرم پیکربندی تنظیمات کلی گردونه -->
-        <div class="card border border-primary-subtle bg-primary-subtle bg-opacity-10 rounded-3 mb-4">
-            <div class="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
-                <span class="fw-bold text-dark small"><i class="fas fa-sliders text-primary me-1"></i> تنظیمات و قوانین چرخش گردونه</span>
-                <span class="badge {% if lucky_wheel_enabled %}bg-success{% else %}bg-secondary{% endif %} rounded-pill px-3">
-                    {% if lucky_wheel_enabled %}سیستم گردونه فعال است{% else %}سیستم گردونه غیرفعال است{% endif %}
-                </span>
-            </div>
-            <div class="card-body p-3">
-                <form action="{{ url_for('admin_lucky_wheel_config') }}" method="POST" class="m-0">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold text-dark small">وضعیت سراسری گردونه:</label>
-                            <div class="form-check form-switch pt-1">
-                                <input class="form-check-input" type="checkbox" name="enabled" value="1" id="adminWheelEnabledSwitch" {% if lucky_wheel_enabled %}checked{% endif %}>
-                                <label class="form-check-label fw-bold small" for="adminWheelEnabledSwitch">فعال بودن دکمه و گردونه در پورتال</label>
-                            </div>
-                            <div class="form-text text-muted small">در صورت غیرفعال بودن، دکمه گردونه در تمام پورتال‌ها مخفی خواهد بود.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold text-dark small">فاصله زمانی بین هر چرخش (کول‌داون):</label>
-                            <select class="form-select form-select-sm" name="cooldown_hours">
-                                <option value="6" {% if lucky_wheel_cooldown_hours == 6 %}selected{% endif %}>هر ۶ ساعت یک‌بار</option>
-                                <option value="12" {% if lucky_wheel_cooldown_hours == 12 %}selected{% endif %}>هر ۱۲ ساعت یک‌بار</option>
-                                <option value="24" {% if lucky_wheel_cooldown_hours == 24 or not lucky_wheel_cooldown_hours %}selected{% endif %}>هر ۲۴ ساعت یک‌بار (۱ روز - استاندارد)</option>
-                                <option value="48" {% if lucky_wheel_cooldown_hours == 48 %}selected{% endif %}>هر ۴۸ ساعت یک‌بار (۲ روز)</option>
-                                <option value="72" {% if lucky_wheel_cooldown_hours == 72 %}selected{% endif %}>هر ۷۲ ساعت یک‌بار (۳ روز)</option>
-                            </select>
-                            <div class="form-text text-muted small">مدت زمانی که کاربر پس از هر چرخش باید منتظر بماند.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold text-dark small">ارسال اعلان تلگرام به مدیریت:</label>
-                            <div class="form-check form-switch pt-1">
-                                <input class="form-check-input" type="checkbox" name="notify_admin" value="1" id="adminWheelNotifySwitch" {% if lucky_wheel_notify_admin %}checked{% endif %}>
-                                <label class="form-check-label fw-bold small" for="adminWheelNotifySwitch">اطلاع‌رسانی برندگان به ادمین تلگرام</label>
-                            </div>
-                            <div class="form-text text-muted small">هنگام برنده شدن جوایز غیرپوچ، پیام فوری به تلگرام ادمین ارسال می‌شود.</div>
-                        </div>
-                    </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold text-dark small">عنوان نمایشی گردونه در پورتال مشتری:</label>
-                            <input type="text" class="form-control form-control-sm" name="title" value="{{ lucky_wheel_title or 'گردونه خوش‌شانسی و جوایز روزانه' }}" placeholder="گردونه خوش‌شانسی و جوایز روزانه">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold text-dark small">پیام توضیحات و راهنما در بالای گردونه:</label>
-                            <input type="text" class="form-control form-control-sm" name="desc" value="{{ lucky_wheel_desc or 'هر ۲۴ ساعت شانس خود را امتحان کنید و جوایز نفیس ببرید!' }}" placeholder="متن انگیزشی یا شرایط شرکت...">
-                        </div>
-                    </div>
-                    <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4 fw-bold shadow-sm">
-                            <i class="fas fa-save me-1"></i> ذخیره تنظیمات گردونه
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- جدول جوایز فعال -->
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-                <h6 class="fw-bold mb-0 text-dark">
-                    <i class="fas fa-list-check text-primary me-1"></i> جوایز تعریف‌شده و محاسبه خودکار شانس برد
-                </h6>
-                <div class="text-muted small">درصد احتمال برد هر جایزه بر اساس مجموع اوزان تمام جوایز فعال به صورت خودکار محاسبه شده است.</div>
-            </div>
-            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#adminAddPrizeModal">
-                <i class="fas fa-plus me-1"></i> افزودن جایزه جدید
-            </button>
-        </div>
-
-        <div class="table-responsive rounded-3 border mb-4">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-nowrap">
-                    <tr>
-                        <th>عنوان جایزه</th>
-                        <th>نوع جایزه</th>
-                        <th>مقدار / ارزش</th>
-                        <th>وزن و احتمال برد</th>
-                        <th>سقف روزانه</th>
-                        <th>جامعه هدف</th>
-                        <th>رنگ و آیکون</th>
-                        <th>وضعیت</th>
-                        <th class="text-center">عملیات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if lucky_wheel_prizes %}
-                        {% for prize in lucky_wheel_prizes %}
-                        <tr>
-                            <td>
-                                <strong class="text-dark">{{ prize.title }}</strong>
-                            </td>
-                            <td>
-                                {% if prize.prize_type == 'traffic' %}
-                                    <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="fas fa-wifi me-1"></i>حجم اینترنت</span>
-                                {% elif prize.prize_type == 'plan' %}
-                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle"><i class="fas fa-box-open me-1"></i>اشتراک کامل</span>
-                                {% elif prize.prize_type == 'discount' %}
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="fas fa-percent me-1"></i>کد تخفیف خرید/تمدید</span>
-                                {% elif prize.prize_type == 'wallet' %}
-                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="fas fa-wallet me-1"></i>شارژ کیف پول</span>
-                                {% else %}
-                                    <span class="badge bg-secondary-subtle text-secondary border"><i class="fas fa-circle-xmark me-1"></i>پوچ</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <code class="font-monospace text-dark fw-bold">{{ prize.prize_value or '-' }}</code>
-                                <span class="small text-muted">
-                                    {% if prize.prize_type == 'traffic' %}گیگابایت{% elif prize.prize_type == 'wallet' %}تومان{% elif prize.prize_type == 'discount' %}درصد{% endif %}
-                                </span>
-                            </td>
-                            <td>
-                                <div class="d-flex align-items-center gap-1">
-                                    <span class="badge bg-dark text-white rounded-pill px-2 py-1 font-monospace">{{ prize.chance_weight }}x</span>
-                                    {% if prize.chance_percent is defined and prize.chance_percent is not none %}
-                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace fw-bold" title="درصد احتمال برنده شدن">
-                                        {{ prize.chance_percent }}%
-                                    </span>
-                                    {% endif %}
-                                </div>
-                            </td>
-                            <td>
-                                {% if prize.daily_limit and prize.daily_limit > 0 %}
-                                    <span class="badge bg-info-subtle text-info border border-info-subtle font-monospace">
-                                        <i class="fas fa-hand-holding-dollar me-1"></i>{{ prize.daily_limit }} بار/روز
-                                    </span>
-                                {% else %}
-                                    <span class="badge bg-light text-muted border">نامحدود</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if prize.target_audience == 'active_only' %}
-                                    <span class="badge bg-warning text-dark"><i class="fas fa-user-check me-1"></i>فقط مشترکین فعال</span>
-                                {% else %}
-                                    <span class="badge bg-light text-dark border"><i class="fas fa-users me-1"></i>همه کاربران</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="rounded-circle d-inline-block border shadow-sm" style="width: 18px; height: 18px; background-color: {{ prize.slice_color or '#3b82f6' }};"></span>
-                                    <i class="fas {{ prize.slice_icon or 'fa-gift' }} text-muted"></i>
-                                </div>
-                            </td>
-                            <td>
-                                {% if prize.is_active %}
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle">فعال</span>
-                                {% else %}
-                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">غیرفعال</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-center">
-                                <div class="d-flex justify-content-center gap-1">
-                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#adminEditPrizeModal{{ prize.id }}" title="ویرایش جایزه">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <form action="{{ url_for('admin_lucky_wheel_prize_delete', prize_id=prize.id) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این جایزه اطمینان دارید؟');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="9" class="text-center py-4 text-muted">
-                                <i class="fas fa-gift fs-3 d-block mb-2 opacity-50"></i>
-                                هیچ جایزه‌ای تعریف نشده است. با کلیک بر روی «افزودن جایزه جدید» اولین جایزه را اضافه کنید.
-                            </td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-
-        <!-- بخش سوابق آخرین برندگان گردونه -->
-        <div class="card border rounded-3 bg-light bg-opacity-50">
-            <div class="card-header bg-white py-2 px-3 d-flex justify-content-between align-items-center">
-                <span class="fw-bold text-dark small"><i class="fas fa-history text-secondary me-1"></i> سوابق آخرین برندگان گردونه شانس (۲۵ چرخش اخیر)</span>
-                <span class="badge bg-secondary-subtle text-secondary small">{{ lucky_wheel_history|length if lucky_wheel_history else 0 }} چرخش</span>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
-                    <table class="table table-sm table-hover align-middle mb-0 small">
-                        <thead class="table-light sticky-top">
-                            <tr>
-                                <th>#</th>
-                                <th>کاربر</th>
-                                <th>جایزه برنده شده</th>
-                                <th>نوع جایزه</th>
-                                <th>مقدار</th>
-                                <th>تاریخ و ساعت</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if lucky_wheel_history %}
-                                {% for item in lucky_wheel_history %}
-                                <tr>
-                                    <td class="font-monospace text-muted">{{ item.id }}</td>
-                                    <td>
-                                        <strong class="text-dark">{{ item.user_name or item.telegram_id or ('کاربر #' ~ item.user_id) }}</strong>
-                                    </td>
-                                    <td>
-                                        <span class="fw-bold text-primary">{{ item.prize_title or '-' }}</span>
-                                    </td>
-                                    <td>
-                                        {% if item.prize_type == 'traffic' %}
-                                            <span class="badge bg-info-subtle text-info border border-info-subtle">حجم</span>
-                                        {% elif item.prize_type == 'plan' %}
-                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">اشتراک</span>
-                                        {% elif item.prize_type == 'discount' %}
-                                            <span class="badge bg-success-subtle text-success border border-success-subtle">تخفیف</span>
-                                        {% elif item.prize_type == 'wallet' %}
-                                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">کیف پول</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary-subtle text-secondary border">پوچ</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <code class="font-monospace">{{ item.prize_value or '-' }}</code>
-                                    </td>
-                                    <td class="text-muted font-monospace small" dir="ltr">
-                                        {{ item.spun_at or '-' }}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="6" class="text-center py-3 text-muted">
-                                        <i class="fas fa-clock-rotate-left me-1"></i> هنوز هیچ چرخشی در سیستم ثبت نشده است.
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- کارت ۱۰: وب‌اپلیکیشن پیش‌رونده قابل نصب (Full PWA Support) -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-pwa-settings">
     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
@@ -3392,214 +3334,8 @@ function escapeHtml(str) {
         </div>
     </div>
 </div>
-<!-- کارت ۱۰: قالب کانفیگ تکی -->
-<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-vmess-config">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
-        <div class="d-flex align-items-center gap-2">
-            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
-            <h5 class="mb-0 text-primary fw-bold">
-                <i class="fas fa-bolt text-warning me-2"></i> قالب کانفیگ تکی
-            </h5>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-success-subtle text-success fs-6">پشتیبانی از خروجی استاندارد vmess://</span>
-    </div>
-
-        </div>
-    </div>
-    <div class="card-body p-4 settings-card-body">
-    <div class="card-body">
-        <p class="text-muted">
-            شما می‌توانید یک فایل یا متن نمونه <strong>JSON پروتکل VMess</strong> را در کادر زیر قرار دهید. سیستم به طور خودکار هنگام درخواست مشتری یا همکار، شناسه <code>UUID</code> و <code>نام اکانت</code> مشتری را در متغیرهای <code>{uuid}</code> و <code>{name}</code> قرار داده و خروجی را به صورت یک لینک رمزنگاری‌شده استاندارد <strong><code>vmess://Base64...</code></strong> (همراه با بارکد QR) تولید و ارسال می‌کند.
-        </p>
-
-        <!-- ابزار هوشمند تبدیل مستقیم لینک vmess:// به JSON -->
-        <div class="card border border-dashed mb-4" style="background-color: rgba(99, 102, 241, 0.04); border-color: rgba(99, 102, 241, 0.25) !important;">
-            <div class="card-body py-3">
-                <label class="form-label fw-bold mb-2 small">
-                    <i class="fas fa-wand-magic-sparkles text-primary me-1"></i> ابزار هوشمند: تبدیل مستقیم لینک <code>vmess://</code> موجود به قالب JSON:
-                </label>
-                <div class="input-group">
-                    <input type="text" id="rawVmessInput" class="form-control font-monospace form-control-sm" placeholder="لینک کامل vmess://ey... خود را اینجا پیست کنید" style="direction: ltr; text-align: left;">
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="convertVmessToTemplateJson()">
-                        <i class="fas fa-code me-1"></i> استخراج و درج در قالب JSON
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <form action="{{ url_for('settings') }}" method="POST">
-            <input type="hidden" name="action" value="save_single_link_template">
-            
-            <div class="mb-3">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <label class="form-label fw-bold mb-0">متن فایل نمونه JSON (قالب VMess):</label>
-                    <button type="button" class="btn btn-sm btn-link text-decoration-none py-0" onclick="formatJsonEditor()">
-                        <i class="fas fa-align-left me-1"></i> مرتب‌سازی JSON (Format)
-                    </button>
-                </div>
-                <textarea id="singleLinkTemplateInput" name="single_link_template" class="form-control font-monospace" rows="12" placeholder='{\n  "v": "2",\n  "ps": "HiddiBot-{name}",\n  "add": "your-domain.com",\n  "port": "443",\n  "id": "{uuid}",\n  "aid": "0",\n  "scy": "auto",\n  "net": "ws",\n  "type": "none",\n  "host": "your-domain.com",\n  "path": "/ws",\n  "tls": "tls",\n  "sni": "your-domain.com",\n  "alpn": ""\n}' required style="direction: ltr; text-align: left; font-size: 0.9rem;">{{ single_link_template }}</textarea>
-            </div>
-
-            <!-- راهنمای متغیرها و جانمایی -->
-            <div class="p-3 mb-3 rounded border" style="background-color: rgba(0, 0, 0, 0.02);">
-                <h6 class="fw-bold mb-2"><i class="fas fa-info-circle text-primary me-1"></i> راهنمای متغیرهای جانمایی در فایل JSON:</h6>
-                <div class="row g-2 small">
-                    <div class="col-md-6">
-                        <div class="p-2 rounded border guide-box" style="background-color: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2) !important;">
-                            <code class="fw-bold text-danger">"id": "{uuid}"</code>
-                            <div class="text-muted mt-1">شناسه یکتای UUID اشتراک مشتری به صورت خودکار در این فیلد قرار می‌گیرد.</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="p-2 rounded border guide-box" style="background-color: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2) !important;">
-                            <code class="fw-bold text-success">"ps": "HiddiBot-{name}"</code>
-                            <div class="text-muted mt-1">نام اکانت یا مشتری (ریمارک/عنوان نمایشی کانفیگ در نرم‌افزار).</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- قالب‌های آماده پیش‌فرض -->
-            <div class="mb-4">
-                <label class="form-label small text-muted fw-bold">نمونه قالب‌های آماده استاندارد VMess (کلیک برای جایگذاری):</label>
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_ws')">
-                        <i class="fas fa-globe me-1"></i> VMess WebSocket TLS (Cloudflare)
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_grpc')">
-                        <i class="fas fa-bolt me-1"></i> VMess gRPC TLS
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_tcp')">
-                        <i class="fas fa-network-wired me-1"></i> VMess TCP (HTTP Header)
-                    </button>
-                </div>
-            </div>
-
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save me-1"></i> ذخیره قالب لینک تکی
-                </button>
-                <button type="button" class="btn btn-outline-info" onclick="testLiveVmessOutput()">
-                    <i class="fas fa-play me-1"></i> آزمایش و پیش‌نمایش خروجی vmess://
-                </button>
-            </div>
-        </form>
-
-        <!-- باکس نمایش تست خروجی -->
-        <div id="testOutputBox" class="mt-3 p-3 rounded border" style="display: none; background-color: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.25) !important;">
-            <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> نتیجه خروجی استاندارد تولیدشده (با مقادیر تستی):</h6>
-            <div class="p-2 rounded border text-break font-monospace small" id="testOutputText" style="direction: ltr; text-align: left; background-color: rgba(0,0,0,0.08);"></div>
-        </div>
-    </div>
-</div>
 
 <script>
-const PRESETS = {
-    vmess_ws: JSON.stringify({
-        "v": "2",
-        "ps": "HiddiBot-{name}",
-        "add": "your-domain.com",
-        "port": "443",
-        "id": "{uuid}",
-        "aid": "0",
-        "scy": "auto",
-        "net": "ws",
-        "type": "none",
-        "host": "your-domain.com",
-        "path": "/ws",
-        "tls": "tls",
-        "sni": "your-domain.com",
-        "alpn": ""
-    }, null, 2),
-    vmess_grpc: JSON.stringify({
-        "v": "2",
-        "ps": "HiddiBot-gRPC-{name}",
-        "add": "your-domain.com",
-        "port": "443",
-        "id": "{uuid}",
-        "aid": "0",
-        "scy": "auto",
-        "net": "grpc",
-        "type": "gun",
-        "host": "your-domain.com",
-        "path": "vmess-grpc",
-        "tls": "tls",
-        "sni": "your-domain.com",
-        "alpn": ""
-    }, null, 2),
-    vmess_tcp: JSON.stringify({
-        "v": "2",
-        "ps": "HiddiBot-TCP-{name}",
-        "add": "your-domain.com",
-        "port": "80",
-        "id": "{uuid}",
-        "aid": "0",
-        "scy": "auto",
-        "net": "tcp",
-        "type": "http",
-        "host": "your-domain.com",
-        "path": "/",
-        "tls": "",
-        "sni": "",
-        "alpn": ""
-    }, null, 2)
-};
-
-function loadPreset(key) {
-    if (PRESETS[key]) {
-        document.getElementById('singleLinkTemplateInput').value = PRESETS[key];
-    }
-}
-
-function formatJsonEditor() {
-    const editor = document.getElementById('singleLinkTemplateInput');
-    try {
-        const parsed = JSON.parse(editor.value);
-        editor.value = JSON.stringify(parsed, null, 2);
-    } catch (e) {
-        alert('متن وارد شده ساختار معتبر JSON ندارد: ' + e.message);
-    }
-}
-
-function convertVmessToTemplateJson() {
-    const input = document.getElementById('rawVmessInput').value.trim();
-    if (!input.startsWith('vmess://')) {
-        alert('لطفاً یک لینک معتبر که با vmess:// شروع می‌شود وارد کنید.');
-        return;
-    }
-    const b64 = input.replace('vmess://', '').trim();
-    try {
-        const decoded = atob(b64);
-        const obj = JSON.parse(decoded);
-        obj.id = "{uuid}";
-        obj.ps = obj.ps ? obj.ps.replace(/[a-zA-Z0-9_\-]+$/, '{name}') : "HiddiBot-{name}";
-        document.getElementById('singleLinkTemplateInput').value = JSON.stringify(obj, null, 2);
-        alert('✅ لینک با موفقیت رمزگشایی شد و متغیرهای {uuid} و {name} در قالب درج شدند!');
-    } catch (e) {
-        alert('خطا در رمزگشایی لینک VMess: ' + e.message);
-    }
-}
-
-function testLiveVmessOutput() {
-    const raw = document.getElementById('singleLinkTemplateInput').value.trim();
-    const testUuid = "11111111-2222-3333-4444-555555555555";
-    const testName = "Alex_Test";
-    try {
-        let replaced = raw.replaceAll('{uuid}', testUuid).replaceAll('{name}', testName);
-        let parsed = JSON.parse(replaced);
-        parsed.id = testUuid;
-        let compact = JSON.stringify(parsed);
-        let b64 = btoa(unescape(encodeURIComponent(compact)));
-        let finalVmess = "vmess://" + b64;
-        
-        document.getElementById('testOutputBox').style.display = 'block';
-        document.getElementById('testOutputText').innerText = finalVmess;
-    } catch (e) {
-        alert('خطا در تبدیل JSON به vmess://: ' + e.message);
-    }
-}
-
 function sendTestSms() {
     const phone = document.getElementById('testSmsPhone').value.trim();
     const resultBox = document.getElementById('testSmsResult');
@@ -5004,35 +4740,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // بررسی پارامتر tab یا hash برای ناوبری مستقیم به گردونه شانس
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-    const hashParam = window.location.hash;
-    if (tabParam === 'lucky_wheel' || hashParam === '#card-lucky-wheel') {
-        const pill = document.querySelector(`.settings-category-pill[data-category="lucky_wheel"]`);
-        if (pill) {
-            filterSettingsCategory('lucky_wheel', pill);
-        }
-        const luckyCard = document.getElementById('card-lucky-wheel');
-        if (luckyCard) {
-            luckyCard.style.display = '';
-            luckyCard.classList.remove('is-collapsed');
-            setTimeout(() => {
-                luckyCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 150);
-        }
-    } else {
-        // بازیابی آخرین تب دسته‌بندی انتخاب شده
-        try {
-            const savedCat = localStorage.getItem('hiddibot_settings_active_category');
-            if (savedCat && savedCat !== 'all') {
-                const btn = document.querySelector(`.settings-category-pill[data-category="${savedCat}"]`);
-                if (btn) {
-                    filterSettingsCategory(savedCat, btn);
-                }
+    // بازیابی آخرین تب دسته‌بندی انتخاب شده
+    try {
+        const savedCat = localStorage.getItem('hiddibot_settings_active_category');
+        if (savedCat && savedCat !== 'all') {
+            const btn = document.querySelector(`.settings-category-pill[data-category="${savedCat}"]`);
+            if (btn) {
+                filterSettingsCategory(savedCat, btn);
             }
-        } catch (e) {}
-    }
+        }
+    } catch (e) {}
 
     // به‌روزرسانی زنده ساعت تهران
     function updateTehranLiveClock() {
@@ -5062,237 +4779,5 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(updateTehranLiveClock, 1000);
 });
 </script>
-
-<!-- مودال افزودن جایزه جدید به گردونه شانس -->
-<div class="modal fade" id="adminAddPrizeModal" tabindex="-1" aria-labelledby="adminAddPrizeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form action="{{ url_for('admin_lucky_wheel_prize_add') }}" method="POST">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold" id="adminAddPrizeModalLabel">
-                        <i class="fas fa-plus-circle text-primary me-1"></i> افزودن جایزه جدید به گردونه
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
-                        <input type="text" class="form-control" name="title" placeholder="مثال: ۱ گیگ اینترنت رایگان یا ۵۰ هزار تومان شارژ" required>
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">نوع جایزه:</label>
-                            <select class="form-select" name="prize_type" id="addAdminPrizeTypeSelect" onchange="updateAdminPrizeTypeHelp(this, 'addAdminPrizeValLabel', 'addAdminPrizeValInput')">
-                                <option value="traffic" selected>حجم اینترنت هدیه (Traffic)</option>
-                                <option value="plan">اشتراک هدیه کامل (Plan)</option>
-                                <option value="discount">تخفیف خرید و تمدید (Discount)</option>
-                                <option value="wallet">شارژ کیف پول (Wallet)</option>
-                                <option value="empty">پوچ / شانس بعدی (Empty)</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold" id="addAdminPrizeValLabel">حجم به گیگابایت:</label>
-                            <input type="text" class="form-control font-monospace" name="prize_value" id="addAdminPrizeValInput" placeholder="1" value="1">
-                        </div>
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">وزن شانس (احتمال برد):</label>
-                            <input type="number" class="form-control font-monospace" name="chance_weight" value="10" min="1" max="1000" required>
-                            <div class="form-text small text-muted">هرچه وزن بالاتر باشد شانس برد بیشتر است.</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">سقف اهدای روزانه:</label>
-                            <div class="input-group">
-                                <input type="number" class="form-control font-monospace" name="daily_limit" value="0" min="0" placeholder="0 = نامحدود">
-                                <span class="input-group-text small">بار/روز</span>
-                            </div>
-                            <div class="form-text small text-muted">۰ به معنای عدم محدودیت روزانه است.</div>
-                        </div>
-                    </div>
-
-                    <!-- انتخاب جامعه هدف به صورت کارت‌های رادیویی مشخص -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold d-block">
-                            <i class="fas fa-users-viewfinder text-primary me-1"></i> جامعه هدف (چه کاربرانی می‌توانند برنده شوند؟):
-                        </label>
-                        <div class="row g-2">
-                            <div class="col-12 col-sm-6">
-                                <label class="border rounded-3 p-2 d-flex align-items-start gap-2 h-100 cursor-pointer bg-light" style="cursor: pointer;">
-                                    <input class="form-check-input mt-1" type="radio" name="target_audience" value="all" checked>
-                                    <div>
-                                        <div class="fw-bold text-dark small"><i class="fas fa-users text-primary me-1"></i> همه کاربران (عمومی)</div>
-                                        <div class="text-muted" style="font-size: 0.74rem;">تمام کاربران، حتی مراجعین بدون سرویس یا منقضی‌شده شانس برد دارند.</div>
-                                    </div>
-                                </label>
-                            </div>
-                            <div class="col-12 col-sm-6">
-                                <label class="border rounded-3 p-2 d-flex align-items-start gap-2 h-100 cursor-pointer bg-light" style="cursor: pointer;">
-                                    <input class="form-check-input mt-1" type="radio" name="target_audience" value="active_only">
-                                    <div>
-                                        <div class="fw-bold text-dark small"><i class="fas fa-user-check text-warning me-1"></i> فقط مشترکین فعال</div>
-                                        <div class="text-muted" style="font-size: 0.74rem;">منحصراً به کاربرانی که اشتراک معتبر و فعال دارند تعلق می‌گیرد.</div>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
-                            <div class="input-group">
-                                <input type="color" class="form-control form-control-color" value="#3b82f6" onchange="document.getElementById('addSliceColorInput').value=this.value">
-                                <input type="text" class="form-control font-monospace" name="slice_color" id="addSliceColorInput" value="#3b82f6" dir="ltr">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
-                            <input type="text" class="form-control font-monospace" name="slice_icon" value="fa-wifi" placeholder="fa-gift" dir="ltr">
-                        </div>
-                    </div>
-                    <div class="form-check form-switch pt-2">
-                        <input class="form-check-input" type="checkbox" name="is_active" id="addPrizeIsActive" value="1" checked>
-                        <label class="form-check-label fw-bold" for="addPrizeIsActive">جایزه در گردونه فعال باشد</label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">افزودن جایزه</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- مودال‌های ویرایش جوایز گردونه شانس -->
-{% if lucky_wheel_prizes %}
-    {% for prize in lucky_wheel_prizes %}
-    <div class="modal fade" id="adminEditPrizeModal{{ prize.id }}" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <form action="{{ url_for('admin_lucky_wheel_prize_edit', prize_id=prize.id) }}" method="POST">
-                    <div class="modal-header">
-                        <h5 class="modal-title fw-bold">
-                            <i class="fas fa-edit text-primary me-1"></i> ویرایش جایزه: {{ prize.title }}
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">عنوان نمایشی جایزه:</label>
-                            <input type="text" class="form-control" name="title" value="{{ prize.title }}" required>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">نوع جایزه:</label>
-                                <select class="form-select" name="prize_type" onchange="updateAdminPrizeTypeHelp(this, 'editAdminPrizeValLabel{{ prize.id }}', 'editAdminPrizeValInput{{ prize.id }}')">
-                                    <option value="traffic" {% if prize.prize_type == 'traffic' %}selected{% endif %}>حجم اینترنت هدیه (Traffic)</option>
-                                    <option value="plan" {% if prize.prize_type == 'plan' %}selected{% endif %}>اشتراک هدیه کامل (Plan)</option>
-                                    <option value="discount" {% if prize.prize_type == 'discount' %}selected{% endif %}>تخفیف خرید و تمدید (Discount)</option>
-                                    <option value="wallet" {% if prize.prize_type == 'wallet' %}selected{% endif %}>شارژ کیف پول (Wallet)</option>
-                                    <option value="empty" {% if prize.prize_type == 'empty' %}selected{% endif %}>پوچ / شانس بعدی (Empty)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold" id="editAdminPrizeValLabel{{ prize.id }}">مقدار / ارزش:</label>
-                                <input type="text" class="form-control font-monospace" name="prize_value" id="editAdminPrizeValInput{{ prize.id }}" value="{{ prize.prize_value or '' }}">
-                            </div>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">وزن شانس (احتمال برد):</label>
-                                <input type="number" class="form-control font-monospace" name="chance_weight" value="{{ prize.chance_weight }}" min="1" max="1000" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">سقف اهدای روزانه:</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control font-monospace" name="daily_limit" value="{{ prize.daily_limit or 0 }}" min="0" placeholder="0 = نامحدود">
-                                    <span class="input-group-text small">بار/روز</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- انتخاب جامعه هدف به صورت کارت‌های رادیویی -->
-                        <div class="mb-3">
-                            <label class="form-label fw-bold d-block">
-                                <i class="fas fa-users-viewfinder text-primary me-1"></i> جامعه هدف (چه کاربرانی می‌توانند برنده شوند؟):
-                            </label>
-                            <div class="row g-2">
-                                <div class="col-12 col-sm-6">
-                                    <label class="border rounded-3 p-2 d-flex align-items-start gap-2 h-100 cursor-pointer {% if prize.target_audience != 'active_only' %}border-primary bg-primary-subtle bg-opacity-10{% else %}bg-light{% endif %}" style="cursor: pointer;">
-                                        <input class="form-check-input mt-1" type="radio" name="target_audience" value="all" {% if prize.target_audience != 'active_only' %}checked{% endif %}>
-                                        <div>
-                                            <div class="fw-bold text-dark small"><i class="fas fa-users text-primary me-1"></i> همه کاربران (عمومی)</div>
-                                            <div class="text-muted" style="font-size: 0.74rem;">تمام کاربران، حتی مراجعین بدون سرویس یا منقضی‌شده شانس برد دارند.</div>
-                                        </div>
-                                    </label>
-                                </div>
-                                <div class="col-12 col-sm-6">
-                                    <label class="border rounded-3 p-2 d-flex align-items-start gap-2 h-100 cursor-pointer {% if prize.target_audience == 'active_only' %}border-warning bg-warning-subtle bg-opacity-10{% else %}bg-light{% endif %}" style="cursor: pointer;">
-                                        <input class="form-check-input mt-1" type="radio" name="target_audience" value="active_only" {% if prize.target_audience == 'active_only' %}checked{% endif %}>
-                                        <div>
-                                            <div class="fw-bold text-dark small"><i class="fas fa-user-check text-warning me-1"></i> فقط مشترکین فعال</div>
-                                            <div class="text-muted" style="font-size: 0.74rem;">منحصراً به کاربرانی که اشتراک معتبر و فعال دارند تعلق می‌گیرد.</div>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">رنگ اسلایس در گردونه:</label>
-                                <div class="input-group">
-                                    <input type="color" class="form-control form-control-color" value="{{ prize.slice_color or '#3b82f6' }}" onchange="document.getElementById('editSliceColorInput{{ prize.id }}').value=this.value">
-                                    <input type="text" class="form-control font-monospace" name="slice_color" id="editSliceColorInput{{ prize.id }}" value="{{ prize.slice_color or '#3b82f6' }}" dir="ltr">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">کلاس آیکون FontAwesome:</label>
-                                <input type="text" class="form-control font-monospace" name="slice_icon" value="{{ prize.slice_icon or 'fa-gift' }}" dir="ltr">
-                            </div>
-                        </div>
-                        <div class="form-check form-switch pt-2">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="editPrizeIsActive{{ prize.id }}" value="1" {% if prize.is_active %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="editPrizeIsActive{{ prize.id }}">جایزه در گردونه فعال باشد</label>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">انصراف</button>
-                        <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">ذخیره تغییرات</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-{% endif %}
-
-<script>
-function updateAdminPrizeTypeHelp(selectEl, labelId, inputId) {
-    const val = selectEl.value;
-    const label = document.getElementById(labelId);
-    const input = document.getElementById(inputId);
-    if (!label || !input) return;
-    if (val === 'traffic') {
-        label.innerText = 'حجم به گیگابایت:';
-        input.placeholder = 'مثال: 1 یا 5';
-    } else if (val === 'plan') {
-        label.innerText = 'عنوان اشتراک هدیه:';
-        input.placeholder = 'مثال: اشتراک یک‌ماهه طلایی';
-    } else if (val === 'wallet') {
-        label.innerText = 'مبلغ شارژ به تومان:';
-        input.placeholder = 'مثال: 50000';
-    } else if (val === 'discount') {
-        label.innerText = 'درصد تخفیف خرید/تمدید:';
-        input.placeholder = 'مثال: 20';
-    } else {
-        label.innerText = 'پیام پوچ:';
-        input.placeholder = 'مثال: شانس بعدی شما فردا!';
-    }
-}
-</script>
-
 {% include "hiddify_sync_modal.html" %}
 {% endblock %}
