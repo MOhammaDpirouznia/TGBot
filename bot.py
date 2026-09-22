@@ -555,10 +555,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ثبت کاربر در دیتابیس
     db.save_user(telegram_id=user.id, username=user.username or user.first_name)
 
-    # پردازش کد معرف / رفرال و نگهداری در سشن
+    # پردازش کد معرف / رفرال و یا پیوند اشتراک به تلگرام
     if context.args and len(context.args) > 0:
         arg = context.args[0].strip()
-        if arg.startswith("ref_"):
+        if arg.startswith("link_"):
+            try:
+                sub_token = arg.replace("link_", "").strip()
+                sub_to_link = db.get_subscription_by_uuid(sub_token) or (db.get_subscription(int(sub_token)) if sub_token.isdigit() else None)
+                if sub_to_link:
+                    full_nm = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                    db.link_subscription_to_telegram(
+                        sub_id=sub_to_link["id"],
+                        telegram_id=user.id,
+                        username=user.username,
+                        full_name=full_nm
+                    )
+                    if sub_to_link.get("hidify_uuid"):
+                        try:
+                            from dashboard import hidify_sync_update_user
+                            hidify_sync_update_user(sub_to_link["hidify_uuid"], telegram_id=user.id, reseller_id=sub_to_link.get("reseller_id"))
+                        except Exception:
+                            pass
+                    await update.message.reply_text(
+                        f"🎉 <b>احراز هویت و اتصال به پرتال با موفقیت انجام شد!</b>\n\n"
+                        f"اشتراک <b>{sub_to_link.get('account_name') or 'شما'}</b> به حساب تلگرام شما متصل گردید.\n"
+                        f"تصویر و آیدی تلگرام شما در پرتال مشتری با موفقیت تایید و همگام‌سازی شد.",
+                        parse_mode="HTML"
+                    )
+            except Exception as e_link:
+                logger.debug(f"Error processing link_ in start: {e_link}")
+        elif arg.startswith("ref_"):
             try:
                 ref_id_int = int(arg.replace("ref_", ""))
                 if ref_id_int and ref_id_int != user.id:

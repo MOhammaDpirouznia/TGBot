@@ -390,9 +390,13 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
             return fallback_fav.read_bytes(), "image/x-icon"
 
     try:
-        # جستجو در جدول اشتراک‌ها
+        # جستجو در جدول اشتراک‌ها و کاربران
         sub_custom = db.find_subscription_avatar(clean_ident)
         if sub_custom:
+            if str(sub_custom).startswith("preset:"):
+                preset_id = str(sub_custom).replace("preset:", "").strip()
+                svg_code = avatar_generator.generate_procedural_avatar_svg(clean_ident, preset_id=preset_id)
+                return svg_code.encode("utf-8"), "image/svg+xml"
             c_f = AVATAR_CACHE_DIR / sub_custom
             if c_f.exists() and c_f.stat().st_size > 0:
                 ext = c_f.suffix.lower()
@@ -21716,6 +21720,10 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             reseller_id = sub.get("reseller_id") or 0
         if not telegram_id:
             telegram_id = sub.get("telegram_id") or 0
+        if not cust_user and sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
+            cust_user = db.get_customer_user_by_id(int(sub["telegram_id"])) or db.get_user(int(sub["telegram_id"]))
+        if not cust_user and sub.get("phone_number"):
+            cust_user = db.get_customer_user_by_phone(sub["phone_number"], reseller_id)
         if cust_user and not sub.get("phone_number") and cust_user.get("phone_number"):
             sub["phone_number"] = cust_user.get("phone_number")
 
@@ -22091,8 +22099,31 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     }
     user_social_tasks = db.get_user_social_tasks_progress(target_tg_id or 0, reseller_id=reseller_id or 0) if target_tg_id else []
 
+    # محاسبه درصد تکمیل مشخصات پروفایل برای نمایش به کاربر
+    prof_acc = (sub.get("account_name") or "").strip() if sub else ""
+    prof_full = (cust_user.get("full_name") if cust_user else "") or ""
+    prof_phone = (sub.get("phone_number") or (cust_user.get("phone_number") if cust_user else "")) or ""
+    prof_bday = (cust_user.get("birthday") if cust_user else "") or ""
+    prof_isp = (cust_user.get("primary_isp") if cust_user else (sub.get("primary_isp") or "")) or ""
+    prof_avatar = (sub.get("custom_avatar") or (cust_user.get("custom_avatar") if cust_user else "")) or ""
+    prof_tg = telegram_id or (sub.get("telegram_id") if sub else 0)
+
+    profile_score = 0
+    if prof_acc and prof_acc != "کاربر گرامی": profile_score += 20
+    if prof_full.strip(): profile_score += 20
+    if prof_phone.strip(): profile_score += 20
+    if prof_bday.strip(): profile_score += 15
+    if prof_isp.strip(): profile_score += 15
+    if prof_avatar.strip() or (prof_tg and int(prof_tg) > 0): profile_score += 10
+    profile_completion_pct = min(100, max(15, profile_score))
+    avatar_presets = avatar_generator.PRESETS
+
     return render_template(
         "customer_portal.html",
+        cust_user=cust_user,
+        profile_completion_pct=profile_completion_pct,
+        avatar_presets=avatar_presets,
+        bot_username=bot_username,
         loyalty_tier_info=loyalty_tier_info,
         user_social_tasks=user_social_tasks,
         lucky_wheel_enabled=lucky_wheel_enabled,
@@ -22209,6 +22240,123 @@ def api_subscription_traffic_analytics(token):
     except Exception as e:
         logger.exception(f"Error in api_subscription_traffic_analytics for {token}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/subscription/<token>/profile", methods=["POST"])
+@app.route("/api/customer/profile", methods=["POST"])
+def api_customer_profile_update(token: str = None):
+    """وب‌سرویس جامع تکمیل و ویرایش مشخصات پروفایل مشتری با همگام‌سازی پنل و تلگرام"""
+    req_token = token or request.form.get("token") or (request.json.get("token") if request.is_json else None)
+    req_sub_id = request.form.get("sub_id") or (request.json.get("sub_id") if request.is_json else None)
+    req_tg_id = request.form.get("telegram_id") or (request.json.get("telegram_id") if request.is_json else None)
+
+    sub_row = None
+    conn = db.get_connection()
+    try:
+        if req_token:
+            sub_row = conn.execute(
+                "SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)",
+                (str(req_token), str(req_token))
+            ).fetchone()
+        elif req_sub_id and str(req_sub_id).isdigit():
+            sub_row = conn.execute(
+                "SELECT * FROM subscriptions WHERE id=? AND (is_deleted=0 OR is_deleted IS NULL)",
+                (int(req_sub_id),)
+            ).fetchone()
+    finally:
+        conn.close()
+
+    if not sub_row and not req_tg_id:
+        return jsonify({"success": False, "error": "اشتراک یا حساب کاربری معتبری یافت نشد."}), 404
+
+    sub_dict = dict(sub_row) if sub_row else {}
+    effective_sub_id = sub_dict.get("id")
+    effective_tg_id = None
+    if req_tg_id and str(req_tg_id).isdigit():
+        effective_tg_id = int(req_tg_id)
+    elif sub_dict.get("telegram_id") and int(sub_dict["telegram_id"]) > 0:
+        effective_tg_id = int(sub_dict["telegram_id"])
+
+    # استخراج مقادیر ارسالی از فرم یا جیسون
+    data = request.form if request.form else (request.get_json(silent=True) or {})
+    account_name = str(data.get("account_name", "")).strip()
+    full_name = str(data.get("full_name", "")).strip()
+    phone_number = str(data.get("phone_number", "")).strip()
+    birthday = str(data.get("birthday", "")).strip()
+    primary_isp = str(data.get("primary_isp", "")).strip()
+    secondary_isp = str(data.get("secondary_isp", "")).strip()
+    telegram_username = str(data.get("telegram_username", "")).strip()
+    notification_pref = str(data.get("notification_pref", "both")).strip()
+    avatar_preset = str(data.get("avatar_preset", "")).strip()
+
+    custom_avatar = None
+    # بررسی آپلود تصویر اختصاصی
+    if "avatar_file" in request.files:
+        file = request.files["avatar_file"]
+        if file and file.filename:
+            ext = Path(file.filename).suffix.lower()
+            if ext in ALLOWED_AVATAR_EXTENSIONS or ext == ".svg":
+                file_bytes = file.read()
+                if len(file_bytes) <= 5 * 1024 * 1024:
+                    AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    fname = f"custom_sub_{effective_sub_id or effective_tg_id}{ext}"
+                    (AVATAR_CACHE_DIR / fname).write_bytes(file_bytes)
+                    custom_avatar = fname
+
+    if not custom_avatar and avatar_preset:
+        custom_avatar = f"preset:{avatar_preset}"
+
+    # همگام‌سازی نام در پنل هیدیفای در صورت تغییر
+    old_acc_name = sub_dict.get("account_name", "")
+    hiddify_sync_status = "not_needed"
+    if effective_sub_id and account_name and account_name != old_acc_name:
+        h_uuid = sub_dict.get("hidify_uuid")
+        if h_uuid:
+            try:
+                h_res = hidify_sync_update_user(
+                    h_uuid,
+                    name=account_name,
+                    reseller_id=sub_dict.get("reseller_id")
+                )
+                if isinstance(h_res, dict) and "error" not in h_res:
+                    hiddify_sync_status = "synced"
+                else:
+                    hiddify_sync_status = "failed"
+            except Exception as e_h:
+                logger.error(f"Error syncing updated account_name to Hiddify for {h_uuid}: {e_h}")
+                hiddify_sync_status = "error"
+
+    # بروزرسانی دیتابیس
+    res = db.update_customer_profile(
+        sub_id=effective_sub_id,
+        telegram_id=effective_tg_id,
+        phone_number=phone_number if phone_number else None,
+        account_name=account_name if account_name else None,
+        full_name=full_name if full_name else None,
+        birthday=birthday if birthday else None,
+        primary_isp=primary_isp if primary_isp else None,
+        secondary_isp=secondary_isp if secondary_isp else None,
+        notification_pref=notification_pref if notification_pref else None,
+        custom_avatar=custom_avatar,
+        telegram_username=telegram_username if telegram_username else None
+    )
+
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در ثبت مشخصات")}), 500
+
+    new_avatar_id = str(effective_sub_id or effective_tg_id or account_name or "Customer")
+    new_avatar_url = url_for("telegram_avatar", identifier=new_avatar_id)
+
+    return jsonify({
+        "success": True,
+        "message": "مشخصات پروفایل شما با موفقیت ذخیره و به‌روزرسانی شد.",
+        "score": res.get("score", 0),
+        "is_completed": res.get("is_completed", False),
+        "account_name": res.get("account_name", account_name),
+        "full_name": res.get("full_name", full_name),
+        "avatar_url": new_avatar_url,
+        "hiddify_sync": hiddify_sync_status
+    })
 
 
 @app.route("/api/subscription/<int:sub_id>/notes", methods=["GET", "POST"])

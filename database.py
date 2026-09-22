@@ -1684,13 +1684,26 @@ class Database:
         except Exception as e_crs:
             logger.warning(f"Error initializing customer_referral_settings: {e_crs}")
 
-        # ستون‌های ثبت‌نام وب مشتریان
+        # ستون‌های ثبت‌نام وب و تکمیل مشخصات پروفایل مشتریان
         for u_web_col in [
             ("password_hash", "TEXT DEFAULT NULL"),
             ("full_name", "TEXT DEFAULT NULL"),
+            ("primary_isp", "TEXT DEFAULT NULL"),
+            ("secondary_isp", "TEXT DEFAULT NULL"),
+            ("notification_pref", "TEXT DEFAULT 'both'"),
+            ("profile_completed", "INTEGER DEFAULT 0"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE users ADD COLUMN {u_web_col[0]} {u_web_col[1]}")
+            except Exception:
+                pass
+
+        for s_prof_col in [
+            ("primary_isp", "TEXT DEFAULT NULL"),
+            ("secondary_isp", "TEXT DEFAULT NULL"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {s_prof_col[0]} {s_prof_col[1]}")
             except Exception:
                 pass
         try:
@@ -9622,6 +9635,198 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting customer user by id: {e}")
             return None
+        finally:
+            conn.close()
+
+    def link_subscription_to_telegram(self, sub_id: int, telegram_id: int, username: Optional[str] = None, full_name: Optional[str] = None) -> bool:
+        """اتصال مستقیم و احراز شده یک اشتراک به شناسه کاربری تلگرام"""
+        if not sub_id or not telegram_id:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now_str = get_now_naive().isoformat()
+            int_sub_id = None
+            if isinstance(sub_id, int):
+                int_sub_id = sub_id
+            elif str(sub_id).isdigit():
+                int_sub_id = int(sub_id)
+            else:
+                cursor.execute("SELECT id FROM subscriptions WHERE hidify_uuid = ?", (str(sub_id),))
+                s_r = cursor.fetchone()
+                if s_r:
+                    int_sub_id = s_r["id"]
+
+            if int_sub_id:
+                cursor.execute("UPDATE subscriptions SET telegram_id = ?, updated_at = ? WHERE id = ?", (int(telegram_id), now_str, int(int_sub_id)))
+            else:
+                cursor.execute("UPDATE subscriptions SET telegram_id = ?, updated_at = ? WHERE hidify_uuid = ?", (int(telegram_id), now_str, str(sub_id)))
+
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (int(telegram_id),))
+            u_row = cursor.fetchone()
+            if u_row:
+                updates = ["is_verified = 1", "updated_at = ?"]
+                params = [now_str]
+                if username:
+                    updates.append("username = ?")
+                    params.append(username)
+                if full_name:
+                    updates.append("full_name = ?")
+                    params.append(full_name)
+                params.append(int(telegram_id))
+                cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE telegram_id = ?", params)
+            else:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, full_name, is_verified, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                """, (int(telegram_id), username or "", full_name or "", now_str, now_str))
+
+            conn.commit()
+            logger.info(f"Linked subscription #{sub_id} to telegram_id {telegram_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error linking subscription to telegram: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def update_customer_profile(self, sub_id: Optional[int] = None, telegram_id: Optional[int] = None,
+                                phone_number: Optional[str] = None, account_name: Optional[str] = None,
+                                full_name: Optional[str] = None, birthday: Optional[str] = None,
+                                primary_isp: Optional[str] = None, secondary_isp: Optional[str] = None,
+                                notification_pref: Optional[str] = None, custom_avatar: Optional[str] = None,
+                                telegram_username: Optional[str] = None) -> dict:
+        """
+        بروزرسانی یکپارچه مشخصات پروفایل مشتری در جدول‌های subscriptions و users
+        به همراه محاسبه خودکار امتیاز و درصد تکمیل پروفایل
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_str = get_now_naive().isoformat()
+        clean_phone = normalize_phone_number(phone_number) if phone_number else None
+
+        try:
+            sub_row = None
+            if sub_id:
+                cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (int(sub_id),))
+                sub_row = cursor.fetchone()
+                if sub_row:
+                    s_updates = ["updated_at = ?"]
+                    s_params = [now_str]
+                    if account_name is not None and account_name.strip():
+                        s_updates.append("account_name = ?")
+                        s_params.append(account_name.strip())
+                    if clean_phone:
+                        s_updates.append("phone_number = ?")
+                        s_params.append(clean_phone)
+                    if custom_avatar is not None and custom_avatar.strip():
+                        s_updates.append("custom_avatar = ?")
+                        s_params.append(custom_avatar.strip())
+                    if primary_isp is not None:
+                        s_updates.append("primary_isp = ?")
+                        s_params.append(primary_isp.strip())
+                    if secondary_isp is not None:
+                        s_updates.append("secondary_isp = ?")
+                        s_params.append(secondary_isp.strip())
+
+                    s_params.append(int(sub_id))
+                    cursor.execute(f"UPDATE subscriptions SET {', '.join(s_updates)} WHERE id = ?", s_params)
+
+            eff_tg_id = telegram_id or (sub_row["telegram_id"] if sub_row and sub_row["telegram_id"] and int(sub_row["telegram_id"]) > 0 else None)
+            eff_phone = clean_phone or (sub_row["phone_number"] if sub_row and sub_row["phone_number"] else None)
+
+            user_row = None
+            if eff_tg_id:
+                cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (int(eff_tg_id),))
+                user_row = cursor.fetchone()
+            if not user_row and eff_phone:
+                cursor.execute("SELECT * FROM users WHERE phone_number = ? ORDER BY id DESC LIMIT 1", (eff_phone,))
+                user_row = cursor.fetchone()
+
+            eval_acc = (account_name or (sub_row["account_name"] if sub_row else "")) or ""
+            eval_full = (full_name or (user_row["full_name"] if user_row else "")) or ""
+            eval_phone = (eff_phone or "")
+            eval_bday = (birthday or (user_row["birthday"] if user_row else "")) or ""
+            eval_isp = (primary_isp or (user_row["primary_isp"] if user_row else "")) or ""
+            eval_avatar = (custom_avatar or (user_row["custom_avatar"] if user_row else (sub_row["custom_avatar"] if sub_row else ""))) or ""
+
+            score = 0
+            if eval_acc.strip(): score += 20
+            if eval_full.strip(): score += 20
+            if eval_phone.strip(): score += 20
+            if eval_bday.strip(): score += 15
+            if eval_isp.strip(): score += 15
+            if eval_avatar.strip() or (eff_tg_id and int(eff_tg_id) > 0): score += 10
+            is_completed = 1 if score >= 80 else 0
+
+            if user_row:
+                u_updates = ["updated_at = ?", "profile_completed = ?"]
+                u_params = [now_str, is_completed]
+                if full_name is not None and full_name.strip():
+                    u_updates.append("full_name = ?")
+                    u_params.append(full_name.strip())
+                if clean_phone:
+                    u_updates.append("phone_number = ?")
+                    u_params.append(clean_phone)
+                if birthday is not None and birthday.strip():
+                    u_updates.append("birthday = ?")
+                    u_params.append(birthday.strip())
+                if primary_isp is not None:
+                    u_updates.append("primary_isp = ?")
+                    u_params.append(primary_isp.strip())
+                if secondary_isp is not None:
+                    u_updates.append("secondary_isp = ?")
+                    u_params.append(secondary_isp.strip())
+                if notification_pref is not None:
+                    u_updates.append("notification_pref = ?")
+                    u_params.append(notification_pref.strip())
+                if custom_avatar is not None and custom_avatar.strip():
+                    u_updates.append("custom_avatar = ?")
+                    u_params.append(custom_avatar.strip())
+                if telegram_username is not None and telegram_username.strip() and not user_row.get("is_verified"):
+                    u_updates.append("username = ?")
+                    u_params.append(telegram_username.strip().lstrip("@"))
+
+                u_params.append(user_row["id"])
+                cursor.execute(f"UPDATE users SET {', '.join(u_updates)} WHERE id = ?", u_params)
+            else:
+                new_tg = int(eff_tg_id) if eff_tg_id else 0
+                cursor.execute("""
+                    INSERT INTO users (
+                        telegram_id, username, phone_number, full_name, birthday,
+                        primary_isp, secondary_isp, notification_pref, custom_avatar,
+                        profile_completed, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    new_tg,
+                    (telegram_username or "").strip().lstrip("@"),
+                    clean_phone or "",
+                    (full_name or "").strip(),
+                    (birthday or "").strip(),
+                    (primary_isp or "").strip(),
+                    (secondary_isp or "").strip(),
+                    (notification_pref or "both").strip(),
+                    (custom_avatar or "").strip(),
+                    is_completed,
+                    now_str,
+                    now_str
+                ))
+
+            conn.commit()
+            return {
+                "success": True,
+                "score": score,
+                "is_completed": bool(is_completed),
+                "account_name": eval_acc,
+                "full_name": eval_full,
+                "phone_number": eval_phone,
+                "birthday": eval_bday,
+                "primary_isp": eval_isp,
+                "custom_avatar": eval_avatar
+            }
+        except Exception as e:
+            logger.error(f"Error updating customer profile: {e}")
+            return {"success": False, "error": str(e), "score": 0}
         finally:
             conn.close()
 
@@ -21606,7 +21811,7 @@ class Database:
             conn.close()
 
     def find_subscription_avatar(self, identifier: str) -> Optional[str]:
-        """یافتن آواتار اختصاصی بر اساس شناسه اشتراک، نام اکانت یا شماره تلفن"""
+        """یافتن آواتار اختصاصی بر اساس شناسه اشتراک، نام اکانت، شماره تلفن یا جدول کاربران"""
         if not identifier:
             return None
         conn = self.get_connection()
@@ -21614,12 +21819,21 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT custom_avatar FROM subscriptions 
-                WHERE (account_name=? OR phone_number=? OR hidify_uuid=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
+                WHERE (id=? OR account_name=? OR phone_number=? OR hidify_uuid=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
                 ORDER BY id DESC LIMIT 1
-            """, (str(identifier), str(identifier), str(identifier)))
+            """, (str(identifier), str(identifier), str(identifier), str(identifier)))
             row = cursor.fetchone()
             if row and row["custom_avatar"]:
                 return row["custom_avatar"]
+
+            cursor.execute("""
+                SELECT custom_avatar FROM users 
+                WHERE (telegram_id=? OR phone_number=? OR username=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
+                ORDER BY id DESC LIMIT 1
+            """, (str(identifier), str(identifier), str(identifier)))
+            u_row = cursor.fetchone()
+            if u_row and u_row["custom_avatar"]:
+                return u_row["custom_avatar"]
             return None
         except Exception:
             return None
