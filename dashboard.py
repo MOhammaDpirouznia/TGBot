@@ -13912,9 +13912,11 @@ def settings():
             portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
             portal_palette = request.form.get("portal_palette", "inherit").strip()
 
+            portal_new_customer_text = request.form.get("portal_new_customer_text", "").strip()
             db.save_setting("portal_proxy_path", portal_proxy_path)
             db.save_setting("portal_title", portal_title)
             db.save_setting("portal_subtitle", portal_subtitle)
+            db.save_setting("portal_new_customer_text", portal_new_customer_text)
             db.save_setting("support_phone", support_phone)
             db.save_setting("support_username", support_username)
             db.save_setting("portal_enable_renewal", portal_enable_renewal)
@@ -14151,6 +14153,7 @@ def settings():
         "user_proxy_path": db.get_setting("user_proxy_path") or os.getenv("USER_PROXY_PATH", "user").strip("/"),
         "portal_title": db.get_setting("portal_title", "فروشگاه اینترنت آزاد"),
         "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
+        "portal_new_customer_text": db.get_setting("portal_new_customer_text", "به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد."),
         "support_phone": db.get_setting("support_phone", ""),
         "support_username": db.get_setting("support_username", ""),
         "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
@@ -18939,6 +18942,7 @@ def reseller_branding():
         footer_text = request.form.get("footer_text", "").strip()
         portal_title = request.form.get("portal_title", "").strip()
         portal_subtitle = request.form.get("portal_subtitle", "").strip()
+        portal_new_customer_text = request.form.get("portal_new_customer_text", "").strip()
         support_phone = request.form.get("support_phone", "").strip()
         support_username = request.form.get("support_username", "").strip().lstrip("@")
         portal_layout = request.form.get("portal_layout", "").strip().lower()
@@ -18995,6 +18999,7 @@ def reseller_branding():
             "brand_title": brand_title,
             "portal_title": portal_title,
             "portal_subtitle": portal_subtitle,
+            "portal_new_customer_text": portal_new_customer_text,
             "support_phone": support_phone,
             "support_username": support_username,
             "logo_url": logo_url,
@@ -22066,6 +22071,21 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         if r_info.get("portal_plan_style"):
             portal_plan_style = r_info["portal_plan_style"]
 
+    raw_new_customer_text = ""
+    if reseller_id:
+        raw_new_customer_text = (r_info.get("portal_new_customer_text") or "").strip()
+    if not raw_new_customer_text:
+        raw_new_customer_text = (db.get_setting("portal_new_customer_text") or "").strip()
+    if not raw_new_customer_text:
+        raw_new_customer_text = "به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد."
+
+    effective_new_customer_text = (
+        raw_new_customer_text
+        .replace("{brand}", brand_title)
+        .replace("{brand_title}", brand_title)
+        .replace("{store_name}", brand_title)
+    )
+
     # دریافت پلن‌های مجاز تفکیک شده نماینده و مدیریت
     if reseller_id:
         raw_plans = db.get_reseller_active_plans(reseller_id)
@@ -22318,6 +22338,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         token=token,
         brand_title=brand_title,
         portal_subtitle=portal_subtitle,
+        effective_new_customer_text=effective_new_customer_text,
         logo_url=logo_url,
         favicon_url=favicon_url,
         support_username=support_username,

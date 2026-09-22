@@ -45,6 +45,17 @@
                                 <div class="form-text small">توضیحات کوتاه زیر نام برند شما در صفحه مشتری.</div>
                             </div>
 
+                            <div class="col-12">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-comment-dots me-1 text-info"></i> متن پیام خوش‌آمدگویی و خرید اولین اشتراک:
+                                </label>
+                                <textarea class="form-control" name="portal_new_customer_text" rows="2" 
+                                          placeholder="به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید...">{{ reseller.get('portal_new_customer_text') or 'به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد.' }}</textarea>
+                                <div class="form-text small">
+                                    متن نمایشی برای مشتریان جدید بدون اشتراک. با استفاده از کد <code>{brand}</code> در هر قسمت از متن، نام برند و عنوان پورتال شما به‌صورت خودکار جایگزین خواهد شد.
+                                </div>
+                            </div>
+
                             <div class="col-md-6">
                                 <label class="form-label fw-bold small">
                                     <i class="fas fa-phone-alt me-1 text-success"></i> شماره تماس پشتیبانی شما:

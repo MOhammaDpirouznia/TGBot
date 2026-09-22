@@ -1705,6 +1705,16 @@ function selectPalette(pid) {
                     <div class="form-text small">دکمه چت با پشتیبانی در تلگرام در انتهای پورتال مشتری تعبیه خواهد شد.</div>
                 </div>
 
+                <div class="col-12">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-comment-dots me-1 text-info"></i> متن پیام خوش‌آمدگویی و خرید اولین اشتراک (کاربران بدون اشتراک):
+                    </label>
+                    <textarea name="portal_new_customer_text" class="form-control" rows="2" placeholder="به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید...">{{ customer_portal_config.portal_new_customer_text or 'به {brand} خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد.' }}</textarea>
+                    <div class="form-text small">
+                        متنی که در بالای صفحه انتخاب و خرید بسته به کاربران بدون اشتراک نمایش داده می‌شود. با قرار دادن کد <code>{brand}</code> در هر قسمت از متن، نام برند و عنوان پورتال شما به‌صورت خودکار و هوشمند جایگزین خواهد شد.
+                    </div>
+                </div>
+
                 <div class="col-md-6">
                     <label class="form-label fw-bold small d-block">
                         <i class="fas fa-sliders-h me-1 text-warning"></i> امکانات و دسترسی‌های پورتال:

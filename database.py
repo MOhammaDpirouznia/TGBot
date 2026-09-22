@@ -1255,6 +1255,10 @@ class Database:
         except Exception:
             pass
         try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN portal_new_customer_text TEXT")
+        except Exception:
+            pass
+        try:
             cursor.execute("ALTER TABLE smart_invoices ADD COLUMN instant_activation INTEGER DEFAULT 1")
         except Exception:
             pass
@@ -17212,7 +17216,7 @@ class Database:
         try:
             allowed = [
                 "custom_domain", "tutorial_domain", "logo_url", "favicon_url",
-                "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username",
+                "brand_title", "portal_title", "portal_subtitle", "portal_new_customer_text", "support_phone", "support_username",
                 "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette",
                 "mini_app_splash_enabled", "mini_app_splash_title", "mini_app_splash_subtitle",
                 "mini_app_splash_image", "mini_app_menu_button_enabled", "mini_app_menu_button_text",
