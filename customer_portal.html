@@ -3492,6 +3492,12 @@
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
 
+            {% set safe_sub = sub if sub is mapping else {} %}
+            {% set used_gb = safe_sub.get('data_used', 0) | float %}
+            {% set total_gb = safe_sub.get('data_limit', 0) | float %}
+            {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+            {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
             <!-- ردیف ۱ بنتو ۱: تفکیک ۳ تایل اختصاصی (مهلت و حجم / پروفایل و مصرف / تحلیل و نمودار) -->
             <div class="row g-3 mb-3">
                 <!-- تایل ۱: مهلت انقضا و ترافیک باقیمانده -->
@@ -3733,6 +3739,12 @@
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
 
+            {% set safe_sub = sub if sub is mapping else {} %}
+            {% set used_gb = safe_sub.get('data_used', 0) | float %}
+            {% set total_gb = safe_sub.get('data_limit', 0) | float %}
+            {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+            {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
             <!-- ردیف ۱ بنتو ۲: دو ستونه با پاکسازی اضافات -->
             <div class="row g-3 mb-3">
                 <div class="col-md-7">
@@ -3941,8 +3953,9 @@
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
 
-            {% set used_gb = sub.get('data_used', 0) | float %}
-            {% set total_gb = sub.get('data_limit', 0) | float %}
+            {% set safe_sub = sub if sub is mapping else {} %}
+            {% set used_gb = safe_sub.get('data_used', 0) | float %}
+            {% set total_gb = safe_sub.get('data_limit', 0) | float %}
             {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
             {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
 
