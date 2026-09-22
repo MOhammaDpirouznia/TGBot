@@ -265,6 +265,66 @@ class TestCustomerRegistrationReferral(unittest.TestCase):
         self.assertIn("customerRefCodeInput", portal_html)
         self.assertIn(new_cust_phone, portal_html)
 
+    def test_telegram_auth_direct_flow(self):
+        """تست احراز هویت مستقیم تلگرام بدون نیاز به OAuth و بدون وابستگی به دامین"""
+        from dashboard import app
+
+        token = "test_token_1234567890abcdef"
+        created = self.test_db.create_telegram_auth_session(
+            token=token,
+            reseller_id=0,
+            referrer="09129999999",
+            origin_host="https://i.gotel.ir"
+        )
+        self.assertTrue(created)
+
+        # بررسی جلسه در حالت انتظار
+        sess = self.test_db.get_telegram_auth_session(token)
+        self.assertIsNotNone(sess)
+        self.assertEqual(sess["status"], "pending")
+        self.assertEqual(sess["referrer"], "09129999999")
+        self.assertEqual(sess["origin_host"], "https://i.gotel.ir")
+
+        # تست endpointهای dashboard
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        # ۱. تست init
+        init_res = client.post("/api/customer/telegram-auth/init", json={
+            "reseller_id": 0,
+            "ref": "09129999999",
+            "origin_host": "https://i.gotel.ir"
+        })
+        self.assertEqual(init_res.status_code, 200)
+        init_data = init_res.get_json()
+        self.assertTrue(init_data["success"])
+        self.assertIn("token", init_data)
+        self.assertIn("tg_url", init_data)
+        new_token = init_data["token"]
+
+        # ۲. تست check در حالت pending
+        chk_res = client.get(f"/api/customer/telegram-auth/check?token={new_token}")
+        self.assertEqual(chk_res.status_code, 200)
+        chk_data = chk_res.get_json()
+        self.assertEqual(chk_data["status"], "pending")
+
+        # ۳. تایید نشست توسط ربات
+        from database import db as live_db
+        approved = live_db.approve_telegram_auth_session(
+            token=new_token,
+            telegram_id=987654321,
+            first_name="Test User",
+            username="testuser"
+        )
+        self.assertTrue(approved)
+
+        # ۴. تست check بعد از تایید (باید approved و redirect_url بدهد)
+        chk_res2 = client.get(f"/api/customer/telegram-auth/check?token={new_token}")
+        self.assertEqual(chk_res2.status_code, 200)
+        chk_data2 = chk_res2.get_json()
+        self.assertEqual(chk_data2["status"], "approved")
+        self.assertIn("/portal", chk_data2["redirect_url"])
+
 
 if __name__ == "__main__":
     unittest.main()

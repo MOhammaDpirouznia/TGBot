@@ -275,10 +275,10 @@
 
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Telegram Widget JS -->
-    <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
 
     <script>
+        let tgAuthPollInterval = null;
+
         function handleTelegramAuth() {
             const btn = document.getElementById('btnTgQuickAuth');
             const text = document.getElementById('tgBtnText');
@@ -298,30 +298,70 @@
                 return;
             }
 
-            // ۲. ویجت رسمی لاگین تلگرام در مرورگر در صورت وجود
-            const botId = '{{ bot_id or "" }}';
-            if (window.Telegram && window.Telegram.Login && window.Telegram.Login.auth && botId) {
-                if (text) text.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>در حال ورود...';
-                window.Telegram.Login.auth({ bot_id: botId, request_access: true }, function(data) {
-                    if (data && data.id) {
-                        sendTelegramAuthPayload(data);
-                    } else {
-                        if (text) text.textContent = 'ورود با تلگرام';
-                    }
-                });
-                return;
-            }
+            // ۲. در مرورگرهای وب: اتصال مستقیم با ربات تلگرام بدون نیاز به OAuth و بدون خطای دامنه
+            const refParam = document.getElementById('referrerPhone')?.value.trim() || '{{ prefilled_ref or "" }}';
+            const resellerId = '{{ reseller_id or 0 }}';
 
-            // ۳. هدایت به ربات تلگرام جهت احراز هویت مستقیم
-            const botUser = '{{ bot_username or "" }}';
-            if (botUser) {
-                const refParam = '{{ prefilled_ref or "" }}';
-                let tgUrl = `https://t.me/${botUser}?start=portal`;
-                if (refParam) tgUrl += `_ref_${encodeURIComponent(refParam)}`;
-                window.location.href = tgUrl;
-            } else {
-                alert('ربات تلگرام در سامانه مشخص نشده است.');
-            }
+            if (btn) btn.disabled = true;
+            if (text) text.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>در حال اتصال به تلگرام...';
+
+            fetch('/api/customer/telegram-auth/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reseller_id: resellerId,
+                    ref: refParam,
+                    origin_host: window.location.origin
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.tg_url) {
+                    // باز کردن مستقیم ربات تلگرام
+                    const tgWin = window.open(data.tg_url, '_blank');
+                    if (!tgWin) {
+                        window.location.href = data.tg_url;
+                        return;
+                    }
+
+                    if (text) text.innerHTML = '<span class="spinner-border spinner-border-sm text-info me-1"></span>در انتظار تایید در تلگرام...';
+
+                    // بررسی دوره‌ای تایید کاربر در تلگرام (Polling هر ۱.۵ ثانیه)
+                    if (tgAuthPollInterval) clearInterval(tgAuthPollInterval);
+                    const startTime = Date.now();
+
+                    tgAuthPollInterval = setInterval(() => {
+                        // تا ۳ دقیقه منتظر می‌مانیم
+                        if (Date.now() - startTime > 180000) {
+                            clearInterval(tgAuthPollInterval);
+                            if (btn) btn.disabled = false;
+                            if (text) text.textContent = 'ورود با تلگرام';
+                            return;
+                        }
+
+                        fetch(`/api/customer/telegram-auth/check?token=${encodeURIComponent(data.token)}`)
+                        .then(r => r.json())
+                        .then(chk => {
+                            if (chk.status === 'approved' && chk.redirect_url) {
+                                clearInterval(tgAuthPollInterval);
+                                if (text) text.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i>تایید شد! در حال انتقال...';
+                                window.location.href = chk.redirect_url;
+                            }
+                        })
+                        .catch(() => {});
+                    }, 1500);
+
+                } else {
+                    if (btn) btn.disabled = false;
+                    if (text) text.textContent = 'ورود با تلگرام';
+                    alert(data.error || 'ربات تلگرام در سامانه مشخص نشده است.');
+                }
+            })
+            .catch(err => {
+                if (btn) btn.disabled = false;
+                if (text) text.textContent = 'ورود با تلگرام';
+                alert('خطا در برقراری ارتباط با سرور.');
+            });
         }
 
         function sendTelegramAuthPayload(payload) {

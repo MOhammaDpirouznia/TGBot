@@ -1875,7 +1875,7 @@
                 {% endif %}
 
                 <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'admin_auto_backup', 'settings', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1917,6 +1917,11 @@
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'admin_security' %}active{% endif %}" href="{{ url_for('admin_security') }}">
                             <i class="fas fa-shield-alt text-primary"></i> امنیت سیستم
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_auto_backup' %}active{% endif %}" href="{{ url_for('admin_auto_backup') }}">
+                            <i class="fas fa-cloud-arrow-up text-primary"></i> پشتیبان‌گیری خودکار
                         </a>
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' %}

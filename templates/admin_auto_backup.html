@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+
+{% block title %}پشتیبان‌گیری خودکار - پنل مدیریت{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0 px-md-3">
+    <!-- هدر صفحه -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h4 class="mb-1 text-dark fw-bold">
+                <i class="fas fa-cloud-arrow-up text-primary me-2"></i> سامانه جامع پشتیبان‌گیری خودکار
+            </h4>
+            <div class="text-muted small">
+                پشتیبان‌گیری هوشمند از پایگاه داده، اطلاعات نمایندگان و پنل هیدیفای با ارسال مستقیم به کانال تلگرام
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary" onclick="triggerManualBackup('main_panel', this)">
+                <i class="fas fa-database me-1"></i> تهیه فوری بکاپ پنل اصلی
+            </button>
+            <button type="button" class="btn btn-outline-info" onclick="triggerManualBackup('hiddify', this)">
+                <i class="fas fa-server me-1"></i> تهیه فوری بکاپ هیدیفای
+            </button>
+        </div>
+    </div>
+
+    <!-- فلش‌مسیج‌ها -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm border-0" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- بنر هشدار لغو ارسال به پی‌وی ادمین -->
+    <div class="alert alert-info border-0 shadow-sm d-flex align-items-center gap-3 mb-4 py-2 px-3">
+        <i class="fas fa-circle-check fs-4 text-info flex-shrink-0"></i>
+        <div class="small">
+            <strong>نکته مهم:</strong> شیوه قدیمی ارسال پشتیبان به چت خصوصی ادمین به طور کامل <strong>لغو</strong> شده است. تمامی پشتیبان‌ها به صورت فشرده و ایمن به <strong>کانال یا گروه تلگرامی</strong> که در زیر تنظیم می‌کنید ارسال خواهند شد.
+        </div>
+    </div>
+
+    <!-- کارت‌های آمار وضعیت سیستم -->
+    <div class="row g-3 mb-4">
+        <!-- وضعیت پنل اصلی -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">بکاپ پنل اصلی و نمایندگان</span>
+                        {% if backup_main_enabled %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">فعال</span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">غیرفعال</span>
+                        {% endif %}
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark">
+                        {% if backup_stats.last_main %}
+                            {{ backup_stats.last_main.created_at[:10] }}
+                        {% else %}
+                            <span class="text-muted small">هنوز رکوردی ثبت نشده</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">
+                        {% if backup_stats.last_main %}
+                            حجم: {{ (backup_stats.last_main.backup_size / 1024)|round(1) }} KB
+                        {% else %}
+                            آماده پشتیبان‌گیری
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- وضعیت پنل هیدیفای -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">بکاپ پنل هیدیفای</span>
+                        {% if backup_hiddify_enabled %}
+                            <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill">فعال</span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">غیرفعال</span>
+                        {% endif %}
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark">
+                        {% if backup_stats.last_hiddify %}
+                            {{ backup_stats.last_hiddify.created_at[:10] }}
+                        {% else %}
+                            <span class="text-muted small">هنوز رکوردی ثبت نشده</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">
+                        {% if backup_stats.last_hiddify %}
+                            حجم: {{ (backup_stats.last_hiddify.backup_size / 1024)|round(1) }} KB
+                        {% else %}
+                            پیکربندی و کاربران
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- مقصد ارسال تلگرام -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">مقصد ارسال تلگرام</span>
+                        <i class="fab fa-telegram text-primary fs-5"></i>
+                    </div>
+                    <div class="h6 mb-1 fw-bold text-dark font-monospace text-truncate" title="{{ backup_telegram_target or 'تنظیم نشده' }}">
+                        {{ backup_telegram_target or 'تنظیم نشده' }}
+                    </div>
+                    <div class="text-muted small">
+                        کانال یا گروه تلگرام
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- شاخص‌های سیستم -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">اطلاعات تحت حفاظت</span>
+                        <i class="fas fa-shield-halved text-success fs-5"></i>
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark">
+                        {{ "{:,}".format(system_metrics.total_subscriptions) }} <span class="small fw-normal text-muted">اشتراک</span>
+                    </div>
+                    <div class="text-muted small">
+                        {{ system_metrics.active_resellers }} نماینده | {{ system_metrics.db_size_mb }} MB دیتابیس
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ردیف فرم تنظیمات و راهنما -->
+    <div class="row g-4 mb-4">
+        <!-- ستون تنظیمات -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-3">
+                <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fw-bold text-dark">
+                        <i class="fas fa-gear text-primary me-2"></i> تنظیمات زمان‌بندی و مقصد پشتیبان‌گیری
+                    </h5>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 rounded-pill small">
+                        پیکربندی هوشمند
+                    </span>
+                </div>
+                <div class="card-body p-4">
+                    <form action="{{ url_for('save_auto_backup_settings') }}" method="POST" id="backupSettingsForm">
+                        <!-- سوئیچ‌های فعالسازی -->
+                        <div class="mb-4 p-3 bg-light rounded-3">
+                            <h6 class="fw-bold mb-3 text-secondary">
+                                <i class="fas fa-toggle-on text-primary me-1"></i> انتخاب بخش‌های تحت پشتیبان‌گیری:
+                            </h6>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="backupMainEnabled" name="backup_main_enabled" value="1" {% if backup_main_enabled %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="backupMainEnabled">
+                                    پشتیبان‌گیری از دیتابیس پنل اصلی و نمایندگان
+                                </label>
+                                <div class="text-muted small mt-1">
+                                    شامل تمام کاربران، اشتراک‌ها، سوابق تمدید، تراکنش‌ها، کارت‌های بانکی، کیف پول‌ها و تنظیمات به صورت فایل زیپ فشرده.
+                                </div>
+                            </div>
+
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="backupHiddifyEnabled" name="backup_hiddify_enabled" value="1" {% if backup_hiddify_enabled %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="backupHiddifyEnabled">
+                                    پشتیبان‌گیری از پنل هیدیفای (Hiddify)
+                                </label>
+                                <div class="text-muted small mt-1">
+                                    دریافت خروجی کامل JSON از تمامی کاربران، دامنه‌ها و تنظیمات سرور هیدیفای.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- فیلد شناسه کانال یا گروه تلگرام -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fab fa-telegram text-primary me-1"></i> شناسه کانال یا گروه تلگرام مقصد:
+                            </label>
+                            <div class="input-group">
+                                <input type="text" name="backup_telegram_target" id="backupTelegramTarget" class="form-control font-monospace" placeholder="مثال: -1001234567890 یا @my_backup_channel" value="{{ backup_telegram_target or '' }}">
+                                <button type="button" class="btn btn-outline-info" id="btnTestConnection" onclick="testTelegramTarget()">
+                                    <i class="fas fa-paper-plane me-1"></i> تست آنلاین اتصال
+                                </button>
+                            </div>
+                            <div class="form-text small text-muted mt-1">
+                                ربات تلگرام باید در این کانال یا گروه <strong>عضو و ادمین</strong> باشد تا بتواند فایل را ارسال کند.
+                            </div>
+                            <div id="testConnResult" class="mt-2" style="display: none;"></div>
+                        </div>
+
+                        <!-- شیوه زمان‌بندی -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold mb-2">
+                                <i class="fas fa-clock text-warning me-1"></i> نحوه زمان‌بندی اجرای پشتیبان‌گیری:
+                            </label>
+
+                            <!-- رادیو گزینه‌ها -->
+                            <div class="d-flex gap-4 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="backup_schedule_type" id="schedTypeInterval" value="interval" {% if backup_schedule_type != 'fixed_hours' %}checked{% endif %} onchange="toggleScheduleUI()">
+                                    <label class="form-check-label fw-bold" for="schedTypeInterval">
+                                        اجرای دوره‌ای (هر چند ساعت یکبار)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="backup_schedule_type" id="schedTypeFixed" value="fixed_hours" {% if backup_schedule_type == 'fixed_hours' %}checked{% endif %} onchange="toggleScheduleUI()">
+                                    <label class="form-check-label fw-bold" for="schedTypeFixed">
+                                        ساعات مشخص شبانه‌روز
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- بخش انتخاب بازه ساعتی -->
+                            <div id="intervalScheduleBox" class="p-3 bg-light rounded-3 mb-3" style="{% if backup_schedule_type == 'fixed_hours' %}display: none;{% endif %}">
+                                <label class="form-label small fw-bold">فاصله زمانی بین هر پشتیبان‌گیری:</label>
+                                <select name="backup_interval_hours" class="form-select">
+                                    <option value="2" {% if backup_interval_hours == '2' %}selected{% endif %}>هر ۲ ساعت یکبار</option>
+                                    <option value="4" {% if backup_interval_hours == '4' %}selected{% endif %}>هر ۴ ساعت یکبار</option>
+                                    <option value="6" {% if backup_interval_hours == '6' or not backup_interval_hours %}selected{% endif %}>هر ۶ ساعت یکبار (پیشنهادی)</option>
+                                    <option value="8" {% if backup_interval_hours == '8' %}selected{% endif %}>هر ۸ ساعت یکبار</option>
+                                    <option value="12" {% if backup_interval_hours == '12' %}selected{% endif %}>هر ۱۲ ساعت یکبار</option>
+                                    <option value="24" {% if backup_interval_hours == '24' %}selected{% endif %}>هر ۲۴ ساعت (یکبار در روز)</option>
+                                </select>
+                            </div>
+
+                            <!-- بخش انتخاب ساعات مشخص شبانه‌روز -->
+                            <div id="fixedHoursScheduleBox" class="p-3 bg-light rounded-3 mb-3" style="{% if backup_schedule_type != 'fixed_hours' %}display: none;{% endif %}">
+                                <label class="form-label small fw-bold mb-2">ساعت‌های اجرای خودکار در طول شبانه‌روز را انتخاب کنید:</label>
+                                <div class="d-flex flex-wrap gap-2 mb-2" id="hourPillsContainer">
+                                    {% set active_hours = backup_fixed_hours.split(',') if backup_fixed_hours else ['00','06','12','18'] %}
+                                    {% for h in range(24) %}
+                                        {% set h_str = "%02d"|format(h) %}
+                                        {% set is_selected = h_str in active_hours or (h|string) in active_hours %}
+                                        <button type="button" class="btn btn-sm {% if is_selected %}btn-primary active{% else %}btn-outline-secondary{% endif %} rounded-pill hour-pill" data-hour="{{ h_str }}" onclick="toggleHourPill(this)" style="min-width: 48px;">
+                                            {{ h_str }}:00
+                                        </button>
+                                    {% endfor %}
+                                </div>
+                                <input type="hidden" name="backup_fixed_hours" id="backupFixedHoursInput" value="{{ backup_fixed_hours or '00,06,12,18' }}">
+                                <div class="form-text small text-muted">
+                                    روی ساعت‌های دلخواه کلیک کنید تا فعال/غیرفعال شوند.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary px-4">
+                                <i class="fas fa-save me-1"></i> ذخیره تنظیمات پشتیبان‌گیری
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ستون راهنمای گام‌به‌گام اتصال به تلگرام -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-3 h-100">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark">
+                        <i class="fas fa-circle-question text-info me-2"></i> راهنمای راه‌اندازی کانال یا گروه تلگرام
+                    </h6>
+                </div>
+                <div class="card-body p-4">
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px;">۱</div>
+                        <div>
+                            <div class="fw-bold small mb-1">ساخت کانال یا گروه اختصاصی</div>
+                            <div class="text-muted small">در تلگرام یک کانال یا گروه خصوصی (Private) با نام دلخواه مثل «بکاپ‌های سیستم» ایجاد کنید.</div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px;">۲</div>
+                        <div>
+                            <div class="fw-bold small mb-1">افزودن ربات به عنوان مدیر (Admin)</div>
+                            <div class="text-muted small">ربات تلگرام خود را به کانال اضافه کرده و دسترسی‌های <strong>ارسال پیام (Send Messages)</strong> و <strong>ارسال فایل و رسانه (Send Media / Files)</strong> را فعال کنید.</div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px;">۳</div>
+                        <div>
+                            <div class="fw-bold small mb-1">استخراج شناسه عددی (Chat ID)</div>
+                            <div class="text-muted small">
+                                یک پیام در کانال ارسال کرده و آن را به ربات <code class="font-monospace">@userinfobot</code> یا <code class="font-monospace">@JsonDumpBot</code> فوروارد کنید تا شناسه عددی (معمولاً با <code class="font-monospace">-100</code> شروع می‌شود) را دریافت نمایید.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3">
+                        <div class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px;">۴</div>
+                        <div>
+                            <div class="fw-bold small mb-1">تست و اعتبارسنجی آنلاین</div>
+                            <div class="text-muted small">شناسه را در کادر روبرو قرار داده و دکمه <strong>«تست آنلاین اتصال»</strong> را بزنید تا پیام تایید در کانال شما ظاهر شود.</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="p-3 bg-light rounded-3">
+                        <div class="fw-bold text-dark small mb-1"><i class="fas fa-lock text-success me-1"></i> امنیت و محرمانگی داده‌ها:</div>
+                        <div class="text-muted small">
+                            تمام فایل‌های بکاپ دیتابیس پنل اصلی به صورت فشرده با فرمت Zip ارسال می‌شوند و اطلاعات حساس در ترانزیت امن تلگرام محافظت می‌گردند.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- بخش گزارشات و لاگ‌های تفکیک‌شده -->
+    <div class="card border-0 shadow-sm rounded-3 mb-5">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0 fw-bold text-dark">
+                    <i class="fas fa-list-check text-success me-2"></i> سوابق و گزارشات پشتیبان‌گیری‌های انجام‌شده
+                </h5>
+                <div class="text-muted small">تفکیک کامل گزارشات پنل اصلی و هیدیفای همراه با وضعیت، حجم و متادیتا</div>
+            </div>
+            <!-- تب‌های تفکیک پنل اصلی و هیدیفای -->
+            <ul class="nav nav-pills" id="backupReportTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active rounded-pill px-3 py-1 small fw-bold" id="main-tab" data-bs-toggle="pill" data-bs-target="#tab-main-backups" type="button" role="tab">
+                        <i class="fas fa-database me-1"></i> پنل اصلی و نمایندگان ({{ main_logs|length }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link rounded-pill px-3 py-1 small fw-bold" id="hiddify-tab" data-bs-toggle="pill" data-bs-target="#tab-hiddify-backups" type="button" role="tab">
+                        <i class="fas fa-server me-1"></i> پنل هیدیفای ({{ hiddify_logs|length }})
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body p-0">
+            <div class="tab-content" id="backupTabContent">
+                <!-- تب ۱: گزارشات پنل اصلی -->
+                <div class="tab-pane fade show active" id="tab-main-backups" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th class="ps-4">شناسه</th>
+                                    <th>تاریخ و زمان</th>
+                                    <th>نوع اجرا</th>
+                                    <th>حجم فایل</th>
+                                    <th>تعداد کل مشتریان</th>
+                                    <th>اشتراک‌های فعال</th>
+                                    <th>نمایندگان</th>
+                                    <th>وضعیت ارسال</th>
+                                    <th>مقصد</th>
+                                    <th class="text-center pe-4">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if main_logs %}
+                                    {% for row in main_logs %}
+                                        {% set details = row.parsed_details %}
+                                        <tr>
+                                            <td class="ps-4 text-muted small font-monospace">#{{ row.id }}</td>
+                                            <td class="fw-bold small">{{ row.shamsi_created or row.created_at[:19] }}</td>
+                                            <td>
+                                                {% if row.trigger_type == 'manual' %}
+                                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">دستی</span>
+                                                {% else %}
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">خودکار</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="small font-monospace">{{ (row.backup_size / 1024)|round(1) }} KB</td>
+                                            <td class="small fw-bold">{{ "{:,}".format(details.total_subscriptions or 0) if details else '-' }}</td>
+                                            <td class="small text-success fw-bold">{{ "{:,}".format(details.active_subscriptions or 0) if details else '-' }}</td>
+                                            <td class="small">{{ details.active_resellers if details else '-' }}</td>
+                                            <td>
+                                                {% if row.status == 'success' %}
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                                                        <i class="fas fa-check me-1"></i> موفق
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill" title="{{ row.error_message or 'خطای نامشخص' }}">
+                                                        <i class="fas fa-triangle-exclamation me-1"></i> ناموفق
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="small font-monospace text-truncate" style="max-width: 140px;" title="{{ row.target_chat or 'بدون مقصد' }}">
+                                                {{ row.target_chat or '-' }}
+                                            </td>
+                                            <td class="text-center pe-4">
+                                                {% if row.backup_file %}
+                                                    <a href="{{ url_for('download_auto_backup', backup_id=row.id) }}" class="btn btn-sm btn-outline-primary py-1 px-2" title="دانلود مستقیم فایل">
+                                                        <i class="fas fa-download"></i>
+                                                    </a>
+                                                {% else %}
+                                                    <span class="text-muted small">-</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="10" class="text-center py-5 text-muted">
+                                            <i class="fas fa-inbox fs-3 mb-2 d-block"></i>
+                                            هنوز هیچ رکوردی برای پشتیبان‌گیری پنل اصلی ثبت نشده است.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- تب ۲: گزارشات پنل هیدیفای -->
+                <div class="tab-pane fade" id="tab-hiddify-backups" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th class="ps-4">شناسه</th>
+                                    <th>تاریخ و زمان</th>
+                                    <th>نوع اجرا</th>
+                                    <th>حجم فایل</th>
+                                    <th>تعداد کاربران هیدیفای</th>
+                                    <th>تعداد دامنه‌ها</th>
+                                    <th>وضعیت ارسال</th>
+                                    <th>مقصد</th>
+                                    <th class="text-center pe-4">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if hiddify_logs %}
+                                    {% for row in hiddify_logs %}
+                                        {% set details = row.parsed_details %}
+                                        <tr>
+                                            <td class="ps-4 text-muted small font-monospace">#{{ row.id }}</td>
+                                            <td class="fw-bold small">{{ row.shamsi_created or row.created_at[:19] }}</td>
+                                            <td>
+                                                {% if row.trigger_type == 'manual' %}
+                                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">دستی</span>
+                                                {% else %}
+                                                    <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill">خودکار</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="small font-monospace">{{ (row.backup_size / 1024)|round(1) }} KB</td>
+                                            <td class="small fw-bold">{{ "{:,}".format(details.users_count or 0) if details else '-' }}</td>
+                                            <td class="small">{{ details.domains_count if details else '-' }}</td>
+                                            <td>
+                                                {% if row.status == 'success' %}
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                                                        <i class="fas fa-check me-1"></i> موفق
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill" title="{{ row.error_message or 'خطای نامشخص' }}">
+                                                        <i class="fas fa-triangle-exclamation me-1"></i> ناموفق
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="small font-monospace text-truncate" style="max-width: 140px;" title="{{ row.target_chat or 'بدون مقصد' }}">
+                                                {{ row.target_chat or '-' }}
+                                            </td>
+                                            <td class="text-center pe-4">
+                                                {% if row.backup_file %}
+                                                    <a href="{{ url_for('download_auto_backup', backup_id=row.id) }}" class="btn btn-sm btn-outline-info py-1 px-2" title="دانلود مستقیم فایل">
+                                                        <i class="fas fa-download"></i>
+                                                    </a>
+                                                {% else %}
+                                                    <span class="text-muted small">-</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9" class="text-center py-5 text-muted">
+                                            <i class="fas fa-inbox fs-3 mb-2 d-block"></i>
+                                            هنوز هیچ رکوردی برای پشتیبان‌گیری هیدیفای ثبت نشده است.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleScheduleUI() {
+    const isFixed = document.getElementById('schedTypeFixed').checked;
+    document.getElementById('intervalScheduleBox').style.display = isFixed ? 'none' : 'block';
+    document.getElementById('fixedHoursScheduleBox').style.display = isFixed ? 'block' : 'none';
+}
+
+function toggleHourPill(btn) {
+    btn.classList.toggle('active');
+    btn.classList.toggle('btn-primary');
+    btn.classList.toggle('btn-outline-secondary');
+    
+    // بروزرسانی مقدار اینپوت هیدن
+    const activePills = document.querySelectorAll('#hourPillsContainer .hour-pill.active');
+    const hours = Array.from(activePills).map(p => p.getAttribute('data-hour')).sort();
+    document.getElementById('backupFixedHoursInput').value = hours.join(',');
+}
+
+async function testTelegramTarget() {
+    const targetInput = document.getElementById('backupTelegramTarget');
+    const target = targetInput.value.trim();
+    const resBox = document.getElementById('testConnResult');
+    const btn = document.getElementById('btnTestConnection');
+
+    if (!target) {
+        resBox.style.display = 'block';
+        resBox.innerHTML = '<div class="alert alert-warning py-2 mb-0 small">لطفاً شناسه کانال یا گروه تلگرام را وارد نمایید.</div>';
+        return;
+    }
+
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تست...';
+    btn.disabled = true;
+    resBox.style.display = 'none';
+
+    try {
+        const resp = await fetch('{{ url_for("test_auto_backup_connection") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target_chat: target})
+        });
+        const data = await resp.json();
+        resBox.style.display = 'block';
+        if (data.success) {
+            resBox.innerHTML = `<div class="alert alert-success py-2 mb-0 small"><i class="fas fa-check-circle me-1"></i> ${data.message}</div>`;
+        } else {
+            resBox.innerHTML = `<div class="alert alert-danger py-2 mb-0 small"><i class="fas fa-times-circle me-1"></i> ${data.error || 'خطا در برقراری ارتباط با تلگرام.'}</div>`;
+        }
+    } catch (err) {
+        resBox.style.display = 'block';
+        resBox.innerHTML = `<div class="alert alert-danger py-2 mb-0 small">خطا در ارسال درخواست تست: ${err.message}</div>`;
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function triggerManualBackup(type, btn) {
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تهیه و ارسال...';
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('{{ url_for("trigger_auto_backup") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({backup_type: type})
+        });
+        const data = await resp.json();
+        if (data.success) {
+            alert('عملیات با موفقیت انجام شد: ' + (data.message || 'پشتیبان با موفقیت تهیه و به تلگرام ارسال گردید.'));
+            window.location.reload();
+        } else {
+            alert('خطا در پشتیبان‌گیری: ' + (data.error || 'عملیات ناموفق بود.'));
+        }
+    } catch (err) {
+        alert('خطای سیستمی: ' + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+</script>
+{% endblock %}

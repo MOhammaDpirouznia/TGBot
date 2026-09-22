@@ -14452,6 +14452,146 @@ def upload_backup():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# سامانه جامع پشتیبان‌گیری خودکار سیستم (Automated Universal Backup)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/auto-backup", methods=["GET"])
+@super_admin_required
+def admin_auto_backup():
+    """صفحه اختصاصی مدیریت و پشتیبان‌گیری خودکار سیستم"""
+    backup_main_enabled = db.get_setting("backup_main_enabled", "1") == "1"
+    backup_hiddify_enabled = db.get_setting("backup_hiddify_enabled", "1") == "1"
+    backup_telegram_target = db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")
+    backup_schedule_type = db.get_setting("backup_schedule_type", "interval")
+    backup_interval_hours = db.get_setting("backup_interval_hours", "6")
+    backup_fixed_hours = db.get_setting("backup_fixed_hours", "00,06,12,18")
+
+    backup_stats = db.get_backup_stats()
+    system_metrics = db.get_system_backup_metrics()
+    main_logs = db.get_backup_logs(backup_type="main_panel", limit=50)
+    hiddify_logs = db.get_backup_logs(backup_type="hiddify", limit=50)
+
+    for row in main_logs:
+        try:
+            row["parsed_details"] = json.loads(row["details_json"]) if row.get("details_json") else {}
+        except Exception:
+            row["parsed_details"] = {}
+        try:
+            row["shamsi_created"] = gregorian_to_shamsi_full(row["created_at"])
+        except Exception:
+            row["shamsi_created"] = row.get("created_at", "")
+
+    for row in hiddify_logs:
+        try:
+            row["parsed_details"] = json.loads(row["details_json"]) if row.get("details_json") else {}
+        except Exception:
+            row["parsed_details"] = {}
+        try:
+            row["shamsi_created"] = gregorian_to_shamsi_full(row["created_at"])
+        except Exception:
+            row["shamsi_created"] = row.get("created_at", "")
+
+    return render_template(
+        "admin_auto_backup.html",
+        backup_main_enabled=backup_main_enabled,
+        backup_hiddify_enabled=backup_hiddify_enabled,
+        backup_telegram_target=backup_telegram_target,
+        backup_schedule_type=backup_schedule_type,
+        backup_interval_hours=backup_interval_hours,
+        backup_fixed_hours=backup_fixed_hours,
+        backup_stats=backup_stats,
+        system_metrics=system_metrics,
+        main_logs=main_logs,
+        hiddify_logs=hiddify_logs
+    )
+
+
+@app.route("/admin/auto-backup/settings", methods=["POST"])
+@super_admin_required
+def save_auto_backup_settings():
+    """ذخیره تنظیمات پشتیبان‌گیری خودکار"""
+    main_enabled = "1" if request.form.get("backup_main_enabled") in ["1", "on", "true"] else "0"
+    hiddify_enabled = "1" if request.form.get("backup_hiddify_enabled") in ["1", "on", "true"] else "0"
+    target_chat = request.form.get("backup_telegram_target", "").strip()
+    schedule_type = request.form.get("backup_schedule_type", "interval")
+    interval_hours = request.form.get("backup_interval_hours", "6").strip()
+    fixed_hours = request.form.get("backup_fixed_hours", "00,06,12,18").strip()
+
+    db.set_setting("backup_main_enabled", main_enabled)
+    db.set_setting("backup_hiddify_enabled", hiddify_enabled)
+    db.set_setting("backup_telegram_target", target_chat)
+    db.set_setting("hiddify_backup_channel_id", target_chat)
+    db.set_setting("backup_schedule_type", schedule_type)
+    db.set_setting("backup_interval_hours", interval_hours)
+    db.set_setting("backup_fixed_hours", fixed_hours)
+    db.set_setting("backup_send_to_admin", "0")
+
+    flash("تنظیمات جامع پشتیبان‌گیری خودکار با موفقیت ذخیره گردید.", "success")
+    return redirect(url_for("admin_auto_backup"))
+
+
+@app.route("/admin/auto-backup/test-connection", methods=["POST"])
+@super_admin_required
+def test_auto_backup_connection():
+    """تست آنلاین اتصال ربات به کانال/گروه تلگرام"""
+    data = request.get_json(silent=True) or request.form
+    target_chat = data.get("target_chat", "").strip()
+    from backup import test_telegram_connection
+    res = test_telegram_connection(target_chat)
+    return jsonify(res)
+
+
+@app.route("/admin/auto-backup/trigger", methods=["POST"])
+@super_admin_required
+def trigger_auto_backup():
+    """اجرای فوری پشتیبان‌گیری دستی و ارسال به تلگرام"""
+    data = request.get_json(silent=True) or request.form
+    b_type = data.get("backup_type", "main_panel")
+
+    if b_type == "hiddify":
+        from backup import trigger_hiddify_panel_backup
+        res = trigger_hiddify_panel_backup(trigger_type="manual")
+    else:
+        from backup import trigger_main_panel_backup
+        res = trigger_main_panel_backup(trigger_type="manual")
+
+    if res.get("success"):
+        label = "پنل هیدیفای" if b_type == "hiddify" else "پنل اصلی"
+        return jsonify({
+            "success": True,
+            "message": f"پشتیبان‌گیری {label} با موفقیت انجام و به کانال/گروه تلگرام ارسال گردید.",
+            "data": res
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": res.get("error", "خطای ناشناخته در پشتیبان‌گیری")
+        })
+
+
+@app.route("/admin/auto-backup/download/<int:backup_id>")
+@super_admin_required
+def download_auto_backup(backup_id):
+    """دانلود مستقیم فایل پشتیبان از سوابق"""
+    from backup import BACKUP_DIR
+    row = db.get_backup_log_by_id(backup_id)
+    if not row or not row.get("backup_file"):
+        flash("فایل پشتیبان مورد نظر در سوابق سیستم یافت نشد.", "danger")
+        return redirect(url_for("admin_auto_backup"))
+
+    fpath = BACKUP_DIR / row["backup_file"]
+    if not fpath.exists():
+        flash(f"فایل فیزیکی {row['backup_file']} روی دیسک سرور یافت نشد.", "warning")
+        return redirect(url_for("admin_auto_backup"))
+
+    return send_file(
+        str(fpath),
+        as_attachment=True,
+        download_name=row["backup_file"]
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # پنل اختصاصی نمایندگان و همکاران فروش (Reseller Portal Routes)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -21104,6 +21244,88 @@ def customer_register():
         reseller_id=effective_r_id,
         prefilled_ref=prefilled_ref
     )
+
+
+@app.route("/api/customer/telegram-auth/init", methods=["POST"])
+def api_customer_telegram_auth_init():
+    """ایجاد نشست اتصال مستقیم با ربات تلگرام و تولید لینک اختصاصی t.me"""
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    r_val = data.get("reseller_id") or request.args.get("r")
+    effective_r_id = 0
+    if g.get("custom_reseller") and g.custom_reseller.get("id"):
+        effective_r_id = int(g.custom_reseller["id"])
+    elif r_val:
+        try:
+            effective_r_id = int(r_val)
+        except (ValueError, TypeError):
+            effective_r_id = 0
+
+    ref_code = str(data.get("ref") or "").strip()
+    origin_host = str(data.get("origin_host") or request.host_url).rstrip("/")
+
+    import secrets
+    auth_token = secrets.token_hex(6)
+
+    # ثبت در جدول نشست‌های تلگرام
+    db.create_telegram_auth_session(
+        token=auth_token,
+        reseller_id=effective_r_id,
+        referrer=ref_code,
+        origin_host=origin_host
+    )
+
+    bot_username = db.get_setting("bot_username") or os.getenv("BOT_USERNAME", "")
+    if not bot_username:
+        tok = get_bot_token()
+        if tok:
+            try:
+                import httpx
+                resp = httpx.get(f"https://api.telegram.org/bot{tok}/getMe", timeout=3.0)
+                if resp.status_code == 200:
+                    b_user = resp.json().get("result", {}).get("username")
+                    if b_user:
+                        bot_username = b_user
+                        db.set_setting("bot_username", bot_username)
+            except Exception:
+                pass
+
+    clean_bot_user = (bot_username or "").lstrip("@")
+    ref_suffix = f"_ref_{ref_code}" if ref_code else ""
+    tg_url = f"https://t.me/{clean_bot_user}?start=portal_auth_{auth_token}{ref_suffix}" if clean_bot_user else ""
+
+    return jsonify({
+        "success": True,
+        "token": auth_token,
+        "tg_url": tg_url,
+        "bot_username": clean_bot_user
+    })
+
+
+@app.route("/api/customer/telegram-auth/check", methods=["GET"])
+def api_customer_telegram_auth_check():
+    """استعلام آنلاین وضعیت تایید احراز هویت تلگرام"""
+    token = request.args.get("token", "").strip()
+    if not token:
+        return jsonify({"status": "error", "error": "توکن ارسال نشده است."}), 400
+
+    sess = db.get_telegram_auth_session(token)
+    if not sess:
+        return jsonify({"status": "not_found"}), 404
+
+    if sess["status"] == "approved" and sess.get("telegram_id"):
+        tg_id = int(sess["telegram_id"])
+        r_id = int(sess.get("reseller_id") or 0)
+        session["customer_tg_id"] = tg_id
+        session["customer_reseller_id"] = r_id
+        
+        portal_url = url_for("customer_portal", telegram_id=tg_id, r=r_id)
+        return jsonify({
+            "status": "approved",
+            "telegram_id": tg_id,
+            "redirect_url": portal_url
+        })
+
+    return jsonify({"status": "pending"})
 
 
 @app.route("/api/customer/telegram-auth", methods=["POST"])

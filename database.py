@@ -243,7 +243,33 @@ class Database:
                 backup_file TEXT,
                 backup_size INTEGER,
                 created_at TEXT,
-                uploaded BOOLEAN DEFAULT 0
+                uploaded BOOLEAN DEFAULT 0,
+                backup_type TEXT DEFAULT 'main_panel',
+                status TEXT DEFAULT 'success',
+                target_chat TEXT,
+                telegram_message_id INTEGER,
+                error_message TEXT,
+                details_json TEXT,
+                trigger_type TEXT DEFAULT 'auto'
+            )
+        """)
+
+        # جدول نشست‌های احراز هویت تلگرام (Telegram Auth Sessions)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_auth_sessions (
+                token TEXT PRIMARY KEY,
+                status TEXT DEFAULT 'pending',
+                telegram_id INTEGER,
+                first_name TEXT,
+                username TEXT,
+                photo_url TEXT,
+                phone_number TEXT,
+                reseller_id INTEGER DEFAULT 0,
+                referrer TEXT,
+                origin_host TEXT,
+                redirect_url TEXT,
+                created_at TEXT,
+                updated_at TEXT
             )
         """)
 
@@ -1887,7 +1913,15 @@ class Database:
             "ALTER TABLE resellers ADD COLUMN sms_api_key TEXT",
             "ALTER TABLE resellers ADD COLUMN sms_originator TEXT",
             "ALTER TABLE resellers ADD COLUMN sms_url TEXT",
-            "ALTER TABLE resellers ADD COLUMN sms_templates TEXT"
+            "ALTER TABLE resellers ADD COLUMN sms_templates TEXT",
+            # ستون‌های ارتقای سیستم جامع پشتیبان‌گیری خودکار و لاگ‌های تفکیک‌شده
+            "ALTER TABLE backups ADD COLUMN backup_type TEXT DEFAULT 'main_panel'",
+            "ALTER TABLE backups ADD COLUMN status TEXT DEFAULT 'success'",
+            "ALTER TABLE backups ADD COLUMN target_chat TEXT",
+            "ALTER TABLE backups ADD COLUMN telegram_message_id INTEGER",
+            "ALTER TABLE backups ADD COLUMN error_message TEXT",
+            "ALTER TABLE backups ADD COLUMN details_json TEXT",
+            "ALTER TABLE backups ADD COLUMN trigger_type TEXT DEFAULT 'auto'"
         ]:
             try:
                 cursor.execute(col_sql)
@@ -7350,17 +7384,27 @@ class Database:
     # مدیریت پشتیبان‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_backup_record(self, backup_file, backup_size):
-        """ذخیره رکورد پشتیبان"""
+    def save_backup_record(self, backup_file, backup_size, backup_type="main_panel", status="success",
+                           target_chat=None, telegram_message_id=None, error_message=None,
+                           details_json=None, trigger_type="auto"):
+        """ذخیره رکورد پشتیبان با جزئیات کامل"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
         try:
             cursor.execute("""
-                INSERT INTO backups (backup_file, backup_size, created_at, uploaded)
-                VALUES (?, ?, ?, 0)
-            """, (backup_file, backup_size, now))
+                INSERT INTO backups (
+                    backup_file, backup_size, created_at, uploaded,
+                    backup_type, status, target_chat, telegram_message_id,
+                    error_message, details_json, trigger_type
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                backup_file, backup_size, now, 1 if status == "success" else 0,
+                backup_type, status, target_chat, telegram_message_id,
+                error_message, details_json, trigger_type
+            ))
             conn.commit()
             return {"success": True, "id": cursor.lastrowid}
         except Exception as e:
@@ -7385,19 +7429,132 @@ class Database:
             conn.close()
 
     def get_backups(self, limit=10):
-        """دریافت لیست پشتیبان‌ها"""
+        """دریافت لیست پشتیبان‌ها (سازگاری با کدهای پیشین)"""
+        return self.get_backup_logs(limit=limit)
+
+    def get_backup_logs(self, backup_type=None, limit=50, offset=0):
+        """دریافت گزارش‌های پشتیبان‌گیری با تفکیک نوع و صفحه‌بندی"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
-                SELECT * FROM backups ORDER BY created_at DESC LIMIT ?
-            """, (limit,))
+            if backup_type:
+                cursor.execute("""
+                    SELECT * FROM backups 
+                    WHERE backup_type = ? 
+                    ORDER BY id DESC 
+                    LIMIT ? OFFSET ?
+                """, (backup_type, limit, offset))
+            else:
+                cursor.execute("""
+                    SELECT * FROM backups 
+                    ORDER BY id DESC 
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
-            logger.error(f"Error getting backups: {e}")
+            logger.error(f"Error getting backup logs: {e}")
             return []
+        finally:
+            conn.close()
+
+    def get_backup_log_by_id(self, backup_id):
+        """دریافت رکورد بکاپ بر اساس شناسه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM backups WHERE id = ?", (backup_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting backup log {backup_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_system_backup_metrics(self):
+        """استخراج شاخص‌ها و اطلاعات آماری سیستم برای گزارش بکاپ"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT count(*) FROM subscriptions")
+            total_subs = cursor.fetchone()[0]
+
+            cursor.execute("SELECT count(*) FROM subscriptions WHERE status = 'active'")
+            active_subs = cursor.fetchone()[0]
+
+            cursor.execute("SELECT count(*) FROM users")
+            total_users = cursor.fetchone()[0]
+
+            cursor.execute("SELECT count(*) FROM resellers WHERE status = 'active'")
+            active_resellers = cursor.fetchone()[0]
+
+            cursor.execute("SELECT count(*) FROM bank_cards WHERE is_active = 1")
+            active_cards = cursor.fetchone()[0]
+
+            db_size = 0
+            p_db = Path(self.db_path)
+            if p_db.exists():
+                db_size = p_db.stat().st_size
+
+            return {
+                "total_subscriptions": total_subs,
+                "active_subscriptions": active_subs,
+                "total_users": total_users,
+                "active_resellers": active_resellers,
+                "active_cards": active_cards,
+                "db_size_bytes": db_size,
+                "db_size_mb": round(db_size / (1024 * 1024), 2)
+            }
+        except Exception as e:
+            logger.error(f"Error getting system backup metrics: {e}")
+            return {
+                "total_subscriptions": 0,
+                "active_subscriptions": 0,
+                "total_users": 0,
+                "active_resellers": 0,
+                "active_cards": 0,
+                "db_size_bytes": 0,
+                "db_size_mb": 0.0
+            }
+        finally:
+            conn.close()
+
+    def get_backup_stats(self):
+        """خلاصه وضعیت آخرین پشتیبان‌گیری‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM backups 
+                WHERE backup_type = 'main_panel' AND status = 'success'
+                ORDER BY id DESC LIMIT 1
+            """)
+            last_main = cursor.fetchone()
+
+            cursor.execute("""
+                SELECT * FROM backups 
+                WHERE backup_type = 'hiddify' AND status = 'success'
+                ORDER BY id DESC LIMIT 1
+            """)
+            last_hiddify = cursor.fetchone()
+
+            cursor.execute("SELECT count(*) FROM backups WHERE status = 'success'")
+            total_success = cursor.fetchone()[0]
+
+            cursor.execute("SELECT count(*) FROM backups WHERE status = 'failed'")
+            total_failed = cursor.fetchone()[0]
+
+            return {
+                "last_main": dict(last_main) if last_main else None,
+                "last_hiddify": dict(last_hiddify) if last_hiddify else None,
+                "total_success": total_success,
+                "total_failed": total_failed
+            }
+        except Exception as e:
+            logger.error(f"Error getting backup stats: {e}")
+            return {"last_main": None, "last_hiddify": None, "total_success": 0, "total_failed": 0}
         finally:
             conn.close()
 
@@ -9680,6 +9837,103 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting customer user by id: {e}")
             return None
+        finally:
+            conn.close()
+
+    def create_telegram_auth_session(self, token: str, reseller_id: int = 0, referrer: str = "", origin_host: str = "") -> bool:
+        """ایجاد یک نشست احراز هویت سریع تلگرامی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO telegram_auth_sessions (token, status, reseller_id, referrer, origin_host, created_at, updated_at)
+                VALUES (?, 'pending', ?, ?, ?, ?, ?)
+            """, (token, reseller_id, referrer, origin_host, now, now))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error creating telegram auth session: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_telegram_auth_session(self, token: str):
+        """دریافت وضعیت نشست احراز هویت تلگرام"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM telegram_auth_sessions WHERE token = ?", (token,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting telegram auth session: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def approve_telegram_auth_session(self, token: str, telegram_id: int, first_name: str = "", username: str = "", photo_url: str = "", phone_number: str = "") -> bool:
+        """تایید نشست احراز هویت تلگرام توسط ربات و ثبت/بروزرسانی کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM telegram_auth_sessions WHERE token = ?", (token,))
+            sess = cursor.fetchone()
+            if not sess:
+                return False
+
+            reseller_id = sess["reseller_id"] or 0
+            referrer = sess["referrer"] or ""
+
+            # ۱. ثبت یا بروزرسانی در جدول users
+            clean_name = (first_name or username or f"کاربر {telegram_id}").strip()
+            clean_username = (username or f"tg_{telegram_id}").strip().lstrip("@")
+
+            cursor.execute("SELECT id, telegram_id, full_name, phone_number, reseller_id, referred_by FROM users WHERE telegram_id = ?", (int(telegram_id),))
+            u_row = cursor.fetchone()
+            if u_row:
+                user_id = u_row["id"]
+                cursor.execute("""
+                    UPDATE users 
+                    SET is_verified = 1, updated_at = ?,
+                        full_name = CASE WHEN (full_name IS NULL OR full_name = '' OR full_name LIKE 'user_%') THEN ? ELSE full_name END,
+                        username = CASE WHEN (username IS NULL OR username = '') THEN ? ELSE username END
+                    WHERE id = ?
+                """, (now, clean_name, clean_username, user_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, full_name, is_verified, reseller_id, wallet_balance, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, 0, ?, ?)
+                """, (int(telegram_id), clean_username, clean_name, reseller_id, now, now))
+                user_id = cursor.lastrowid
+
+                # ثبت رفرال
+                if referrer:
+                    ref_info = self.lookup_customer_referrer_by_phone(referrer, domain_reseller_id=reseller_id)
+                    if ref_info:
+                        ref_tg = ref_info.get("telegram_id")
+                        if ref_tg and int(ref_tg) != int(telegram_id):
+                            try:
+                                cursor.execute("""
+                                    INSERT INTO referrals (referrer_id, referred_id, reseller_id, reward_amount, status, created_at, updated_at)
+                                    VALUES (?, ?, ?, 0, 'pending', ?, ?)
+                                """, (ref_tg, int(telegram_id), reseller_id, now, now))
+                                cursor.execute("UPDATE users SET referred_by = ? WHERE id = ?", (ref_tg, user_id))
+                            except Exception:
+                                pass
+
+            # ۲. علامت‌گذاری نشست به عنوان تایید شده
+            cursor.execute("""
+                UPDATE telegram_auth_sessions 
+                SET status = 'approved', telegram_id = ?, first_name = ?, username = ?, photo_url = ?, updated_at = ?
+                WHERE token = ?
+            """, (int(telegram_id), clean_name, clean_username, photo_url or "", now, token))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error approving telegram auth session: {e}")
+            return False
         finally:
             conn.close()
 

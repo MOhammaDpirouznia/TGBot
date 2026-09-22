@@ -1,212 +1,569 @@
 #!/usr/bin/env python3
 """
-ماژول پشتیبان‌گیری خودکار از دیتابیس
+🛡️ ماژول مدیریت و زمان‌بندی پشتیبان‌گیری جامع (Main Panel & Hiddify)
+- تهیه پشتیبان فشرده و ایمن از پایگاه داده و تنظیمات پنل اصلی و نمایندگان
+- دریافت پشتیبان کامل تنظیمات و کاربران پنل هیدیفای (Hiddify)
+- ارسال مستقیم به کانال یا گروه تلگرام با فرمت زیبا و متادیتا
+- ثبت تاریخچه و گزارشات دقیق به تفکیک پنل اصلی و هیدیفای
+- زمان‌بندی هوشمند بر اساس بازه ساعتی یا ساعات مشخص شبانه‌روز
+- لغو شیوه قدیمی ارسال به چت خصوصی ادمین
 """
 
 import os
 import shutil
 import logging
 import asyncio
+import json
+import zipfile
+import sqlite3
+import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
+
 from database import db, DB_DIR
-from utils import get_now_shamsi, get_now_naive, get_now
+from utils import get_now_shamsi, get_now_naive, get_now, get_now_iso
 
 logger = logging.getLogger(__name__)
 
-# مسیر پشتیبان‌ها - ذخیره در کنار دیتابیس (Railway Volume یا محلی)
+# مسیر ذخیره پشتیبان‌ها
 BACKUP_DIR = DB_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def format_file_size(size_bytes: int) -> str:
+    """تبدیل بایت به فرمت خوانا (KB, MB)"""
+    if not size_bytes or size_bytes <= 0:
+        return "0 B"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+
+
 class BackupManager:
-    """کلاس مدیریت پشتیبان‌گیری"""
+    """کلاس مدیریت ایجاد و بازیابی فایل‌های پشتیبان"""
 
     def __init__(self):
         pass
 
-    def create_backup(self):
-        """ایجاد پشتیبان از دیتابیس"""
+    def create_database_backup(self, compress=True):
+        """
+        ایجاد پشتیبان آنلاین و ایمن از دیتابیس SQLite بدون قفل جدول‌ها
+        و فشرده‌سازی در قالب فایل Zip همراه با متادیتا
+        """
         try:
             timestamp = get_now_naive().strftime("%Y%m%d_%H%M%S")
-            backup_filename = f"backup_{timestamp}.db"
-            backup_path = BACKUP_DIR / backup_filename
+            raw_db_filename = f"backup_main_{timestamp}.db"
+            raw_db_path = BACKUP_DIR / raw_db_filename
 
-            # کپی دیتابیس
             source_path = db.db_path
-            if source_path.exists():
-                shutil.copy2(source_path, backup_path)
-                backup_size = backup_path.stat().st_size
+            if not source_path.exists():
+                logger.error("Database file not found for backup")
+                return {"success": False, "error": "فایل دیتابیس اصلی یافت نشد."}
 
-                # ذخیره رکورد پشتیبان
-                result = db.save_backup_record(str(backup_path), backup_size)
+            # استفاده از SQLite Online Backup API برای ایجاد اسنپ‌شات اتمیک و هماهنگ
+            src_conn = sqlite3.connect(str(source_path))
+            dst_conn = sqlite3.connect(str(raw_db_path))
+            src_conn.backup(dst_conn)
+            dst_conn.close()
+            src_conn.close()
 
-                # خروجی نسخه جامع JSON
+            metrics = db.get_system_backup_metrics()
+            final_file = raw_db_path
+            final_filename = raw_db_filename
+
+            if compress:
+                zip_filename = f"backup_main_{timestamp}.zip"
+                zip_path = BACKUP_DIR / zip_filename
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(raw_db_path, arcname=raw_db_filename)
+                    meta_info = {
+                        "timestamp": timestamp,
+                        "shamsi_date": get_now_shamsi(),
+                        "metrics": metrics
+                    }
+                    zipf.writestr("backup_metadata.json", json.dumps(meta_info, ensure_ascii=False, indent=2))
+                
+                # حذف فایل خام پس از فشرده‌سازی موفق
                 try:
-                    db.export_full_backup_json()
+                    raw_db_path.unlink()
                 except Exception:
                     pass
+                final_file = zip_path
+                final_filename = zip_filename
 
-                logger.info(f"Backup created: {backup_filename} ({backup_size} bytes)")
-                return {
-                    "success": True,
-                    "file": str(backup_path),
-                    "filename": backup_filename,
-                    "size": backup_size,
-                    "backup_id": result.get("id"),
-                }
-            else:
-                logger.error("Database file not found")
-                return {"success": False, "error": "Database file not found"}
+            file_size = final_file.stat().st_size
+            logger.info(f"Main database backup created: {final_filename} ({file_size:,} bytes)")
+            return {
+                "success": True,
+                "file": str(final_file),
+                "filename": final_filename,
+                "size": file_size,
+                "metrics": metrics
+            }
 
         except Exception as e:
-            logger.error(f"Error creating backup: {e}")
+            logger.error(f"Error creating database backup: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    def create_backup(self):
+        """متد سازگاری با کدهای پیشین"""
+        return self.create_database_backup(compress=True)
+
+    async def create_hiddify_backup(self):
+        """دریافت فایل پشتیبان کامل از پنل هیدیفای به صورت JSON"""
+        try:
+            b_txt = None
+            try:
+                from bot import hidify
+                if hidify:
+                    b_txt = await hidify.get_backup()
+            except Exception as e_bot:
+                logger.debug(f"Could not use bot.hidify client: {e_bot}")
+
+            if not b_txt:
+                panel_url = os.getenv("HIDIFY_PANEL_URL")
+                api_key = os.getenv("HIDIFY_API_KEY")
+                proxy_path = os.getenv("HIDIFY_PROXY_PATH")
+                if panel_url and api_key:
+                    from hidify import HidifyClient
+                    temp_client = HidifyClient(panel_url, api_key, proxy_path)
+                    b_txt = await temp_client.get_backup()
+                    await temp_client.close()
+
+            if not b_txt:
+                return {"success": False, "error": "دریافت اطلاعات پشتیبان از وب‌سرویس هیدیفای ناموفق بود."}
+
+            timestamp = get_now_naive().strftime("%Y%m%d_%H%M%S")
+            filename = f"backup_hiddify_{timestamp}.json"
+            file_path = BACKUP_DIR / filename
+            file_path.write_text(b_txt, encoding="utf-8")
+            file_size = file_path.stat().st_size
+
+            details = {"users_count": 0, "domains_count": 0, "status": "ok"}
+            try:
+                parsed = json.loads(b_txt)
+                if isinstance(parsed, dict):
+                    details["users_count"] = len(parsed.get("users", [])) or len(parsed.get("user", []))
+                    details["domains_count"] = len(parsed.get("domains", []))
+                elif isinstance(parsed, list):
+                    details["users_count"] = len(parsed)
+            except Exception:
+                pass
+
+            logger.info(f"Hiddify backup created: {filename} ({file_size:,} bytes)")
+            return {
+                "success": True,
+                "file": str(file_path),
+                "filename": filename,
+                "size": file_size,
+                "details": details
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating Hiddify backup: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def restore_backup(self, backup_path):
-        """بازیابی دیتابیس از پشتیبان"""
+        """بازیابی دیتابیس از فایل پشتیبان"""
         try:
             backup_path = Path(backup_path)
             if not backup_path.exists():
-                return {"success": False, "error": "Backup file not found"}
+                return {"success": False, "error": "فایل پشتیبان انتخاب‌شده یافت نشد."}
 
-            # کپی به عنوان پشتیبان از وضعیت فعلی
+            # در صورتی که فایل ارسالی zip باشد، ابتدا فایل .db را استخراج می‌کنیم
+            actual_db_file = backup_path
+            temp_extracted = None
+            if backup_path.suffix.lower() == ".zip":
+                with zipfile.ZipFile(backup_path, "r") as zf:
+                    for name in zf.namelist():
+                        if name.endswith(".db"):
+                            temp_extracted = BACKUP_DIR / f"extracted_{name}"
+                            with open(temp_extracted, "wb") as f_out:
+                                f_out.write(zf.read(name))
+                            actual_db_file = temp_extracted
+                            break
+
+            # کپی امنیتی از وضعیت فعلی قبل از بازنویسی
             current_backup = BACKUP_DIR / f"pre_restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
             if db.db_path.exists():
                 shutil.copy2(db.db_path, current_backup)
 
-            # بازیابی
-            shutil.copy2(backup_path, db.db_path)
+            # کپی فایل دیتابیس
+            shutil.copy2(actual_db_file, db.db_path)
+
+            if temp_extracted and temp_extracted.exists():
+                try:
+                    temp_extracted.unlink()
+                except Exception:
+                    pass
 
             logger.info(f"Database restored from {backup_path.name}")
             return {
                 "success": True,
-                "message": f"Database restored from {backup_path.name}",
+                "message": f"پایگاه داده با موفقیت از فایل {backup_path.name} بازیابی شد.",
                 "pre_restore_backup": str(current_backup),
             }
 
         except Exception as e:
-            logger.error(f"Error restoring backup: {e}")
+            logger.error(f"Error restoring backup: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
-    def list_backups(self):
-        """لیست پشتیبان‌های موجود"""
+    def list_backups(self, backup_type=None):
+        """لیست فایل‌های فیزیکی موجود در دایرکتوری پشتیبان"""
         backups = []
-        for backup_file in sorted(BACKUP_DIR.glob("backup_*.db"), reverse=True):
-            backups.append({
-                "filename": backup_file.name,
-                "path": str(backup_file),
-                "size": backup_file.stat().st_size,
-                "created": datetime.fromtimestamp(backup_file.stat().st_mtime).isoformat(),
-            })
+        patterns = ["backup_*.zip", "backup_*.db", "backup_*.json"]
+        for pat in patterns:
+            for f in sorted(BACKUP_DIR.glob(pat), reverse=True):
+                is_hiddify = "hiddify" in f.name.lower()
+                if backup_type == "hiddify" and not is_hiddify:
+                    continue
+                if backup_type == "main_panel" and is_hiddify:
+                    continue
+                backups.append({
+                    "filename": f.name,
+                    "path": str(f),
+                    "size": f.stat().st_size,
+                    "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    "is_hiddify": is_hiddify
+                })
         return backups
 
-    def delete_old_backups(self, keep_count=10):
-        """حذف پشتیبان‌های قدیمی"""
-        backups = sorted(BACKUP_DIR.glob("backup_*.db"), key=lambda x: x.stat().st_mtime)
-        if len(backups) > keep_count:
-            for backup in backups[:len(backups) - keep_count]:
-                backup.unlink()
-                logger.info(f"Deleted old backup: {backup.name}")
-
-
-async def send_backup_to_admin(bot, admin_id):
-    """ارسال پشتیبان به ادمین ارشد سامانه (فقط Super Admin)"""
-    if not bot:
-        logger.error("Bot not set for backup")
-        return {"success": False, "error": "Bot not set"}
-
-    # اعتبارسنجی قطعی مقصد: پشتیبان باید صرفاً و منحصراً به مدیر ارشد سیستم ارسال شود
-    # و تحت هیچ شرایطی به نماینده یا ادمین ربات نماینده ارسال نگردد!
-    target_admin_id = admin_id
-    try:
-        conn = db.get_connection()
-        sa_row = conn.execute("SELECT telegram_id FROM admin_users WHERE role='super_admin' AND is_active=1 AND telegram_id IS NOT NULL LIMIT 1").fetchone()
-        conn.close()
-        if sa_row and sa_row["telegram_id"]:
-            target_admin_id = sa_row["telegram_id"]
-    except Exception as e_sa:
-        logger.debug(f"Error resolving super_admin telegram_id: {e_sa}")
-
-    if not target_admin_id:
-        logger.error("No valid super admin Telegram ID found for backup")
-        return {"success": False, "error": "No super admin found"}
-
-    # بررسی صریح عدم ارسال به نماینده یا ادمین ربات نماینده
-    try:
-        is_r_adm, _, _ = db.is_telegram_user_any_reseller_admin(target_admin_id)
-        is_reseller = db.get_reseller_by_telegram_id(target_admin_id) is not None
-        if is_r_adm or is_reseller:
-            logger.warning(f"Prevented sending backup to reseller or reseller admin: {target_admin_id}")
-            return {"success": False, "error": "Recipient is a reseller admin; backup sending aborted"}
-    except Exception as e_chk:
-        logger.warning(f"Error checking reseller status for backup recipient: {e_chk}")
-
-    try:
-        backup_mgr = BackupManager()
-        
-        # ایجاد پشتیبان
-        backup_result = backup_mgr.create_backup()
-        if not backup_result.get("success"):
-            return backup_result
-
-        backup_path = backup_result["file"]
-        backup_size = backup_result["size"]
-        backup_id = backup_result.get("backup_id")
-
-        # ارسال فایل به ادمین ارشد
-        with open(backup_path, "rb") as f:
-            await bot.send_document(
-                chat_id=target_admin_id,
-                document=f,
-                caption=f"🔒 پشتیبان خودکار دیتابیس\n\n"
-                        f"📅 تاریخ: {get_now_shamsi()}\n"
-                        f"📊 حجم: {backup_size:,} بایت\n"
-                        f"📁 فایل: {backup_result['filename']}\n\n"
-                        f"برای بازیابی، فایل را ذخیره کرده و دکمه «🔄 بازیابی پشتیبان» را بزنید.",
+    def delete_old_backups(self, keep_count=25, backup_type=None):
+        """پاک‌سازی خودکار فایل‌های پشتیبان قدیمی جهت جلوگیری از اشغال دیسک"""
+        try:
+            main_files = sorted(
+                list(BACKUP_DIR.glob("backup_main_*.zip")) + list(BACKUP_DIR.glob("backup_main_*.db")),
+                key=lambda x: x.stat().st_mtime
             )
+            if len(main_files) > keep_count:
+                for f in main_files[:-keep_count]:
+                    try:
+                        f.unlink()
+                        logger.info(f"Deleted old main backup: {f.name}")
+                    except Exception:
+                        pass
 
-        # علامت‌گذاری آپلود شده
-        if backup_id:
-            db.mark_backup_uploaded(backup_id)
+            hiddify_files = sorted(
+                list(BACKUP_DIR.glob("backup_hiddify_*.json")),
+                key=lambda x: x.stat().st_mtime
+            )
+            if len(hiddify_files) > keep_count:
+                for f in hiddify_files[:-keep_count]:
+                    try:
+                        f.unlink()
+                        logger.info(f"Deleted old hiddify backup: {f.name}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning(f"Error cleaning old backups: {e}")
 
-        # حذف پشتیبان‌های قدیمی
-        backup_mgr.delete_old_backups()
 
-        logger.info(f"Backup sent to super admin {target_admin_id}")
-        return {"success": True, "filename": backup_result["filename"]}
+# نمونه یکتای BackupManager
+backup_manager = BackupManager()
+
+
+# ═══════════════════════════════════════════════════════════════
+# ارتباط با تلگرام و ارسال فایل‌ها (Telegram Dispatcher)
+# ═══════════════════════════════════════════════════════════════
+
+def get_effective_bot_token() -> str:
+    """دریافت توکن فعال ربات از متغیرهای محیطی یا دیتابیس"""
+    tok = os.getenv("BOT_TOKEN")
+    if tok:
+        return tok.strip()
+    return (db.get_setting("bot_token") or "").strip()
+
+
+def send_telegram_backup_file(target_chat: str, file_path: str, filename: str, caption: str) -> dict:
+    """
+    ارسال فایل پشتیبان به کانال یا گروه تلگرام با استفاده از httpx
+    کاملاً ایزوله از تردها و بدون ایجاد تداخل با حلقه asyncio
+    """
+    token = get_effective_bot_token()
+    if not token:
+        return {"success": False, "error": "توکن ربات تلگرام (BOT_TOKEN) تنظیم نشده است."}
+
+    clean_target = str(target_chat or "").strip()
+    if not clean_target:
+        return {"success": False, "error": "شناسه یا آیدی کانال/گروه تلگرام مقصد مشخص نشده است."}
+
+    p = Path(file_path)
+    if not p.exists():
+        return {"success": False, "error": f"فایل پشتیبان {filename} در سرور یافت نشد."}
+
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+
+    try:
+        with open(p, "rb") as fp:
+            files = {"document": (filename, fp)}
+            data = {
+                "chat_id": clean_target,
+                "caption": caption,
+                "parse_mode": "HTML"
+            }
+            with httpx.Client(timeout=180.0) as client:
+                resp = client.post(url, data=data, files=files)
+                res_data = resp.json()
+
+                if res_data.get("ok"):
+                    msg_id = res_data.get("result", {}).get("message_id")
+                    logger.info(f"Backup {filename} successfully sent to {clean_target} (message_id: {msg_id})")
+                    return {"success": True, "message_id": msg_id}
+                else:
+                    desc = res_data.get("description", "خطای ناشناخته تلگرام")
+                    logger.warning(f"Telegram sendDocument rejected for {clean_target}: {desc}")
+                    return {"success": False, "error": desc}
 
     except Exception as e:
-        logger.error(f"Error sending backup to admin: {e}")
+        logger.error(f"HTTP error sending backup to Telegram: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 
-class AutoBackupScheduler:
-    """زمان‌بند پشتیبان‌گیری خودکار - ساعت 12 و 24"""
+def test_telegram_connection(target_chat: str) -> dict:
+    """ارسال پیام آزمایشی جهت تایید دسترسی ادمین ربات در کانال یا گروه مقصد"""
+    token = get_effective_bot_token()
+    if not token:
+        return {"success": False, "error": "توکن ربات تلگرام تنظیم نشده است."}
 
-    def __init__(self, admin_id):
-        self.admin_id = admin_id
+    clean_target = str(target_chat or "").strip()
+    if not clean_target:
+        return {"success": False, "error": "لطفاً شناسه کانال یا گروه تلگرام را وارد فرمایید."}
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    now_sh = get_now_shamsi()
+
+    text = (
+        "🧪 <b>پیام آزمایشی سیستم پشتیبان‌گیری خودکار</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "✅ <b>اتصال با موفقیت برقرار شد!</b>\n"
+        "ربات به این کانال/گروه دسترسی دارد و پشتیبان‌های خودکار به این مقصد ارسال خواهند شد.\n\n"
+        f"📅 <b>زمان تست:</b> {now_sh}\n"
+        "🔒 سامانه مدیریت یکپارچه سرویس"
+    )
+
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(url, json={
+                "chat_id": clean_target,
+                "text": text,
+                "parse_mode": "HTML"
+            })
+            res_data = resp.json()
+
+            if res_data.get("ok"):
+                return {"success": True, "message": "پیام آزمایشی با موفقیت در کانال/گروه ارسال گردید."}
+            else:
+                desc = res_data.get("description", "خطای تلگرام")
+                return {"success": False, "error": f"پاسخ تلگرام: {desc}"}
+    except Exception as e:
+        return {"success": False, "error": f"خطا در برقراری ارتباط: {str(e)}"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# توابع اجرایی پشتیبان‌گیری (Trigger Functions)
+# ═══════════════════════════════════════════════════════════════
+
+def trigger_main_panel_backup(trigger_type: str = "auto", target_chat: str = None) -> dict:
+    """اجرای پشتیبان‌گیری از پنل اصلی، ارسال به تلگرام و ثبت گزارش در دیتابیس"""
+    dest_chat = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
+    
+    # ۱. ایجاد فایل پشتیبان دیتابیس
+    b_res = backup_manager.create_database_backup(compress=True)
+    if not b_res.get("success"):
+        err = b_res.get("error", "خطا در ایجاد پشتیبان دیتابیس")
+        db.save_backup_record(
+            backup_file="",
+            backup_size=0,
+            backup_type="main_panel",
+            status="failed",
+            target_chat=dest_chat,
+            error_message=err,
+            trigger_type=trigger_type
+        )
+        return {"success": False, "error": err}
+
+    f_path = b_res["file"]
+    f_name = b_res["filename"]
+    f_size = b_res["size"]
+    metrics = b_res.get("metrics", {})
+    now_sh = get_now_shamsi()
+    trigger_label = "خودکار (زمان‌بندی‌شده)" if trigger_type == "auto" else "دستی (توسط ادمین)"
+
+    caption = (
+        "🛡️ <b>پشتیبان خودکار پنل اصلی و نمایندگان</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+        f"📁 <b>نام فایل:</b> <code>{f_name}</code>\n"
+        f"📊 <b>حجم فایل:</b> {format_file_size(f_size)}\n\n"
+        "📈 <b>شاخص‌های آماری لحظه‌ای سیستم:</b>\n"
+        f"👥 <b>تعداد کل مشتریان (اشتراک‌ها):</b> {metrics.get('total_subscriptions', 0):,}\n"
+        f"🟢 <b>اشتراک‌های فعال:</b> {metrics.get('active_subscriptions', 0):,}\n"
+        f"👔 <b>تعداد نمایندگان فعال:</b> {metrics.get('active_resellers', 0):,}\n"
+        f"👤 <b>کل کاربران دیتابیس:</b> {metrics.get('total_users', 0):,}\n"
+        f"💳 <b>کارت‌های بانکی فعال:</b> {metrics.get('active_cards', 0):,}\n\n"
+        f"⚙️ <b>نوع اجرا:</b> {trigger_label}\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "🔒 سامانه مدیریت یکپارچه سرویس"
+    )
+
+    # ۲. ارسال به تلگرام در صورت وجود مقصد
+    send_res = {"success": True, "message_id": None}
+    if dest_chat:
+        send_res = send_telegram_backup_file(dest_chat, f_path, f_name, caption)
+
+    status = "success" if send_res.get("success") else "failed"
+    err_msg = send_res.get("error") if not send_res.get("success") else None
+
+    # ۳. ثبت گزارش در دیتابیس
+    db.save_backup_record(
+        backup_file=f_name,
+        backup_size=f_size,
+        backup_type="main_panel",
+        status=status,
+        target_chat=dest_chat,
+        telegram_message_id=send_res.get("message_id"),
+        error_message=err_msg,
+        details_json=json.dumps(metrics, ensure_ascii=False),
+        trigger_type=trigger_type
+    )
+
+    # ۴. پاک‌سازی فایل‌های قدیمی
+    backup_manager.delete_old_backups(keep_count=25)
+
+    if not send_res.get("success"):
+        return {"success": False, "error": f"فایل ایجاد شد ولی ارسال به تلگرام با خطا مواجه گردید: {err_msg}", "filename": f_name}
+
+    return {"success": True, "filename": f_name, "size": f_size, "metrics": metrics}
+
+
+async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_chat: str = None) -> dict:
+    """اجرای ناهمگام پشتیبان‌گیری هیدیفای"""
+    dest_chat = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
+
+    # ۱. دریافت بکاپ هیدیفای
+    h_res = await backup_manager.create_hiddify_backup()
+    if not h_res.get("success"):
+        err = h_res.get("error", "خطا در دریافت پشتیبان هیدیفای")
+        db.save_backup_record(
+            backup_file="",
+            backup_size=0,
+            backup_type="hiddify",
+            status="failed",
+            target_chat=dest_chat,
+            error_message=err,
+            trigger_type=trigger_type
+        )
+        return {"success": False, "error": err}
+
+    f_path = h_res["file"]
+    f_name = h_res["filename"]
+    f_size = h_res["size"]
+    details = h_res.get("details", {})
+    now_sh = get_now_shamsi()
+    trigger_label = "خودکار (زمان‌بندی‌شده)" if trigger_type == "auto" else "دستی (توسط ادمین)"
+
+    caption = (
+        "⚡ <b>پشتیبان خودکار پنل هیدیفای (Hiddify)</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+        f"📁 <b>نام فایل:</b> <code>{f_name}</code>\n"
+        f"📊 <b>حجم فایل:</b> {format_file_size(f_size)}\n\n"
+        f"👥 <b>تعداد کاربران ثبت‌شده در هیدیفای:</b> {details.get('users_count', 0):,}\n"
+        f"🌐 <b>تعداد دامنه‌ها و نودها:</b> {details.get('domains_count', 0):,}\n\n"
+        f"⚙️ <b>نوع اجرا:</b> {trigger_label}\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "🔒 سامانه مدیریت یکپارچه سرویس"
+    )
+
+    # ۲. ارسال به تلگرام
+    send_res = {"success": True, "message_id": None}
+    if dest_chat:
+        send_res = send_telegram_backup_file(dest_chat, f_path, f_name, caption)
+
+    status = "success" if send_res.get("success") else "failed"
+    err_msg = send_res.get("error") if not send_res.get("success") else None
+
+    # ۳. ثبت گزارش در دیتابیس
+    db.save_backup_record(
+        backup_file=f_name,
+        backup_size=f_size,
+        backup_type="hiddify",
+        status=status,
+        target_chat=dest_chat,
+        telegram_message_id=send_res.get("message_id"),
+        error_message=err_msg,
+        details_json=json.dumps(details, ensure_ascii=False),
+        trigger_type=trigger_type
+    )
+
+    backup_manager.delete_old_backups(keep_count=25)
+
+    if not send_res.get("success"):
+        return {"success": False, "error": f"بکاپ هیدیفای دریافت شد اما ارسال به تلگرام با خطا مواجه شد: {err_msg}", "filename": f_name}
+
+    return {"success": True, "filename": f_name, "size": f_size, "details": details}
+
+
+def trigger_hiddify_panel_backup(trigger_type: str = "auto", target_chat: str = None) -> dict:
+    """اجرای همگام پشتیبان‌گیری هیدیفای جهت فراخوانی از روت‌های فلسک"""
+    try:
+        loop = asyncio.new_event_loop()
+        res = loop.run_until_complete(trigger_hiddify_panel_backup_async(trigger_type=trigger_type, target_chat=target_chat))
+        loop.close()
+        return res
+    except Exception as e:
+        logger.error(f"Error in synchronous trigger_hiddify_panel_backup: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════
+# متد لغو شده قدیمی (Deprecated - No Private Chat Spams)
+# ═══════════════════════════════════════════════════════════════
+
+async def send_backup_to_admin(bot=None, admin_id=None):
+    """
+    متد قدیمی ارسال به چت خصوصی ادمین به طور کامل لغو شده است.
+    منحصراً پشتیبان‌ها به کانال یا گروه مشخص‌شده ارسال می‌شوند.
+    """
+    logger.info("Legacy send_backup_to_admin called: Sending to admin private chat is permanently disabled.")
+    return {"success": False, "error": "ارسال پشتیبان به چت خصوصی ادمین لغو شده است."}
+
+
+# ═══════════════════════════════════════════════════════════════
+# زمان‌بند هوشمند پشتیبان‌گیری خودکار (AutoBackupScheduler)
+# ═══════════════════════════════════════════════════════════════
+
+class AutoBackupScheduler:
+    """
+    زمان‌بند پیشرفته پشتیبان‌گیری خودکار
+    - پشتیبانی از اجرای دوره‌ای (هر X ساعت)
+    - پشتیبانی از اجرای سر ساعات مشخص شبانه‌روز (Fixed Hours)
+    - ارسال مستقل پنل اصلی و هیدیفای به کانال/گروه تلگرام
+    """
+
+    def __init__(self, admin_id=None):
         self.is_running = False
         self.task = None
         self.bot = None
+        self.last_main_run_time = None
+        self.last_hiddify_run_time = None
+        self.last_checked_hour = None
 
     def set_bot(self, bot):
-        """تنظیم bot بعد از شروع application"""
         self.bot = bot
 
     async def start(self):
-        """شروع پشتیبان‌گیری خودکار"""
         if self.is_running:
             logger.warning("Auto backup scheduler is already running")
             return
-
         self.is_running = True
-        self.task = asyncio.create_task(self._run_scheduler())
-        self.hiddify_task = asyncio.create_task(self._run_hiddify_scheduler())
-        logger.info("Auto backup scheduler started (DB + Hiddify)")
+        self.task = asyncio.create_task(self._main_scheduler_loop())
+        logger.info("Universal Auto Backup Scheduler started")
 
     async def stop(self):
-        """توقف پشتیبان‌گیری خودکار"""
         self.is_running = False
         if self.task:
             self.task.cancel()
@@ -214,100 +571,82 @@ class AutoBackupScheduler:
                 await self.task
             except asyncio.CancelledError:
                 pass
-        if getattr(self, "hiddify_task", None):
-            self.hiddify_task.cancel()
-            try:
-                await self.hiddify_task
-            except asyncio.CancelledError:
-                pass
-        logger.info("Auto backup scheduler stopped")
+        logger.info("Universal Auto Backup Scheduler stopped")
 
-    def _seconds_until_next(self, hour: int) -> float:
-        """محاسبه ثانیه‌های باقیمانده تا ساعت مشخص"""
-        now = get_now_naive()
-        target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-        if target <= now:
-            target += timedelta(days=1)
-        return (target - now).total_seconds()
+    def _should_run_interval(self, last_run: datetime, interval_hours: int) -> bool:
+        if not last_run:
+            return True
+        return (datetime.now() - last_run) >= timedelta(hours=interval_hours)
 
-    async def _run_scheduler(self):
-        """حلقه اصلی زمان‌بند - ارسال دقیقاً در ساعت 12 و 24"""
+    def _should_run_fixed_hours(self, fixed_hours_str: str, current_hour: int) -> bool:
+        if not fixed_hours_str:
+            return False
+        hours = [int(h.strip()) for h in fixed_hours_str.split(",") if h.strip().isdigit()]
+        return current_hour in hours
+
+    async def _main_scheduler_loop(self):
+        """حلقه اصلی بررسی هر ۶۰ ثانیه"""
+        logger.info("Backup scheduler loop active")
+        # مکث اولیه کوتاه بعد از استارت سیستم
+        await asyncio.sleep(45)
+
         while self.is_running:
             try:
-                # انتظار تا ساعت 12 بعدی
-                wait_12 = self._seconds_until_next(12)
-                logger.info(f"Next backup at 12:00 (in {wait_12/3600:.1f} hours)")
-                await asyncio.sleep(wait_12)
+                main_enabled = db.get_setting("backup_main_enabled", "1") == "1"
+                hiddify_enabled = db.get_setting("backup_hiddify_enabled", "1") == "1"
+                sched_type = db.get_setting("backup_schedule_type", "interval")
+                interval_hours = int(db.get_setting("backup_interval_hours", "6") or 6)
+                fixed_hours_str = db.get_setting("backup_fixed_hours", "00,06,12,18")
 
-                if not self.is_running:
-                    break
+                now = datetime.now()
+                current_hour = now.hour
+                current_minute = now.minute
 
-                # ارسال پشتیبان ساعت 12
-                if self.bot:
-                    logger.info("Creating 12:00 backup...")
-                    result = await send_backup_to_admin(self.bot, self.admin_id)
-                    if result.get("success"):
-                        logger.info(f"12:00 backup completed: {result.get('filename')}")
+                # بررسی اجرای پنل اصلی
+                if main_enabled:
+                    run_main = False
+                    if sched_type == "fixed_hours":
+                        if self._should_run_fixed_hours(fixed_hours_str, current_hour):
+                            if self.last_checked_hour != current_hour and current_minute < 5:
+                                run_main = True
+                    else:
+                        if self._should_run_interval(self.last_main_run_time, interval_hours):
+                            run_main = True
 
-                # انتظار تا ساعت 24 (نیمه‌شب)
-                wait_24 = self._seconds_until_next(0)
-                logger.info(f"Next backup at 00:00 (in {wait_24/3600:.1f} hours)")
-                await asyncio.sleep(wait_24)
+                    if run_main:
+                        logger.info("Executing scheduled Main Panel backup...")
+                        # اجرا در ترد مجزا جهت جلوگیری از بلاک شدن event loop
+                        await asyncio.to_thread(trigger_main_panel_backup, trigger_type="auto")
+                        self.last_main_run_time = datetime.now()
 
-                if not self.is_running:
-                    break
+                # بررسی اجرای پنل هیدیفای
+                if hiddify_enabled:
+                    run_hid = False
+                    if sched_type == "fixed_hours":
+                        if self._should_run_fixed_hours(fixed_hours_str, current_hour):
+                            if self.last_checked_hour != current_hour and current_minute < 5:
+                                run_hid = True
+                    else:
+                        if self._should_run_interval(self.last_hiddify_run_time, interval_hours):
+                            run_hid = True
 
-                # ارسال پشتیبان ساعت 24
-                if self.bot:
-                    logger.info("Creating 00:00 backup...")
-                    result = await send_backup_to_admin(self.bot, self.admin_id)
-                    if result.get("success"):
-                        logger.info(f"00:00 backup completed: {result.get('filename')}")
+                    if run_hid:
+                        logger.info("Executing scheduled Hiddify backup...")
+                        await trigger_hiddify_panel_backup_async(trigger_type="auto")
+                        self.last_hiddify_run_time = datetime.now()
+
+                if sched_type == "fixed_hours" and current_minute < 5:
+                    self.last_checked_hour = current_hour
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in auto backup scheduler: {e}")
-                await asyncio.sleep(300)  # 5 دقیقه صبر در صورت خطا
+                logger.error(f"Error in backup scheduler loop: {e}", exc_info=True)
+
+            # هر ۶۰ ثانیه بررسی تکرار می‌شود
+            await asyncio.sleep(60)
 
 
-    async def _run_hiddify_scheduler(self):
-        from database import db
-        while self.is_running:
-            try:
-                interval_hours = int(db.get_setting('hiddify_backup_interval_hours', '12'))
-                await asyncio.sleep(interval_hours * 3600)
-                if not self.is_running: break
-                logger.info('Running scheduled Hiddify backup...')
-                await trigger_hiddify_backup(db)
-            except Exception as e:
-                logger.error(f'Hiddify Scheduler Error: {e}')
-                await asyncio.sleep(300)
-
-
-# نمونه singleton (فقط برای BackupManager)
-backup_manager = BackupManager()
-
-async def trigger_hiddify_backup(db_instance):
-    try:
-        if db_instance.get_setting('hiddify_backup_enabled', '0') != '1': return False
-        ch_id = db_instance.get_setting('hiddify_backup_channel_id', '').strip()
-        if not ch_id: return False
-        
-        from multibot_manager import multibot_manager
-        bot = multibot_manager.main_bot
-        if not bot: return False
-        
-        from bot import hidify
-        b_txt = await hidify.get_backup()
-        if not b_txt: return False
-        
-        from io import BytesIO
-        from datetime import datetime
-        bio = BytesIO(b_txt.encode('utf-8'))
-        fname = f'hiddify_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        await bot.send_document(chat_id=ch_id, document=bio, filename=fname, caption='بکاپ خودکار پنل هیدیفای')
-        return True
-    except Exception as e:
-        logger.error(f'Hiddify Backup Error: {e}')
-        return False
+# سازگاری با کدهای پیشین که مستقیماً trigger_hiddify_backup را ایمپورت می‌کردند
+async def trigger_hiddify_backup(db_instance=None):
+    return await trigger_hiddify_panel_backup_async(trigger_type="auto")

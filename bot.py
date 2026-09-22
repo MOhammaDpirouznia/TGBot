@@ -597,16 +597,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 full_nm = f"{user.first_name or ''} {user.last_name or ''}".strip()
                 db.save_user(telegram_id=user.id, username=user.username, full_name=full_nm)
 
+                portal_url = ""
+                # بررسی توکن نشست احراز هویت وب (Web Auth Session)
+                if arg.startswith("portal_auth_"):
+                    sess_token = arg.replace("portal_auth_", "").strip()
+                    db.approve_telegram_auth_session(
+                        token=sess_token,
+                        telegram_id=user.id,
+                        first_name=user.first_name or "",
+                        username=user.username or ""
+                    )
+                    sess_data = db.get_telegram_auth_session(sess_token)
+                    if sess_data and sess_data.get("origin_host"):
+                        portal_url = f"{sess_data['origin_host'].rstrip('/')}/webapp?tg_id={user.id}"
+
                 if "_ref_" in arg:
                     ref_part = arg.split("_ref_")[1].strip()
                     ref_info = db.lookup_customer_referrer_by_phone(ref_part)
                     if ref_info and ref_info.get("telegram_id") and int(ref_info["telegram_id"]) != user.id:
                         db.add_customer_referral(referrer_id=int(ref_info["telegram_id"]), referred_id=user.id, reseller_id=0)
 
-                web_dom = db.get_setting("custom_domain") or ""
-                if web_dom and not web_dom.startswith("http"):
-                    web_dom = f"https://{web_dom}"
-                portal_url = f"{web_dom.rstrip('/')}/webapp?tg_id={user.id}" if web_dom else ""
+                if not portal_url:
+                    web_dom = db.get_setting("custom_domain") or ""
+                    if web_dom and not web_dom.startswith("http"):
+                        web_dom = f"https://{web_dom}"
+                    portal_url = f"{web_dom.rstrip('/')}/webapp?tg_id={user.id}" if web_dom else ""
 
                 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
                 buttons = []
@@ -615,7 +630,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await update.message.reply_text(
                     f"🎉 <b>خوش آمدید {user.first_name} عزیز!</b>\n\n"
-                    f"هویت تلگرام شما تایید گردید. جهت انتخاب و خرید بسته یا مشاهده وضعیت اشتراک، بر روی دکمه زیر کلیک فرمایید:",
+                    f"احراز هویت تلگرام شما با موفقیت تایید شد.\n"
+                    f"جهت انتخاب و خرید بسته یا مشاهده وضعیت اشتراک، بر روی دکمه زیر کلیک فرمایید:",
                     reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
                     parse_mode="HTML"
                 )

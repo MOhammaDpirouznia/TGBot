@@ -4669,19 +4669,34 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
     <div class="card-body p-4 settings-card-body">
+                <!-- بنر هدایت به سامانه جامع پشتیبان‌گیری خودکار -->
+                <div class="p-3 mb-4 rounded-3 text-white d-flex align-items-center justify-content-between flex-wrap gap-3 shadow-sm" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+                    <div>
+                        <div class="fw-bold fs-6 mb-1">
+                            <i class="fas fa-cloud-arrow-up me-2"></i> سامانه پیشرفته پشتیبان‌گیری خودکار و ارسال به تلگرام
+                        </div>
+                        <div class="small opacity-90">
+                            پشتیبان‌گیری زمان‌بندی‌شده از پنل اصلی، نمایندگان و هیدیفای همراه با گزارشات تفکیک‌شده و ارسال به کانال/گروه.
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin_auto_backup') }}" class="btn btn-light text-primary fw-bold px-3 py-2 rounded-pill shadow-sm">
+                        <i class="fas fa-arrow-left me-1"></i> ورود به مدیریت پشتیبان‌گیری خودکار
+                    </a>
+                </div>
+
                 <p class="text-muted small">
                     می‌توانید فایل کامل پایگاه داده SQLite شامل تمامی مشتریان، اشتراک‌ها، کیف پول‌ها و تراکنش‌ها را دانلود کنید یا یک فایل پشتیبان قبلی را بازیابی نمایید.
                 </p>
                 
                 <div class="d-flex gap-2 mb-4">
-                    <a href="{{ url_for('download_backup') }}" class="btn btn-primary">
-                        <i class="fas fa-download me-1"></i> دانلود فایل پشتیبان (.db)
+                    <a href="{{ url_for('download_backup') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-download me-1"></i> دانلود فایل پشتیبان دیتابیس (.db)
                     </a>
                 </div>
 
                 <hr>
 
-                <h6 class="fw-bold mb-2">📤 بازیابی از فایل پشتیبان:</h6>
+                <h6 class="fw-bold mb-2">📤 بازیابی دستی از فایل پشتیبان:</h6>
                 <form action="{{ url_for('upload_backup') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirm('هشدار: بازیابی فایل پشتیبان اطلاعات فعلی را با داده‌های فایل جایگزین خواهد کرد. آیا ادامه می‌دهید؟');">
                     <div class="mb-3">
                         <label class="form-label small text-muted">انتخاب فایل .db پشتیبان:</label>
@@ -4691,39 +4706,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-upload me-1"></i> آپلود و بازیابی دیتابیس
                     </button>
                 </form>
-            
-            <hr class="my-4">
-            
-            <div class="row g-4 mt-2">
-                <div class="col-md-12">
-                    <h6 class="fw-bold mb-3"><i class="fas fa-server text-info me-2"></i> پشتیبان‌گیری از پنل هیدیفای</h6>
-                    <form action="{{ url_for('save_hiddify_backup_settings') }}" method="POST">
-                        <div class="row g-3">
-                            <div class="col-md-12">
-                                <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="hiddifyBackupEnabled" name="hiddify_backup_enabled" value="1" {% if hiddify_backup_enabled %}checked{% endif %}>
-                                    <label class="form-check-label fw-bold" for="hiddifyBackupEnabled">فعالسازی پشتیبان‌گیری خودکار هیدیفای (ارسال به تلگرام)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">شناسه گروه/کانال تلگرام:</label>
-                                <input type="text" name="hiddify_backup_channel_id" class="form-control font-monospace" placeholder="مثال: -100123456789" value="{{ hiddify_backup_channel_id or '' }}">
-                                <div class="form-text small">ربات باید در این گروه یا کانال عضو و ادمین باشد.</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">دوره زمانی (ساعت):</label>
-                                <input type="number" name="hiddify_backup_interval_hours" class="form-control font-monospace" placeholder="مثال: 12" value="{{ hiddify_backup_interval_hours or '12' }}" min="1">
-                                <div class="form-text small">هر چند ساعت یکبار بکاپ گرفته شود.</div>
-                            </div>
-                            <div class="col-md-12 mt-3">
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> ذخیره تنظیمات بکاپ هیدیفای</button>
-                                <button type="button" class="btn btn-outline-info ms-2" onclick="window.location.href='{{ url_for('manual_hiddify_backup') }}'">
-                                    <i class="fas fa-cloud-download-alt me-1"></i> تهیه بکاپ هیدیفای و ارسال همین الان
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
             </div>
 </div>
 </div>
