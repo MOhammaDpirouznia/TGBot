@@ -483,6 +483,33 @@
             border: 1px solid #cbd5e1 !important;
         }
 
+        /* دکمه‌های دانلود بارکد و اشتراک‌گذاری */
+        .btn-qr-action {
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            font-size: 0.8rem;
+        }
+        .btn-qr-action:hover {
+            transform: translateY(-1px);
+        }
+        [data-bs-theme="light"] #subConfigModal .btn-outline-warning {
+            color: #b45309 !important;
+            border-color: #f59e0b !important;
+            background: rgba(245, 158, 11, 0.08) !important;
+        }
+        [data-bs-theme="light"] #subConfigModal .btn-outline-warning:hover {
+            background: #f59e0b !important;
+            color: #ffffff !important;
+        }
+        [data-bs-theme="light"] #subConfigModal .btn-outline-info {
+            color: #0284c7 !important;
+            border-color: #0ea5e9 !important;
+            background: rgba(14, 165, 233, 0.08) !important;
+        }
+        [data-bs-theme="light"] #subConfigModal .btn-outline-info:hover {
+            background: #0ea5e9 !important;
+            color: #ffffff !important;
+        }
+
         /* تعامل و نشانگرهای ویرایش پروفایل کاربر */
         .customer-profile-trigger {
             cursor: pointer;
@@ -1150,6 +1177,28 @@
             border: 3px solid #f59e0b !important;
             color: #d97706 !important;
             box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3) !important;
+        }
+
+        /* آیکون وکتور باکیفیت بنر تحلیل و نمودار مصرف (همانند هدر مودال گزارش مصرف) */
+        .traffic-analytics-icon-badge {
+            background: rgba(14, 165, 233, 0.16);
+            border: 1.5px solid rgba(56, 189, 248, 0.45);
+            color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .bento-card:hover .traffic-analytics-icon-badge,
+        div[data-bs-target="#trafficAnalyticsModal"]:hover .traffic-analytics-icon-badge {
+            transform: scale(1.08);
+            border-color: #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
+        [data-bs-theme="light"] .traffic-analytics-icon-badge,
+        :root:not([data-bs-theme="dark"]) .traffic-analytics-icon-badge {
+            background: #e0f2fe !important;
+            border: 1.5px solid #7dd3fc !important;
+            color: #0284c7 !important;
+            box-shadow: 0 2px 10px rgba(14, 165, 233, 0.18) !important;
         }
 
         /* ب) تب‌بندی مینیمال و متمرکز (Minimal Tabbed) */
@@ -2564,9 +2613,8 @@
             <!-- بنر هوشمند دسترسی به نمودار و تحلیل مصرف -->
             <div class="d-flex justify-content-between align-items-center p-2 rounded mt-2" style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.3); cursor: pointer; transition: all 0.2s ease;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal" onmouseover="this.style.background='rgba(14, 165, 233, 0.15)'" onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'">
                 <div class="d-flex align-items-center gap-2">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 32px; height: 32px; overflow: hidden; background: #0c2040; border: 1.5px solid rgba(56, 189, 248, 0.45); box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);">
-                        <img src="/avatars/analytics_icon.png" alt="تحلیل مصرف" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                        <i class="fas fa-chart-line text-info" style="display: none; font-size: 1rem;"></i>
+                    <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 traffic-analytics-icon-badge" style="width: 34px; height: 34px;">
+                        <i class="fas fa-chart-line" style="font-size: 1rem;"></i>
                     </div>
                     <div class="text-start">
                         <span class="d-block small fw-bold text-info" style="font-size: 0.8rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
@@ -3473,9 +3521,8 @@
                                  onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'"
                                  title="برای مشاهده تحلیل و نمودار مصرف کلیک کنید">
                                 <div class="d-flex align-items-center gap-2 gap-md-3">
-                                    <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 36px; height: 36px; overflow: hidden; background: #0c2040; border: 1.5px solid rgba(56, 189, 248, 0.45); box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);">
-                                        <img src="/avatars/analytics_icon.png" alt="تحلیل مصرف" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                        <i class="fas fa-chart-line text-info" style="display: none; font-size: 1.05rem;"></i>
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 traffic-analytics-icon-badge" style="width: 36px; height: 36px;">
+                                        <i class="fas fa-chart-line" style="font-size: 1.05rem;"></i>
                                     </div>
                                     <div class="text-start">
                                         <span class="d-block small fw-bold text-info" style="font-size: 0.84rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
@@ -3714,14 +3761,31 @@
                     {% if actual_sub_url %}
                     <div class="tab-pane fade show active" id="tab-sub-pane" role="tabpanel" aria-labelledby="tab-sub-btn">
                         <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید یا لینک زیر را کپی کنید:</p>
-                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-3" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ actual_sub_url|urlencode }}" alt="QR سابسکریپشن" class="img-fluid" style="width: 220px; height: 220px; display: block;">
+                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-2" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
+                            <img id="subQrImg" crossorigin="anonymous" src="/api/qr-image?text={{ actual_sub_url|urlencode }}" onerror="this.onerror=null; this.src='https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=15&data={{ actual_sub_url|urlencode }}';" alt="QR سابسکریپشن" class="img-fluid" style="width: 220px; height: 220px; display: block;">
                         </div>
                         {% if sub.get('account_name') %}
                         <div class="small text-muted font-monospace mb-2 text-truncate" style="max-width: 280px; margin: 0 auto;">
                             <i class="fas fa-user-circle me-1 text-info"></i>{{ sub.get('account_name') }}
                         </div>
                         {% endif %}
+                        <!-- دکمه‌های دانلود بارکد و اشتراک‌گذاری با پس‌زمینه سفید -->
+                        <div class="d-flex align-items-center justify-content-center gap-2 mb-3 mt-1">
+                            <button type="button" 
+                                    class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1.5 fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm btn-qr-action"
+                                    onclick="downloadQrCodeImage('subQrImg', 'qrcode_{{ sub.get('account_name') or 'subscription' }}.png', '{{ actual_sub_url }}')"
+                                    title="دانلود بارکد QR با پس‌زمینه سفید">
+                                <i class="fas fa-download"></i>
+                                <span>دانلود بارکد</span>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-outline-info btn-sm rounded-pill px-3 py-1.5 fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm btn-qr-action"
+                                    onclick="shareQrCodeImage('subQrImg', 'qrcode_{{ sub.get('account_name') or 'subscription' }}.png', 'بارکد اشتراک {{ sub.get('account_name') or brand_title }}', '{{ actual_sub_url }}')"
+                                    title="اشتراک‌گذاری تصویر بارکد و لینک">
+                                <i class="fas fa-share-nodes"></i>
+                                <span>اشتراک‌گذاری</span>
+                            </button>
+                        </div>
                         <div class="w-100 max-w-lg mx-auto mb-3" style="max-width: 550px;">
                             <div class="input-group mb-2">
                                 <input type="text" id="subModalUrlInput" class="form-control text-center font-monospace small bg-dark text-info border-secondary border-opacity-50" readonly value="{{ actual_sub_url }}" style="direction: ltr;">
@@ -3745,8 +3809,30 @@
                     {% if single_url %}
                     <div class="tab-pane fade {% if not actual_sub_url %}show active{% endif %}" id="tab-single-pane" role="tabpanel" aria-labelledby="tab-single-btn">
                         <p class="small text-secondary mb-3">کانفیگ مستقیم برای اتصال سریع بدون سابسکریپشن:</p>
-                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-3" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ single_url|urlencode }}" alt="QR کانفیگ تکی" class="img-fluid" style="width: 220px; height: 220px; display: block;">
+                        <div class="p-3 bg-white rounded-4 d-inline-block shadow mb-2" style="box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;">
+                            <img id="singleQrImg" crossorigin="anonymous" src="/api/qr-image?text={{ single_url|urlencode }}" onerror="this.onerror=null; this.src='https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=15&data={{ single_url|urlencode }}';" alt="QR کانفیگ تکی" class="img-fluid" style="width: 220px; height: 220px; display: block;">
+                        </div>
+                        {% if sub.get('account_name') %}
+                        <div class="small text-muted font-monospace mb-2 text-truncate" style="max-width: 280px; margin: 0 auto;">
+                            <i class="fas fa-user-circle me-1 text-info"></i>{{ sub.get('account_name') }} (کانفیگ تکی)
+                        </div>
+                        {% endif %}
+                        <!-- دکمه‌های دانلود بارکد و اشتراک‌گذاری با پس‌زمینه سفید -->
+                        <div class="d-flex align-items-center justify-content-center gap-2 mb-3 mt-1">
+                            <button type="button" 
+                                    class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1.5 fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm btn-qr-action"
+                                    onclick="downloadQrCodeImage('singleQrImg', 'qrcode_{{ sub.get('account_name') or 'config' }}_single.png', '{{ single_url }}')"
+                                    title="دانلود بارکد QR با پس‌زمینه سفید">
+                                <i class="fas fa-download"></i>
+                                <span>دانلود بارکد</span>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-outline-info btn-sm rounded-pill px-3 py-1.5 fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm btn-qr-action"
+                                    onclick="shareQrCodeImage('singleQrImg', 'qrcode_{{ sub.get('account_name') or 'config' }}_single.png', 'کانفیگ تکی {{ sub.get('account_name') or brand_title }}', '{{ single_url }}')"
+                                    title="اشتراک‌گذاری تصویر بارکد و لینک">
+                                <i class="fas fa-share-nodes"></i>
+                                <span>اشتراک‌گذاری</span>
+                            </button>
                         </div>
                         <div class="w-100 max-w-lg mx-auto mb-3" style="max-width: 550px;">
                             <div class="input-group mb-2">
@@ -5483,6 +5569,209 @@ function copyText(text, label) {
     }).catch(() => {
         prompt('کپی کنید:', text);
     });
+}
+
+// ─── تولید و رندر هوشمند بارکد با پس‌زمینه سفید خالص و حاشیه متقارن ───
+async function renderQrToWhiteCanvas(imgElement, rawDataUrl, targetSize = 400, padding = 28) {
+    const canvas = document.createElement('canvas');
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context not supported');
+
+    // ۱. پر کردن کامل پس‌زمینه بوم با رنگ سفید خالص (#ffffff)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetSize, targetSize);
+
+    const qrSize = targetSize - (padding * 2);
+
+    const drawAndValidate = (sourceImg) => {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, targetSize, targetSize);
+        ctx.drawImage(sourceImg, padding, padding, qrSize, qrSize);
+        ctx.getImageData(0, 0, 1, 1);
+        return canvas;
+    };
+
+    // سناریو ۱: اگر عنصر img در صفحه لود شده و Taint نشده است
+    if (imgElement && imgElement.complete && imgElement.naturalWidth > 0) {
+        try {
+            return drawAndValidate(imgElement);
+        } catch (e) {
+            // در صورت بروز خطای Tainted Canvas، ادامه به روش‌های بعدی
+        }
+    }
+
+    // سناریو ۲: ساخت آبجکت Image با crossOrigin
+    const candidates = [];
+    if (rawDataUrl) {
+        candidates.push('/api/qr-image?text=' + encodeURIComponent(rawDataUrl));
+        candidates.push('https://api.qrserver.com/v1/create-qr-code/?size=' + qrSize + 'x' + qrSize + '&margin=0&format=png&data=' + encodeURIComponent(rawDataUrl));
+    }
+    if (imgElement && imgElement.src) {
+        candidates.push(imgElement.src);
+    }
+
+    for (let i = 0; i < candidates.length; i++) {
+        try {
+            const url = candidates[i];
+            const loadedImg = await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = url;
+            });
+            return drawAndValidate(loadedImg);
+        } catch (err) {
+            // امتحان کاندید بعدی
+        }
+    }
+
+    // سناریو ۳: واکشی با fetch و تبدیل به Blob URL
+    for (let i = 0; i < candidates.length; i++) {
+        try {
+            const url = candidates[i];
+            const resp = await fetch(url, { mode: 'cors' });
+            if (!resp.ok) continue;
+            const blob = await resp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const blobImg = await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = blobUrl;
+            });
+            const res = drawAndValidate(blobImg);
+            URL.revokeObjectURL(blobUrl);
+            return res;
+        } catch (err) {
+            // ادامه
+        }
+    }
+
+    throw new Error('Failed to render QR to white canvas');
+}
+
+// ─── دانلود بارکد QR با پس‌زمینه سفید ───
+async function downloadQrCodeImage(imgId, filename, rawDataUrl) {
+    try {
+        if (window.tgHaptic) window.tgHaptic('light');
+        const img = document.getElementById(imgId);
+        const canvas = await renderQrToWhiteCanvas(img, rawDataUrl, 400, 28);
+
+        const onBlobReady = (blob) => {
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = blobUrl;
+            a.download = filename || 'qrcode.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'دانلود بارکد انجام شد! 📥',
+                    text: 'تصویر بارکد با پس‌زمینه سفید استاندارد و کیفیت بالا ذخیره شد.',
+                    timer: 2800,
+                    showConfirmButton: false,
+                    toast: true,
+                    position: 'top-end'
+                });
+            } else {
+                alert('تصویر بارکد با موفقیت دانلود شد.');
+            }
+        };
+
+        if (canvas.toBlob) {
+            canvas.toBlob(onBlobReady, 'image/png');
+        } else {
+            const dataUrl = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename || 'qrcode.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    } catch (err) {
+        console.error('Download QR failed:', err);
+        if (rawDataUrl) {
+            window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=25&format=png&data=' + encodeURIComponent(rawDataUrl), '_blank');
+        }
+    }
+}
+
+// ─── اشتراک‌گذاری تصویر بارکد و لینک با پس‌زمینه سفید ───
+async function shareQrCodeImage(imgId, filename, title, rawDataUrl) {
+    try {
+        if (window.tgHaptic) window.tgHaptic('medium');
+        const img = document.getElementById(imgId);
+        const canvas = await renderQrToWhiteCanvas(img, rawDataUrl, 400, 28);
+
+        canvas.toBlob(async (blob) => {
+            if (!blob) {
+                downloadQrCodeImage(imgId, filename, rawDataUrl);
+                return;
+            }
+
+            const shareTitle = title || 'بارکد اشتراک اینترنت';
+            const shareText = rawDataUrl ? ('کانفیگ و لینک اتصال:\n' + rawDataUrl) : 'بارکد اتصال پرسرعت';
+            const file = new File([blob], filename || 'qrcode.png', { type: 'image/png' });
+
+            // ۱. بررسی اشتراک فایل در سیستم‌عامل (Web Share API Level 2)
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: shareTitle,
+                        text: shareText
+                    });
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return; // انصراف توسط کاربر
+                    console.warn('File share failed, falling back to text share...', err);
+                }
+            }
+
+            // ۲. اگر اشتراک فایل ممکن نبود، اشتراک متن/لینک
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: shareTitle,
+                        text: shareText,
+                        url: rawDataUrl || undefined
+                    });
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                }
+            }
+
+            // ۳. فال‌بک: دانلود مستقیم بارکد با پس‌زمینه سفید + کپی لینک به حافظه
+            downloadQrCodeImage(imgId, filename, rawDataUrl);
+            if (rawDataUrl) {
+                navigator.clipboard.writeText(rawDataUrl).then(() => {
+                    if (window.Swal) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'اشتراک‌گذاری آسان',
+                            text: 'تصویر بارکد با زمینه سفید دانلود شد و لینک اتصال نیز در حافظه کپی گردید تا بتوانید آن را برای دوستان خود ارسال کنید.',
+                            confirmButtonText: 'متوجه شدم'
+                        });
+                    }
+                }).catch(() => {});
+            }
+        }, 'image/png');
+    } catch (err) {
+        console.error('Share QR error:', err);
+        if (rawDataUrl) {
+            copyText(rawDataUrl, 'لینک اتصال');
+        }
+    }
 }
 
 function copyBentoReferralLink(link) {

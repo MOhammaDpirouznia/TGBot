@@ -716,7 +716,13 @@ class Database:
         except Exception:
             pass
 
-        # همگام‌سازی و درج خودکار شماره تلفن احراز هویت شده مشتریان از جدول users در جدول subscriptions
+        # پاک‌سازی قطعی رکوردهای باطله با telegram_id = 0 یا نامعتبر در جدول کاربران جهت جلوگیری از تداخل
+        try:
+            cursor.execute("DELETE FROM users WHERE telegram_id = 0 OR telegram_id IS NULL")
+        except Exception:
+            pass
+
+        # همگام‌سازی و درج خودکار شماره تلفن احراز هویت شده مشتریان از جدول users در جدول subscriptions (منحصراً شناسه‌های مثبت تلگرام)
         try:
             cursor.execute("""
                 UPDATE subscriptions
@@ -724,12 +730,37 @@ class Database:
                     SELECT u.phone_number FROM users u 
                     WHERE u.telegram_id = subscriptions.telegram_id 
                       AND u.phone_number IS NOT NULL AND u.phone_number != ''
+                      AND u.telegram_id > 0
                 )
                 WHERE (phone_number IS NULL OR phone_number = '') 
+                  AND telegram_id > 0
                   AND telegram_id IN (
                     SELECT telegram_id FROM users 
                     WHERE phone_number IS NOT NULL AND phone_number != ''
+                      AND telegram_id > 0
                   )
+            """)
+        except Exception:
+            pass
+
+        # پاک‌سازی خودکار و بازگردانی فیلدهای هویتی اشتراک‌های غیرتلگرامی که بر اثر باگ شناسه صفر با اطلاعات تستی شماره ۰۹۱۱۸۶۲۰۲۵۹ آلوده شده بودند
+        try:
+            cursor.execute("""
+                UPDATE subscriptions
+                SET phone_number = NULL,
+                    full_name = NULL,
+                    birthday = NULL,
+                    telegram_username = NULL,
+                    primary_isp = NULL,
+                    secondary_isp = NULL
+                WHERE (telegram_id = 0 OR telegram_id IS NULL)
+                  AND (phone_number LIKE '%09118620259%' OR full_name LIKE '%خادملو%')
+            """)
+            cursor.execute("""
+                DELETE FROM users 
+                WHERE telegram_id = 0 
+                   OR phone_number LIKE '%09118620259%' 
+                   OR full_name LIKE '%خادملو%'
             """)
         except Exception:
             pass
@@ -2822,7 +2853,10 @@ class Database:
             conn.close()
 
     def set_user_phone(self, telegram_id: int, phone_number: str) -> bool:
-        """ثبت و تایید شماره تماس تلگرام کاربر"""
+        """ثبت و تایید شماره تماس تلگرام کاربر (منحصراً شناسه‌های مثبت تلگرام)"""
+        if not telegram_id or int(telegram_id) <= 0:
+            return False
+
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2833,23 +2867,24 @@ class Database:
             clean_phone = "+" + clean_phone
 
         try:
-            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            tg_id_int = int(telegram_id)
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (tg_id_int,))
             if cursor.fetchone():
                 cursor.execute("""
                     UPDATE users SET phone_number = ?, is_verified = 1, updated_at = ? WHERE telegram_id = ?
-                """, (clean_phone, now, telegram_id))
+                """, (clean_phone, now, tg_id_int))
             else:
                 cursor.execute("""
                     INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at)
                     VALUES (?, ?, ?, 1, ?, ?)
-                """, (telegram_id, f"user_{telegram_id}", clean_phone, now, now))
+                """, (tg_id_int, f"user_{tg_id_int}", clean_phone, now, now))
 
             # همچنین درج و به‌روزرسانی خودکار شماره تلفن احراز شده در اشتراک‌های کاربر
             cursor.execute("""
                 UPDATE subscriptions 
                 SET phone_number = ?, updated_at = ? 
-                WHERE telegram_id = ? AND (phone_number IS NULL OR phone_number = '')
-            """, (clean_phone, now, telegram_id))
+                WHERE telegram_id = ? AND telegram_id > 0 AND (phone_number IS NULL OR phone_number = '')
+            """, (clean_phone, now, tg_id_int))
 
             conn.commit()
             return True
@@ -3046,13 +3081,16 @@ class Database:
         return tier_info
 
     def set_user_birthday(self, telegram_id: int, birthday: str) -> bool:
-        """ثبت یا ویرایش تاریخ تولد کاربر جهت دریافت خودکار هدیه تولد"""
+        """ثبت یا ویرایش تاریخ تولد کاربر جهت دریافت خودکار هدیه تولد (منحصراً شناسه‌های مثبت تلگرام)"""
+        if not telegram_id or int(telegram_id) <= 0:
+            return False
+
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         clean_b = (birthday or "").strip()
         try:
-            cursor.execute("UPDATE users SET birthday = ?, updated_at = ? WHERE telegram_id = ?", (clean_b, now, telegram_id))
+            cursor.execute("UPDATE users SET birthday = ?, updated_at = ? WHERE telegram_id = ?", (clean_b, now, int(telegram_id)))
             conn.commit()
             return True
         except Exception as e:
@@ -9776,11 +9814,11 @@ class Database:
             eff_phone = clean_phone or sub_dict.get("phone_number")
 
             user_row = None
-            if eff_tg_id:
+            if eff_tg_id and int(eff_tg_id) > 0:
                 cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (int(eff_tg_id),))
                 user_row = cursor.fetchone()
             if not user_row and eff_phone:
-                cursor.execute("SELECT * FROM users WHERE phone_number = ? ORDER BY id DESC LIMIT 1", (eff_phone,))
+                cursor.execute("SELECT * FROM users WHERE phone_number = ? AND telegram_id != 0 AND telegram_id IS NOT NULL ORDER BY id DESC LIMIT 1", (eff_phone,))
                 user_row = cursor.fetchone()
 
             user_dict = dict(user_row) if user_row else {}
@@ -9834,27 +9872,56 @@ class Database:
                 u_params.append(user_dict["id"])
                 cursor.execute(f"UPDATE users SET {', '.join(u_updates)} WHERE id = ?", u_params)
             else:
-                new_tg = int(eff_tg_id) if eff_tg_id else 0
-                cursor.execute("""
-                    INSERT INTO users (
-                        telegram_id, username, phone_number, full_name, birthday,
-                        primary_isp, secondary_isp, notification_pref, custom_avatar,
-                        profile_completed, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    new_tg,
-                    (telegram_username or "").strip().lstrip("@"),
-                    clean_phone or "",
-                    (full_name or "").strip(),
-                    (birthday or "").strip(),
-                    (primary_isp or "").strip(),
-                    (secondary_isp or "").strip(),
-                    (notification_pref or "both").strip(),
-                    (custom_avatar or "").strip(),
-                    is_completed,
-                    now_str,
-                    now_str
-                ))
+                # منحصراً شناسه‌های مثبت تلگرام یا شناسه‌های منفی یکتای وب ثبت می‌شوند و هرگز telegram_id=0 درج نمی‌شود
+                if eff_tg_id and int(eff_tg_id) > 0:
+                    cursor.execute("""
+                        INSERT INTO users (
+                            telegram_id, username, phone_number, full_name, birthday,
+                            primary_isp, secondary_isp, notification_pref, custom_avatar,
+                            profile_completed, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        int(eff_tg_id),
+                        (telegram_username or "").strip().lstrip("@"),
+                        clean_phone or "",
+                        (full_name or "").strip(),
+                        (birthday or "").strip(),
+                        (primary_isp or "").strip(),
+                        (secondary_isp or "").strip(),
+                        (notification_pref or "both").strip(),
+                        (custom_avatar or "").strip(),
+                        is_completed,
+                        now_str,
+                        now_str
+                    ))
+                elif clean_phone:
+                    try:
+                        clean_digits = re.sub(r"\D", "", clean_phone)
+                        syn_tg = -int(clean_digits) if clean_digits else -int(time.time())
+                        cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (syn_tg,))
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                INSERT INTO users (
+                                    telegram_id, username, phone_number, full_name, birthday,
+                                    primary_isp, secondary_isp, notification_pref, custom_avatar,
+                                    profile_completed, created_at, updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                syn_tg,
+                                (telegram_username or "").strip().lstrip("@"),
+                                clean_phone or "",
+                                (full_name or "").strip(),
+                                (birthday or "").strip(),
+                                (primary_isp or "").strip(),
+                                (secondary_isp or "").strip(),
+                                (notification_pref or "both").strip(),
+                                (custom_avatar or "").strip(),
+                                is_completed,
+                                now_str,
+                                now_str
+                            ))
+                    except Exception as e_syn:
+                        logger.warning(f"Could not insert synthetic user: {e_syn}")
 
             conn.commit()
             return {
@@ -10421,12 +10488,13 @@ class Database:
             # ۱. بازیابی هویت و مشخصات مشتری (مشابه کاربران تلگرام)
             user_dict = None
             if tg_id and int(tg_id) > 0:
-                cursor.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,))
+                cursor.execute("SELECT * FROM users WHERE telegram_id=?", (int(tg_id),))
                 u_row = cursor.fetchone()
                 if u_row:
                     user_dict = dict(u_row)
-            if not user_dict and phone:
-                cursor.execute("SELECT * FROM users WHERE phone_number=? LIMIT 1", (phone,))
+            if not user_dict and phone and str(phone).strip():
+                # فقط کاربران با شناسه معتبر غیرصفر تلگرام یا وب تطبیق داده شوند
+                cursor.execute("SELECT * FROM users WHERE phone_number=? AND telegram_id != 0 AND telegram_id IS NOT NULL ORDER BY id DESC LIMIT 1", (str(phone).strip(),))
                 u_row = cursor.fetchone()
                 if u_row:
                     user_dict = dict(u_row)
@@ -10451,16 +10519,26 @@ class Database:
                 }
             else:
                 user_dict["is_synthetic"] = False
-                if not user_dict.get("full_name"):
-                    user_dict["full_name"] = sub_dict.get("full_name") or ""
-                if not user_dict.get("birthday"):
-                    user_dict["birthday"] = sub_dict.get("birthday") or ""
-                if not user_dict.get("primary_isp"):
-                    user_dict["primary_isp"] = sub_dict.get("primary_isp") or ""
-                if not user_dict.get("secondary_isp"):
-                    user_dict["secondary_isp"] = sub_dict.get("secondary_isp") or ""
-                if not user_dict.get("telegram_username"):
-                    user_dict["telegram_username"] = sub_dict.get("telegram_username") or ""
+                if sub_dict.get("full_name"):
+                    user_dict["full_name"] = sub_dict.get("full_name")
+                elif not user_dict.get("full_name"):
+                    user_dict["full_name"] = ""
+                if sub_dict.get("birthday"):
+                    user_dict["birthday"] = sub_dict.get("birthday")
+                elif not user_dict.get("birthday"):
+                    user_dict["birthday"] = ""
+                if sub_dict.get("primary_isp"):
+                    user_dict["primary_isp"] = sub_dict.get("primary_isp")
+                elif not user_dict.get("primary_isp"):
+                    user_dict["primary_isp"] = ""
+                if sub_dict.get("secondary_isp"):
+                    user_dict["secondary_isp"] = sub_dict.get("secondary_isp")
+                elif not user_dict.get("secondary_isp"):
+                    user_dict["secondary_isp"] = ""
+                if sub_dict.get("telegram_username"):
+                    user_dict["telegram_username"] = sub_dict.get("telegram_username")
+                elif not user_dict.get("telegram_username"):
+                    user_dict["telegram_username"] = ""
 
             # محاسبه درصد تکمیل مشخصات پرونده مشتری
             p_score = 0
@@ -24363,8 +24441,8 @@ class Database:
             cursor.execute("UPDATE subscriptions SET is_vip = ?, updated_at = ? WHERE id = ?", (1 if is_vip else 0, now, sub_id))
             cursor.execute("SELECT telegram_id FROM subscriptions WHERE id = ?", (sub_id,))
             row = cursor.fetchone()
-            if row and row["telegram_id"]:
-                cursor.execute("UPDATE users SET is_vip = ?, updated_at = ? WHERE telegram_id = ?", (1 if is_vip else 0, now, row["telegram_id"]))
+            if row and row["telegram_id"] and int(row["telegram_id"]) > 0:
+                cursor.execute("UPDATE users SET is_vip = ?, updated_at = ? WHERE telegram_id = ?", (1 if is_vip else 0, now, int(row["telegram_id"])))
             conn.commit()
             return {"success": True}
         except Exception as e:

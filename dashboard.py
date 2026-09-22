@@ -1301,7 +1301,8 @@ def api_qr_image():
             mimetype="image/png",
             headers={
                 "Cache-Control": "public, max-age=86400",
-                "Content-Disposition": "inline; filename=qr.png"
+                "Content-Disposition": "inline; filename=qr.png",
+                "Access-Control-Allow-Origin": "*"
             }
         )
     except Exception as e:
@@ -21796,9 +21797,9 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     if token:
         sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)", (token, token)).fetchone()
 
-    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام داریم
-    if not sub_row and telegram_id:
-        user_subs_all = db.get_user_subscriptions(telegram_id)
+    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام معتبر مثبت داریم
+    if not sub_row and telegram_id and int(telegram_id) > 0:
+        user_subs_all = db.get_user_subscriptions(int(telegram_id))
         if reseller_id is not None and reseller_id > 0:
             r_subs = [s for s in user_subs_all if (s.get("reseller_id") or 0) == reseller_id]
             user_subs = [s for s in r_subs if s.get("status") == "active"] or r_subs
