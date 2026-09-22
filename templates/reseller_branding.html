@@ -88,7 +88,9 @@
                                     <option value="classic" {% if reseller.get('portal_layout') == 'classic' %}selected{% endif %}>📜 کلاسیک آبشاری (تک‌ستونه روان)</option>
                                     <option value="split_dashboard" {% if reseller.get('portal_layout') == 'split_dashboard' %}selected{% endif %}>📊 داشبورد دو ستونه مدرن (سایدبار اطلاعات + تمدید)</option>
                                     <option value="minimal_tabbed" {% if reseller.get('portal_layout') == 'minimal_tabbed' %}selected{% endif %}>📑 تب‌بندی مینیمال و متمرکز (۴ تب مرتب بدون اسکرول)</option>
-                                    <option value="bento_grid" {% if reseller.get('portal_layout') == 'bento_grid' %}selected{% endif %}>🍱 بنتو گرید ماژولار (طراحی تایل‌های مدرن 2026)</option>
+                                    <option value="bento_grid" {% if reseller.get('portal_layout') in ['bento_grid', 'bento_grid_1'] %}selected{% endif %}>🍱 بنتو گرید ماژولار ۱ (۳ تایل تفکیک‌شده + بنر مستقل)</option>
+                                    <option value="bento_grid_2" {% if reseller.get('portal_layout') == 'bento_grid_2' %}selected{% endif %}>🍱 بنتو گرید ماژولار ۲ (دو ستونه بهینه‌شده و خلوت)</option>
+                                    <option value="bento_grid_3" {% if reseller.get('portal_layout') == 'bento_grid_3' %}selected{% endif %}>🍱 بنتو گرید ماژولار ۳ (گیج دایره‌ای، تایل دوطبقه و نمودار نئونی)</option>
                                 </select>
                                 <div class="form-text small">چیدمان صفحات استعلام و تمدید اشتراک برای مشتریان شما.</div>
                             </div>

@@ -202,6 +202,9 @@
         @media (min-width: 992px) {
             body.portal-layout-split_dashboard .portal-container,
             body.portal-layout-bento_grid .portal-container,
+            body.portal-layout-bento_grid_1 .portal-container,
+            body.portal-layout-bento_grid_2 .portal-container,
+            body.portal-layout-bento_grid_3 .portal-container,
             body.portal-layout-minimal_tabbed .portal-container {
                 max-width: 1120px !important;
             }
@@ -209,6 +212,9 @@
         @media (min-width: 1200px) {
             body.portal-layout-split_dashboard .portal-container,
             body.portal-layout-bento_grid .portal-container,
+            body.portal-layout-bento_grid_1 .portal-container,
+            body.portal-layout-bento_grid_2 .portal-container,
+            body.portal-layout-bento_grid_3 .portal-container,
             body.portal-layout-minimal_tabbed .portal-container {
                 max-width: 1200px !important;
             }
@@ -1129,6 +1135,28 @@
         }
         .bento-card:hover {
             box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+        }
+
+        /* ── استایل‌های اختصاصی بنتو ۳ (Bento Grid 3) ── */
+        .bento3-subcard {
+            background: var(--card-bg, rgba(15, 23, 42, 0.75)) !important;
+            border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08)) !important;
+            border-radius: 20px !important;
+            transition: all 0.25s ease;
+        }
+        .bento3-subcard:hover {
+            border-color: rgba(56, 189, 248, 0.45) !important;
+            box-shadow: 0 10px 28px -4px rgba(0, 0, 0, 0.45) !important;
+            transform: translateY(-2px);
+        }
+        .bento3-glow-bar {
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.85), 0 0 4px rgba(56, 189, 248, 1);
+        }
+        [data-bs-theme="light"] .bento3-subcard,
+        :root:not([data-bs-theme="dark"]) .bento3-subcard {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
         }
 
         /* کادر دعوت دوستان بنتو گرید */
@@ -3458,16 +3486,39 @@
             </div>
         </div>
 
-    {% elif portal_layout == 'bento_grid' %}
-        <!-- ═══════════ قالب ۴: بنتو گرید ماژولار (Bento Grid) ═══════════ -->
-        <div class="bento-grid-wrapper">
+    {% elif portal_layout in ['bento_grid', 'bento_grid_1'] %}
+        <!-- ═══════════ قالب ۴: بنتو گرید ماژولار ۱ (سه‌ماژوله تفکیک‌شده + بنر مستقل) ═══════════ -->
+        <div class="bento-grid-wrapper bento-grid-1-wrapper">
             {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
 
-            <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
+            <!-- ردیف ۱ بنتو ۱: تفکیک ۳ تایل اختصاصی (مهلت و حجم / پروفایل و مصرف / تحلیل و نمودار) -->
             <div class="row g-3 mb-3">
-                <div class="col-md-7">
-                    <div class="bento-card d-flex flex-column justify-content-between h-100">
+                <!-- تایل ۱: مهلت انقضا و ترافیک باقیمانده -->
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="bento-card text-center d-flex flex-column justify-content-between h-100 p-3 p-md-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-secondary small"><i class="fas fa-hourglass-half me-1 text-warning"></i>مهلت انقضا</span>
+                            {% if server_status and server_status.state == 'operational' %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">🟢 سرور متصل</span>
+                            {% else %}
+                            <span class="badge bg-secondary px-2 py-1 small">وضعیت سرور</span>
+                            {% endif %}
+                        </div>
+                        <div class="my-3 py-1">
+                            <span class="fs-1 fw-bold text-warning font-monospace">{{ days_left }}</span>
+                            <span class="text-white d-block small mt-1">روز باقی‌مانده</span>
+                        </div>
+                        <div class="p-2.5 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 d-flex justify-content-between align-items-center px-3">
+                            <span class="text-secondary small">حجم باقیمانده:</span>
+                            <strong class="text-success font-monospace fs-6">{{ "%.2f"|format(remain_gb) }} GB</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تایل ۲: مشخصات کاربر و مصرف دوره -->
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="bento-card d-flex flex-column justify-content-between h-100 p-3 p-md-4">
                         <div>
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <div class="d-flex align-items-center gap-2 customer-profile-trigger position-relative p-1 rounded-3" 
@@ -3489,32 +3540,29 @@
                                     </div>
                                     <div>
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
-                                            <h5 class="fw-bold mb-0 text-white font-monospace customer-name-label">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
-                                            <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-1 py-0 rounded-pill" style="font-size: 0.65rem;" title="تکمیل پروفایل">
-                                                <i class="fas fa-user-pen me-1"></i>پروفایل
-                                            </span>
+                                            <h6 class="fw-bold mb-0 text-white font-monospace customer-name-label" style="font-size: 0.95rem;">{{ sub.get('account_name') or 'کاربر گرامی' }}</h6>
                                             {% if sub.get('status') == 'active' %}
-                                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
+                                                <span class="badge bg-success-subtle text-success border border-success px-2 py-0.5 rounded-pill small">فعال</span>
                                             {% elif sub.get('status') == 'expired' %}
-                                                <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
+                                                <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 rounded-pill small">منقضی</span>
                                             {% elif sub.get('status') == 'disabled' %}
-                                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
+                                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-0.5 rounded-pill small">غیرفعال</span>
                                             {% elif sub.get('status') == 'limited' %}
-                                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
+                                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-0.5 rounded-pill small">محدود</span>
                                             {% endif %}
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             {% if sub.get('phone_number') or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
                                                 <small class="text-secondary font-monospace" style="font-size: 0.72rem;">{{ sub.get('phone_number') or ('آیدی: ' ~ sub.get('telegram_id')) }}</small>
-                                                <span class="text-secondary opacity-50" style="font-size: 0.65rem;">•</span>
                                             {% endif %}
-                                            <span class="text-info small text-decoration-underline" style="font-size: 0.69rem;">
-                                                <i class="fas fa-edit me-1"></i>تکمیل مشخصات
-                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                                <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
+                                {% if loyalty_tier_info %}
+                                <div class="flex-shrink-0">
+                                    {{ loyalty_tier_info.badge_html | safe }}
+                                </div>
+                                {% endif %}
                             </div>
 
                             {% set used_gb = sub.get('data_used', 0) | float %}
@@ -3523,154 +3571,312 @@
                             {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
 
                             <div class="d-flex justify-content-between text-secondary small mb-2 align-items-center">
-                                <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+                                <span><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره:</span>
+                                <strong class="text-white font-monospace">{{ percent }}٪</strong>
+                            </div>
+                            <div class="progress mb-2" style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 10px;">
+                                <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
+                            </div>
+                            <div class="d-flex justify-content-between text-secondary" style="font-size: 0.72rem;">
+                                <span>{{ "%.2f"|format(used_gb) }} GB مصرف شده</span>
+                                <span>از {{ total_gb }} GB</span>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 mt-2 border-top border-secondary border-opacity-25 d-flex justify-content-between align-items-center text-secondary small" style="font-size: 0.75rem;">
+                            <span>باشگاه مشتریان و امتیازات</span>
+                            <a href="javascript:void(0)" onclick="openCustomerClubModal('tier')" class="text-info text-decoration-none">
+                                جزئیات <i class="fas fa-chevron-left ms-0.5" style="font-size: 0.6rem;"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تایل ۳: کارت اختصاصی تحلیل و نمودار مصرف ساعتی -->
+                <div class="col-12 col-md-12 col-lg-4">
+                    <div class="bento-card d-flex flex-column justify-content-between h-100 p-3 p-md-4 cursor-pointer" 
+                         style="border-color: rgba(14, 165, 233, 0.3); transition: all 0.25s ease;"
+                         data-bs-toggle="modal" 
+                         data-bs-target="#trafficAnalyticsModal"
+                         onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.6)'; this.style.transform='translateY(-2px)';"
+                         onmouseout="this.style.borderColor='rgba(14, 165, 233, 0.3)'; this.style.transform='none';"
+                         title="برای مشاهده تحلیل تفصیلی و نمودارهای مصرف کلیک کنید">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
                                 <div class="d-flex align-items-center gap-2">
-                                    {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
-                                    <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
-                                        <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
-                                    </span>
-                                    {% endif %}
-                                    <strong class="text-white font-monospace">{{ percent }}٪</strong>
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center traffic-analytics-icon-badge flex-shrink-0" style="width: 32px; height: 32px;">
+                                        <i class="fas fa-chart-line" style="font-size: 0.95rem;"></i>
+                                    </div>
+                                    <span class="fw-bold small text-info" style="font-size: 0.85rem;">تحلیل و نمودار مصرف</span>
                                 </div>
+                                <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-2.5 py-1 small d-inline-flex align-items-center gap-1">
+                                    <span>مشاهده</span>
+                                    <i class="fas fa-chevron-left" style="font-size: 0.6rem;"></i>
+                                </span>
+                            </div>
+
+                            <!-- مینی چارت بصری بنتو ۱ -->
+                            <div class="py-2">
+                                <svg viewBox="0 0 200 60" class="w-100" style="height: 58px; overflow: visible;">
+                                    <defs>
+                                        <linearGradient id="bento1SparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                            <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.4"/>
+                                            <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0.0"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <path d="M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16 L 200,60 L 0,60 Z" fill="url(#bento1SparkGrad)" />
+                                    <path d="M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+                                    <circle cx="150" cy="10" r="3.5" fill="#ffffff" />
+                                    <circle cx="150" cy="10" r="7" fill="#38bdf8" opacity="0.3" />
+                                </svg>
+                                <div class="d-flex justify-content-between text-secondary font-monospace px-1" style="font-size: 0.68rem;">
+                                    <span>۰۰:۰۰</span>
+                                    <span>اوج مصرف (شبانه)</span>
+                                    <span>۲۴:۰۰</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded bg-black bg-opacity-25 border border-secondary border-opacity-25 text-center small text-secondary" style="font-size: 0.74rem;">
+                            <span class="text-info"><i class="fas fa-chart-simple me-1"></i>تفکیک ساعات اوج، آهنگ مصرف و لاگ روزانه</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- بنر افقی لوکس و مستقل دعوت از دوستان (تمام عرض و خارج از کارت‌ها) -->
+            <div class="bento-referral-banner p-3 px-4 rounded-3 mb-3 position-relative overflow-hidden" 
+                 style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(168, 85, 247, 0.10) 50%, rgba(59, 130, 246, 0.08) 100%); border: 1.5px solid rgba(245, 158, 11, 0.35); box-shadow: 0 4px 18px -2px rgba(245, 158, 11, 0.12);">
+                <div class="position-absolute pointer-events-none" style="right: -8px; bottom: -10px; font-size: 4rem; opacity: 0.08; color: #f59e0b;">
+                    <i class="fas fa-gift"></i>
+                </div>
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 position-relative" style="z-index: 1;">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark shadow-sm flex-shrink-0" style="width: 38px; height: 38px; font-size: 1.1rem;">
+                            <i class="fas fa-gift"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h6 class="fw-bold mb-0 text-warning" style="font-size: 0.88rem;">
+                                    🎉 با دعوت دوستان، هدیه نقدی و حجم رایگان بگیرید!
+                                </h6>
+                                <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 px-2 py-0.5 rounded-pill small">پاداش ویژه</span>
+                            </div>
+                            <p class="small text-secondary mb-0 mt-1" style="font-size: 0.76rem; line-height: 1.45;">
+                                با معرفی اینترنت پرسرعت به دوستانتان، به ازای هر خرید آن‌ها پاداش نقدی در کیف‌پول دریافت کنید و دوره‌های بعدی خود را رایگان تمدید نمایید.
+                            </p>
+                        </div>
+                    </div>
+                    <button type="button" 
+                            class="btn btn-warning btn-sm fw-bold px-3 py-1.5 rounded-pill shadow-sm d-inline-flex align-items-center gap-1 flex-shrink-0" 
+                            onclick="openCustomerClubModal('ref')"
+                            title="ورود به باشگاه مشتریان و دریافت لینک دعوت">
+                        <i class="fas fa-link"></i>
+                        <span>دریافت لینک دعوت</span>
+                        <i class="fas fa-chevron-left ms-1" style="font-size: 0.65rem;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ردیف ۲ بنتو: ابزارهای اتصال سریع به نرم‌افزارها -->
+            <div class="bento-card p-3 mb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span class="fw-bold small text-white text-nowrap"><i class="fas fa-plug text-primary me-1"></i> ابزارهای اتصال:</span>
+                    <div class="d-flex flex-wrap gap-1 align-items-center justify-content-start" style="direction: ltr;">
+                        {% if actual_sub_url or single_url %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR و کپی لینک اشتراک و کانفیگ">
+                            <i class="fas fa-qrcode text-info me-1"></i>
+                            <span>QR / کپی لینک</span>
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
+                            <i class="fas fa-clock-rotate-left me-1"></i>سوابق
+                        </button>
+                        {% if troubleshoot_url %}
+                        <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace d-inline-flex align-items-center gap-1" style="font-size: 11px;" title="آموزش و عیب‌یابی اتصال">
+                            <i class="fas fa-circle-question me-1 text-warning"></i>آموزش و عیب‌یابی
+                        </a>
+                        {% endif %}
+                        {% if actual_sub_url %}
+                        <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i>Hiddify</a>
+                        <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i>Streisand</a>
+                        <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i>Happ</a>
+                        <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i>V2box</a>
+                        <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- صف بسته‌های رزرو -->
+            {{ macro_queue_card() }}
+
+            <!-- ردیف ۳ بنتو: تمدید و انتخاب بسته‌ها -->
+            <div class="mb-3">
+                {{ macro_renewal_card() }}
+            </div>
+
+            <!-- ردیف ۴ بنتو: پشتیبانی و وضعیت سرور -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    {{ macro_server_status() }}
+                </div>
+                <div class="col-md-6">
+                    {{ macro_support_card() }}
+                </div>
+            </div>
+        </div>
+
+    {% elif portal_layout == 'bento_grid_2' %}
+        <!-- ═══════════ قالب ۵: بنتو گرید ماژولار ۲ (دو ستونه بهینه‌شده و خلوت) ═══════════ -->
+        <div class="bento-grid-wrapper bento-grid-2-wrapper">
+            {{ macro_debt_card() }}
+            {{ macro_invoice_card() }}
+
+            <!-- ردیف ۱ بنتو ۲: دو ستونه با پاکسازی اضافات -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-7">
+                    <div class="bento-card d-flex flex-column justify-content-between h-100 p-3 p-md-4">
+                        <div>
+                            <!-- هدر پروفایل همراه با دکمه شیک تحلیل مصرف در گوشه چپ -->
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="d-flex align-items-center gap-2 customer-profile-trigger position-relative p-1 rounded-3" 
+                                     role="button" 
+                                     data-bs-toggle="modal" 
+                                     data-bs-target="#customerProfileModal" 
+                                     title="برای مشاهده و ویرایش مشخصات پروفایل کلیک کنید">
+                                    <div class="position-relative flex-shrink-0">
+                                        <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                                             alt="{{ sub.get('account_name') or 'کاربر' }}" 
+                                             class="rounded-circle border border-primary border-opacity-50 shadow-sm customer-avatar-img" 
+                                             style="width: 42px; height: 42px; object-fit: cover;" 
+                                             onerror="this.onerror=null; this.src='/avatar/User';">
+                                        <span class="position-absolute bottom-0 end-0 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow" 
+                                              style="width: 17px; height: 17px; font-size: 8px; border: 1.5px solid #0f172a;" 
+                                              title="ویرایش مشخصات">
+                                            <i class="fas fa-pen"></i>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <h5 class="fw-bold mb-0 text-white font-monospace customer-name-label" style="font-size: 1rem;">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                                            {% if sub.get('status') == 'active' %}
+                                                <span class="badge bg-success-subtle text-success border border-success px-2 py-0.5 rounded-pill small">فعال</span>
+                                            {% elif sub.get('status') == 'expired' %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 rounded-pill small">منقضی</span>
+                                            {% elif sub.get('status') == 'disabled' %}
+                                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-0.5 rounded-pill small">غیرفعال</span>
+                                            {% elif sub.get('status') == 'limited' %}
+                                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-0.5 rounded-pill small">محدود</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% if sub.get('phone_number') or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                                <small class="text-secondary font-monospace" style="font-size: 0.72rem;">{{ sub.get('phone_number') or ('آیدی: ' ~ sub.get('telegram_id')) }}</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- دکمه کامپکت تحلیل مصرف به جای ردیف بزرگ و خفه -->
+                                <button type="button" 
+                                        class="btn btn-sm btn-outline-info rounded-pill px-2.5 py-1 d-inline-flex align-items-center gap-1.5 flex-shrink-0" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#trafficAnalyticsModal" 
+                                        title="مشاهده تحلیل و نمودار مصرف ساعتی و روزانه"
+                                        style="font-size: 0.78rem;">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span>تحلیل مصرف</span>
+                                </button>
+                            </div>
+
+                            {% set used_gb = sub.get('data_used', 0) | float %}
+                            {% set total_gb = sub.get('data_limit', 0) | float %}
+                            {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+                            {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
+                            <div class="d-flex justify-content-between text-secondary small mb-2 align-items-center">
+                                <span><i class="fas fa-chart-pie me-1 text-info"></i>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+                                <strong class="text-white font-monospace">{{ percent }}٪</strong>
                             </div>
                             <div class="progress mb-3" style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 10px;">
                                 <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
                             </div>
-
-                            <!-- کادر هوشمند تحلیل و نمودار مصرف ساعتی و روزانه -->
-                            <div class="d-flex justify-content-between align-items-center p-2 p-md-3 rounded-3 mt-2" 
-                                 style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.35); cursor: pointer; transition: all 0.2s ease;" 
-                                 data-bs-toggle="modal" 
-                                 data-bs-target="#trafficAnalyticsModal" 
-                                 onmouseover="this.style.background='rgba(14, 165, 233, 0.16)'" 
-                                 onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'"
-                                 title="برای مشاهده تحلیل و نمودار مصرف کلیک کنید">
-                                <div class="d-flex align-items-center gap-2 gap-md-3">
-                                    <div class="rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 traffic-analytics-icon-badge" style="width: 36px; height: 36px;">
-                                        <i class="fas fa-chart-line" style="font-size: 1.05rem;"></i>
-                                    </div>
-                                    <div class="text-start">
-                                        <span class="d-block small fw-bold text-info" style="font-size: 0.84rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
-                                        <span class="d-block text-secondary" style="font-size: 0.72rem;">ساعات اوج مصرف، آهنگ مصرف و تفکیک روزانه ترافیک</span>
-                                    </div>
-                                </div>
-                                <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-3 py-1 small d-inline-flex align-items-center gap-1 flex-shrink-0">
-                                    <span>مشاهده</span>
-                                    <i class="fas fa-chevron-left" style="font-size: 0.65rem;"></i>
-                                </span>
-                            </div>
                         </div>
 
-                        <!-- کادر ویژه دعوت از دوستان و دریافت پاداش (بنتو گرید) -->
+                        <!-- بنر دعوت دوستان بهینه‌شده و بدون برچسب‌های ناخوانا -->
                         <div class="bento-referral-banner p-2.5 px-3 rounded-3 mt-2 position-relative overflow-hidden" 
-                             style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(168, 85, 247, 0.10) 50%, rgba(59, 130, 246, 0.08) 100%); border: 1.5px solid rgba(245, 158, 11, 0.35); box-shadow: 0 4px 18px -2px rgba(245, 158, 11, 0.12);">
-                            <!-- المان نور پس‌زمینه (آیکون گیفت) -->
-                            <div class="position-absolute pointer-events-none" style="right: -8px; bottom: -10px; font-size: 3.8rem; opacity: 0.08; color: #f59e0b;">
-                                <i class="fas fa-gift"></i>
-                            </div>
-
-                            <div class="position-relative" style="z-index: 1;">
-                                <!-- ردیف عنوان و بج پاداش -->
-                                <div class="d-flex align-items-center justify-content-between mb-1.5">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark shadow-sm flex-shrink-0" style="width: 26px; height: 26px; font-size: 0.8rem;">
-                                            <i class="fas fa-hand-holding-dollar"></i>
-                                        </div>
-                                        <div>
-                                            <h6 class="fw-bold mb-0 text-warning" style="font-size: 0.83rem;">
-                                                🎉 با دعوت دوستان، هدیه نقدی و حجم رایگان بگیرید!
-                                            </h6>
-                                        </div>
+                             style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(168, 85, 247, 0.10) 50%, rgba(59, 130, 246, 0.08) 100%); border: 1.5px solid rgba(245, 158, 11, 0.35);">
+                            <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark shadow-sm flex-shrink-0" style="width: 28px; height: 28px; font-size: 0.85rem;">
+                                        <i class="fas fa-hand-holding-dollar"></i>
                                     </div>
-                                    <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 px-2 py-0.5 rounded-pill" style="font-size: 0.65rem;">
-                                        <i class="fas fa-coins me-1"></i>پاداش ویژه
-                                    </span>
-                                </div>
-
-                                <!-- توضیحات تشویق‌کننده و جذاب -->
-                                <p class="small text-light mb-2" style="font-size: 0.74rem; line-height: 1.48;">
-                                    با معرفی اینترنت آزاد و پرسرعت به دوستان و آشنایان، به ازای هر خرید آن‌ها پاداش نقدی در کیف‌پول دریافت کنید و دوره‌های بعدی خود را <b>کاملاً رایگان</b> تمدید فرمایید. بدون محدودیت در تعداد دعوت!
-                                </p>
-
-                                <!-- بج‌های مزیت‌های تشویقی و دکمه لینک دعوت باشگاه مشتریان در یک ردیف فشرده -->
-                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                                    <div class="d-flex flex-wrap align-items-center gap-1.5">
-                                        <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.67rem;">
-                                            <i class="fas fa-wallet text-success me-1"></i>شارژ خودکار کیف‌پول
-                                        </span>
-                                        <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.67rem;">
-                                            <i class="fas fa-percent text-info me-1"></i>تخفیف ویژه برای دوستان شما
-                                        </span>
-                                        <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.67rem;">
-                                            <i class="fas fa-infinity text-warning me-1"></i>فرصت نامحدود کسب هدیه
-                                        </span>
+                                    <div>
+                                        <h6 class="fw-bold mb-0 text-warning" style="font-size: 0.82rem;">
+                                            🎉 با دعوت دوستان، هدیه نقدی و حجم رایگان بگیرید!
+                                        </h6>
+                                        <p class="small text-secondary mb-0" style="font-size: 0.72rem;">
+                                            پاداش نقدی خودکار به ازای هر خرید دوستانتان در کیف‌پول
+                                        </p>
                                     </div>
-
-                                    <button type="button" 
-                                            class="btn btn-warning btn-sm fw-bold px-2.5 py-1 rounded-pill shadow-sm d-inline-flex align-items-center gap-1 flex-shrink-0" 
-                                            id="btnBentoOpenClub"
-                                            onclick="openCustomerClubModal('ref')"
-                                            title="ورود به باشگاه مشتریان و دریافت لینک دعوت"
-                                            style="font-size: 0.76rem; border: none; transition: all 0.2s ease;">
-                                        <i class="fas fa-link"></i>
-                                        <span>لینک دعوت</span>
-                                        <i class="fas fa-chevron-left ms-0.5" style="font-size: 0.6rem;"></i>
-                                    </button>
                                 </div>
+                                <button type="button" 
+                                        class="btn btn-warning btn-sm fw-bold px-2.5 py-1 rounded-pill shadow-sm d-inline-flex align-items-center gap-1 flex-shrink-0" 
+                                        onclick="openCustomerClubModal('ref')"
+                                        style="font-size: 0.76rem;">
+                                    <i class="fas fa-link"></i>
+                                    <span>لینک دعوت</span>
+                                    <i class="fas fa-chevron-left ms-0.5" style="font-size: 0.6rem;"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="col-md-5">
-                    <div class="bento-card text-center d-flex flex-column justify-content-between h-100">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-secondary small"><i class="fas fa-hourglass-half me-1 text-warning"></i>مهلت انقضا</span>
-                            {% if server_status and server_status.state == 'operational' %}
-                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">🟢 سرور متصل</span>
-                            {% else %}
-                            <span class="badge bg-secondary px-2 py-1 small">وضعیت سرور</span>
-                            {% endif %}
-                        </div>
-                        <div class="my-3">
-                            <span class="fs-1 fw-bold text-warning font-monospace">{{ days_left }}</span>
-                            <span class="text-white d-block small">روز باقی‌مانده</span>
-                        </div>
-                        <div class="p-2 rounded bg-black bg-opacity-25 text-center">
-                            <span class="text-secondary small">حجم مانده: </span>
-                            <strong class="text-success font-monospace">{{ "%.2f"|format(remain_gb) }} GB</strong>
+                    <div class="bento-card text-center d-flex flex-column justify-content-between h-100 p-3 p-md-4">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-secondary small"><i class="fas fa-hourglass-half me-1 text-warning"></i>مهلت انقضا</span>
+                                {% if server_status and server_status.state == 'operational' %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">🟢 سرور متصل</span>
+                                {% else %}
+                                <span class="badge bg-secondary px-2 py-1 small">وضعیت سرور</span>
+                                {% endif %}
+                            </div>
+                            <div class="my-3">
+                                <span class="fs-1 fw-bold text-warning font-monospace">{{ days_left }}</span>
+                                <span class="text-white d-block small">روز باقی‌مانده</span>
+                            </div>
+                            <div class="p-2 rounded bg-black bg-opacity-25 text-center">
+                                <span class="text-secondary small">حجم مانده: </span>
+                                <strong class="text-success font-monospace">{{ "%.2f"|format(remain_gb) }} GB</strong>
+                            </div>
                         </div>
 
-                        <!-- کادر سطح وفاداری و باشگاه مشتریان در بنتو -->
+                        <!-- کادر سطح وفاداری تمیز و جمع‌وجور -->
                         {% if loyalty_tier_info %}
-                        <div class="p-2 p-md-3 mt-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 text-start">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-2">
+                        <div class="p-2.5 mt-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 text-start">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1.5">
                                 <div class="d-flex align-items-center gap-1 flex-wrap">
                                     <span class="small text-secondary fw-bold" style="font-size: 0.75rem;">سطح وفاداری:</span>
                                     {{ loyalty_tier_info.badge_html | safe }}
                                 </div>
-                                <div>
-                                    {% if loyalty_tier_info.birthday %}
-                                    <span class="badge bg-dark text-info border border-secondary px-2 py-1 rounded-pill" style="font-size: 0.70rem;">
-                                        <i class="fas fa-cake-candles me-1 text-warning"></i>تولد: {{ loyalty_tier_info.birthday }}
-                                    </span>
-                                    {% else %}
-                                    <button type="button" class="btn btn-xs btn-outline-info rounded-pill py-0 px-2" style="font-size: 0.70rem;" data-bs-toggle="modal" data-bs-target="#birthdayModal">
-                                        <i class="fas fa-cake-candles me-1 text-warning"></i>ثبت تولد (دریافت هدیه)
-                                    </button>
-                                    {% endif %}
-                                </div>
+                                <a href="javascript:void(0)" onclick="openCustomerClubModal('tier')" class="text-info text-decoration-none small" style="font-size: 0.70rem;">
+                                    باشگاه مشتریان <i class="fas fa-chevron-left" style="font-size: 0.55rem;"></i>
+                                </a>
                             </div>
                             {% if loyalty_tier_info.next_tier %}
-                            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1" style="font-size: 0.72rem;">
+                            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1" style="font-size: 0.70rem;">
                                 <span>پیشرفت تا سطح {{ loyalty_tier_info.next_tier_title }}:</span>
-                                <span class="font-monospace">{{ loyalty_tier_info.progress_percent }}٪ (نیاز به {{ "{:,}".format(loyalty_tier_info.remaining_tomans) }} تومان خرید دیگر)</span>
+                                <span class="font-monospace text-warning">{{ loyalty_tier_info.progress_percent }}٪</span>
                             </div>
                             <div class="progress" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 6px;">
                                 <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ loyalty_tier_info.progress_percent }}%;"></div>
                             </div>
                             {% else %}
-                            <div class="small text-warning text-center" style="font-size: 0.72rem;">
+                            <div class="small text-warning text-center" style="font-size: 0.70rem;">
                                 <i class="fas fa-crown me-1"></i>بالاترین سطح باشگاه مشتریان
                             </div>
                             {% endif %}
@@ -3692,6 +3898,228 @@
                         </button>
                         {% endif %}
                         <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
+                            <i class="fas fa-clock-rotate-left me-1"></i>سوابق
+                        </button>
+                        {% if troubleshoot_url %}
+                        <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace d-inline-flex align-items-center gap-1" style="font-size: 11px;" title="آموزش و عیب‌یابی اتصال">
+                            <i class="fas fa-circle-question me-1 text-warning"></i>آموزش و عیب‌یابی
+                        </a>
+                        {% endif %}
+                        {% if actual_sub_url %}
+                        <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i>Hiddify</a>
+                        <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i>Streisand</a>
+                        <a href="{{ actual_sub_url|happ_url(sub.get('account_name') or brand_title or 'HiddiPlus') }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i>Happ</a>
+                        <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i>V2box</a>
+                        <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- صف بسته‌های رزرو -->
+            {{ macro_queue_card() }}
+
+            <!-- ردیف ۳ بنتو: تمدید و انتخاب بسته‌ها -->
+            <div class="mb-3">
+                {{ macro_renewal_card() }}
+            </div>
+
+            <!-- ردیف ۴ بنتو: پشتیبانی و وضعیت سرور -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    {{ macro_server_status() }}
+                </div>
+                <div class="col-md-6">
+                    {{ macro_support_card() }}
+                </div>
+            </div>
+        </div>
+
+    {% elif portal_layout == 'bento_grid_3' %}
+        <!-- ═══════════ قالب ۶: بنتو گرید ماژولار ۳ (کانسپت نئونی بر اساس رفرنس بصری) ═══════════ -->
+        <div class="bento-grid-wrapper bento-grid-3-wrapper">
+            {{ macro_debt_card() }}
+            {{ macro_invoice_card() }}
+
+            {% set used_gb = sub.get('data_used', 0) | float %}
+            {% set total_gb = sub.get('data_limit', 0) | float %}
+            {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+            {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
+            <!-- ردیف ۱ بنتو ۳: ۳ بلوک اصلی (تایل دوطبقه / پروفایل و گیج دایره‌ای / نمودار موجی نئونی) -->
+            <div class="row g-3 mb-3 align-items-stretch">
+                <!-- بلوک ۱: دو کارت روی هم (روزهای باقیمانده + ترافیک باقیمانده با نوار نئونی) -->
+                <div class="col-12 col-md-4 col-lg-3 d-flex flex-column justify-content-between">
+                    <!-- ساب‌کارت ۱: روزهای باقی‌مانده -->
+                    <div class="bento-card bento3-subcard p-3 p-xl-4 text-center mb-3 flex-fill d-flex flex-column justify-content-center">
+                        <div class="fs-1 fw-black font-monospace text-white my-1" style="font-size: 2.85rem !important; line-height: 1;">
+                            {{ days_left }}
+                        </div>
+                        <div class="text-secondary small fw-medium mt-2">روزهای باقی‌مانده</div>
+                    </div>
+
+                    <!-- ساب‌کارت ۲: ترافیک باقیمانده با نوار درخشان -->
+                    <div class="bento-card bento3-subcard p-3 p-xl-4 text-center flex-fill d-flex flex-column justify-content-center">
+                        <div class="fs-3 fw-bold font-monospace my-1" style="color: #38bdf8 !important;">
+                            {{ "%.2f"|format(remain_gb) }} GB
+                        </div>
+                        <div class="text-secondary small fw-medium mb-3">ترافیک باقی‌مانده</div>
+                        <div class="progress" style="height: 12px; background: rgba(255,255,255,0.08); border-radius: 12px; overflow: visible;">
+                            <div class="progress-bar bento3-glow-bar" 
+                                 style="width: {{ [100 - percent, 100]|min }}%; background: linear-gradient(90deg, #0284c7 0%, #38bdf8 100%); border-radius: 12px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بلوک ۲: کارت مرکزی با مشخصات، آواتار، بج Tier و گیج دایره‌ای مصرف -->
+                <div class="col-12 col-md-4 col-lg-5">
+                    <div class="bento-card p-3 p-md-4 h-100 d-flex flex-column justify-content-between">
+                        <!-- هدر کارت: مشخصات کاربر و بج سطح (Tier) -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <!-- آواتار و نام کاربر -->
+                            <div class="d-flex align-items-center gap-2.5 customer-profile-trigger" 
+                                 role="button" 
+                                 data-bs-toggle="modal" 
+                                 data-bs-target="#customerProfileModal" 
+                                 title="مشاهده و ویرایش پروفایل">
+                                <div class="position-relative flex-shrink-0">
+                                    <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                                         alt="{{ sub.get('account_name') or 'کاربر' }}" 
+                                         class="rounded-circle border border-info border-opacity-50 shadow-sm" 
+                                         style="width: 44px; height: 44px; object-fit: cover;" 
+                                         onerror="this.onerror=null; this.src='/avatar/User';">
+                                    <span class="position-absolute bottom-0 end-0 bg-info text-dark rounded-circle d-flex align-items-center justify-content-center shadow" 
+                                          style="width: 16px; height: 16px; font-size: 8px; border: 1.5px solid #0f172a;">
+                                        <i class="fas fa-pen"></i>
+                                    </span>
+                                </div>
+                                <div>
+                                    <div class="small text-secondary" style="font-size: 0.72rem;">نام کاربر:</div>
+                                    <h6 class="fw-bold mb-0 text-white font-monospace" style="font-size: 0.95rem;">
+                                        {{ sub.get('account_name') or 'کاربر گرامی' }}
+                                    </h6>
+                                    <div class="small text-secondary font-monospace" style="font-size: 0.70rem;">
+                                        آیدی: {{ sub.get('phone_number') or sub.get('telegram_id') or '---' }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- بج نئونی Tier / سطح وفاداری -->
+                            <div class="d-flex flex-column align-items-center justify-content-center p-2 px-2.5 rounded-3 border flex-shrink-0" 
+                                 style="background: rgba(14, 165, 233, 0.12); border-color: rgba(56, 189, 248, 0.4); box-shadow: 0 0 16px rgba(14, 165, 233, 0.25);"
+                                 title="سطح کاربری باشگاه مشتریان">
+                                <i class="fas fa-shield-halved text-info mb-1" style="font-size: 1.15rem; filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.8));"></i>
+                                <span class="text-info fw-bold font-monospace" style="font-size: 0.72rem; letter-spacing: 0.5px;">
+                                    {{ loyalty_tier_info.title if loyalty_tier_info else 'Tier 1' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- گیج دایره‌ای مصرف (Circular Donut Gauge) -->
+                        <div class="my-3 d-flex justify-content-center align-items-center position-relative">
+                            <svg viewBox="0 0 120 120" style="width: 145px; height: 145px; transform: rotate(-90deg);">
+                                <circle cx="60" cy="60" r="46" stroke="rgba(255, 255, 255, 0.08)" stroke-width="9" fill="none" />
+                                <circle cx="60" cy="60" r="46" stroke="#38bdf8" stroke-width="9" stroke-linecap="round" fill="none"
+                                        stroke-dasharray="289" stroke-dashoffset="{{ 289 - (percent / 100 * 289) }}"
+                                        style="filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.65)); transition: stroke-dashoffset 0.8s ease;" />
+                            </svg>
+                            <div class="position-absolute text-center" style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                <div class="fs-2 fw-bold text-white font-monospace" style="line-height: 1;">{{ percent }}٪</div>
+                                <div class="text-secondary small mt-1" style="font-size: 0.72rem;">مصرف شده</div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between text-secondary small px-1 pt-2 border-top border-secondary border-opacity-25" style="font-size: 0.72rem;">
+                            <span>مصرف: {{ "%.2f"|format(used_gb) }} GB</span>
+                            <span>کل: {{ total_gb }} GB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بلوک ۳: کارت روند ترافیک هفتگی و نمودار موجی نئونی -->
+                <div class="col-12 col-md-4 col-lg-4">
+                    <div class="bento-card p-3 p-md-4 h-100 d-flex flex-column justify-content-between cursor-pointer" 
+                         data-bs-toggle="modal" 
+                         data-bs-target="#trafficAnalyticsModal"
+                         style="border-color: rgba(56, 189, 248, 0.25); transition: all 0.25s ease;"
+                         onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.6)'; this.style.transform='translateY(-2px)';"
+                         onmouseout="this.style.borderColor='rgba(56, 189, 248, 0.25)'; this.style.transform='none';"
+                         title="مشاهده کامل تحلیل و روند ترافیک مصرفی">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-white" style="font-size: 0.95rem;">روند ترافیک هفتگی</h6>
+                                    <span class="text-secondary small" style="font-size: 0.72rem;">مشاهده جزئیات</span>
+                                </div>
+                                <span class="badge bg-black bg-opacity-40 border border-secondary border-opacity-25 text-secondary px-2 py-1 rounded-pill small font-monospace">
+                                    روند ۷ روز
+                                </span>
+                            </div>
+
+                            <!-- نمودار موجی نئونی بنتو ۳ -->
+                            <div class="py-3">
+                                <svg viewBox="0 0 200 70" class="w-100" style="height: 75px; overflow: visible;">
+                                    <defs>
+                                        <linearGradient id="bento3WaveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.38"/>
+                                            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <path d="M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18 L 200,70 L 0,70 Z" fill="url(#bento3WaveGrad)" />
+                                    <path d="M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18" fill="none" stroke="#38bdf8" stroke-width="2.8" stroke-linecap="round" style="filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7));"/>
+                                    <circle cx="100" cy="32" r="3" fill="#ffffff" />
+                                    <circle cx="145" cy="10" r="4" fill="#ffffff" />
+                                    <circle cx="145" cy="10" r="8" fill="#38bdf8" opacity="0.35" class="animate-pulse" />
+                                </svg>
+                                <div class="d-flex justify-content-between text-secondary font-monospace px-1 mt-1" style="font-size: 0.68rem;">
+                                    <span>شروع دوره</span>
+                                    <span>اوج مصرف</span>
+                                    <span>امروز</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center text-secondary small pt-2 border-top border-secondary border-opacity-25" style="font-size: 0.75rem;">
+                            <span class="text-info d-inline-flex align-items-center gap-1">
+                                <span>مشاهده جزئیات</span>
+                                <i class="fas fa-chevron-left" style="font-size: 0.6rem;"></i>
+                            </span>
+                            <span>روند ترافیک هفتگی</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ردیف ۲ بنتو ۳: بارانداز هوشمند ابزارهای اتصال و وضعیت حساب (دقیقا مشابه تصویر مرجع) -->
+            <div class="bento-card p-2.5 px-3 mb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <!-- راست: وضعیت حساب کاربری -->
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-secondary small">وضعیت حساب:</span>
+                        {% if sub.get('status') == 'active' %}
+                            <span class="text-success fw-bold small d-inline-flex align-items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-success d-inline-block" style="box-shadow: 0 0 8px #22c55e;"></span> فعال
+                            </span>
+                        {% elif sub.get('status') == 'expired' %}
+                            <span class="text-danger fw-bold small">منقضی</span>
+                        {% elif sub.get('status') == 'disabled' %}
+                            <span class="text-secondary fw-bold small">غیرفعال</span>
+                        {% elif sub.get('status') == 'limited' %}
+                            <span class="text-warning fw-bold small">محدود</span>
+                        {% else %}
+                            <span class="text-info fw-bold small">{{ sub.get('status') }}</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- چپ: دکمه‌های کپی لینک، ابزارها و نرم‌افزارها -->
+                    <div class="d-flex flex-wrap gap-1 align-items-center justify-content-start" style="direction: ltr;">
+                        {% if actual_sub_url or single_url %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2.5 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.78rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR و کپی لینک اشتراک و کانفیگ">
+                            <i class="fas fa-qrcode text-info me-1"></i>
+                            <span>کپی لینک / QR</span>
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.78rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
                             <i class="fas fa-clock-rotate-left me-1"></i>سوابق
                         </button>
                         {% if troubleshoot_url %}

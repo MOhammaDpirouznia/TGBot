@@ -1762,7 +1762,7 @@ function selectPalette(pid) {
 
                         <div class="row g-3">
                             <!-- قالب ۱: کلاسیک آبشاری -->
-                            <div class="col-md-6 col-lg-3">
+                            <div class="col-md-6 col-lg-4">
                                 <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'classic' or not customer_portal_config.portal_layout %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="d-flex align-items-center gap-2">
@@ -1779,7 +1779,7 @@ function selectPalette(pid) {
                             </div>
 
                             <!-- قالب ۲: داشبورد دو ستونه مدرن -->
-                            <div class="col-md-6 col-lg-3">
+                            <div class="col-md-6 col-lg-4">
                                 <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'split_dashboard' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="d-flex align-items-center gap-2">
@@ -1796,7 +1796,7 @@ function selectPalette(pid) {
                             </div>
 
                             <!-- قالب ۳: تب‌بندی مینیمال و متمرکز -->
-                            <div class="col-md-6 col-lg-3">
+                            <div class="col-md-6 col-lg-4">
                                 <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'minimal_tabbed' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="d-flex align-items-center gap-2">
@@ -1812,19 +1812,53 @@ function selectPalette(pid) {
                                 </label>
                             </div>
 
-                            <!-- قالب ۴: بنتو گرید ماژولار -->
-                            <div class="col-md-6 col-lg-3">
-                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'bento_grid' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                            <!-- قالب ۴: بنتو گرید ماژولار ۱ -->
+                            <div class="col-md-6 col-lg-4">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout in ['bento_grid', 'bento_grid_1'] %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="d-flex align-items-center gap-2">
                                             <i class="fas fa-table-cells-large text-warning fs-5"></i>
-                                            <strong class="small text-dark">بنتو گرید ماژولار</strong>
+                                            <strong class="small text-dark">بنتو گرید ماژولار ۱</strong>
                                         </div>
-                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="bento_grid" {% if customer_portal_config.portal_layout == 'bento_grid' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="bento_grid" {% if customer_portal_config.portal_layout in ['bento_grid', 'bento_grid_1'] %}checked{% endif %} onchange="updateLayoutCards(this)">
                                     </div>
-                                    <span class="badge bg-warning-subtle text-warning small align-self-start mb-2">ترند مدرن 2026</span>
+                                    <span class="badge bg-warning-subtle text-warning small align-self-start mb-2">۳ تایل + بنر مستقل</span>
                                     <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
-                                        طراحی شبکه‌ای الهام‌گرفته از Bento Box با تایل‌های مصرف حجم، روزشمار و بارانداز اپلیکیشن‌ها.
+                                        تفکیک کامل ۳ تایل (مهلت و حجم، پروفایل کاربر، مینی‌چارت خطی مصرف) به همراه بنر افقی مستقل دعوت از دوستان.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- قالب ۵: بنتو گرید ماژولار ۲ -->
+                            <div class="col-md-6 col-lg-4">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'bento_grid_2' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-layer-group text-primary fs-5"></i>
+                                            <strong class="small text-dark">بنتو گرید ماژولار ۲</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="bento_grid_2" {% if customer_portal_config.portal_layout == 'bento_grid_2' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-primary-subtle text-primary small align-self-start mb-2">دو ستونه بهینه‌شده</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        چیدمان دو ستونه متعادل با پاکسازی برچسب‌های شلوغ، دکمه سریع تحلیل مصرف و وفاداری جمع‌وجور.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- قالب ۶: بنتو گرید ماژولار ۳ -->
+                            <div class="col-md-6 col-lg-4">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'bento_grid_3' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-chart-pie text-info fs-5"></i>
+                                            <strong class="small text-dark">بنتو گرید ماژولار ۳</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="bento_grid_3" {% if customer_portal_config.portal_layout == 'bento_grid_3' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-info-subtle text-info small align-self-start mb-2">کانسپت نئونی و گیج دایره‌ای</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        تایل دوطبقه روز و ترافیک، کارت مرکزی با گیج دایره‌ای ۶۵٪ و نشان Tier، و نمودار موجی نئونی با نوار بارانداز ابزارها.
                                     </p>
                                 </label>
                             </div>
