@@ -2382,20 +2382,16 @@
 
             <!-- دکمه‌های فشرده کنار نام مشتری -->
             <div class="d-flex flex-wrap gap-1 align-items-center">
-                <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal" title="مشاهده نمودار و تحلیل مصرف ساعتی و روزانه">
-                    <i class="fas fa-chart-line me-1"></i>نمودار و آمار مصرف
-                </button>
-
-                <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
-                    <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
-                </button>
-
                 {% if actual_sub_url or single_url %}
                 <button type="button" class="btn btn-sm btn-outline-light py-1 px-3 fw-bold d-inline-flex align-items-center gap-1" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#subConfigModal" title="دریافت بارکد QR و کپی لینک اشتراک و کانفیگ">
                     <i class="fas fa-qrcode text-info me-1"></i>
                     <span>QR / کپی لینک</span>
                 </button>
                 {% endif %}
+
+                <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
+                    <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
+                </button>
 
                 {% if portal_show_troubleshoot and troubleshoot_url %}
                 <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" title="آموزش و عیب‌یابی اتصال">
@@ -3326,29 +3322,48 @@
                         {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
                         {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
 
-                        <div class="d-flex justify-content-between text-secondary small mb-2">
-                            <span>{{ "%.2f"|format(used_gb) }} گیگابایت مصرف‌شده</span>
-                            <strong class="text-white">{{ percent }}٪</strong>
-                        </div>
-                        <div class="progress mb-3" style="height: 12px; background: rgba(255,255,255,0.1); border-radius: 12px;">
-                            <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 12px;"></div>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center pt-2 border-top border-secondary border-opacity-25">
-                            <span class="text-secondary small">کل سقف حجم بسته:</span>
-                            <div class="text-end">
-                                <strong class="text-info fs-5">{{ total_gb }} <small class="fs-6">GB</small></strong>
+                        <div class="d-flex justify-content-between text-secondary small mb-2 align-items-center">
+                            <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+                            <div class="d-flex align-items-center gap-2">
                                 {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
-                                <div class="badge text-white d-block mt-1" style="background-color: #6f42c1; font-size: 0.75rem;">
+                                <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
                                     <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
-                                </div>
+                                </span>
                                 {% endif %}
+                                <strong class="text-white font-monospace">{{ percent }}٪</strong>
                             </div>
+                        </div>
+                        <div class="progress mb-3" style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+                            <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
+                        </div>
+
+                        <!-- کادر هوشمند تحلیل و نمودار مصرف ساعتی و روزانه -->
+                        <div class="d-flex justify-content-between align-items-center p-2 p-md-3 rounded-3 mt-2" 
+                             style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.35); cursor: pointer; transition: all 0.2s ease;" 
+                             data-bs-toggle="modal" 
+                             data-bs-target="#trafficAnalyticsModal" 
+                             onmouseover="this.style.background='rgba(14, 165, 233, 0.16)'" 
+                             onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'"
+                             title="برای مشاهده تحلیل و نمودار مصرف کلیک کنید">
+                            <div class="d-flex align-items-center gap-2 gap-md-3">
+                                <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-20 text-info shadow-sm flex-shrink-0" style="width: 36px; height: 36px; font-size: 1.05rem;">
+                                    <i class="fas fa-chart-simple"></i>
+                                </div>
+                                <div class="text-start">
+                                    <span class="d-block small fw-bold text-info" style="font-size: 0.84rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
+                                    <span class="d-block text-secondary" style="font-size: 0.72rem;">ساعات اوج مصرف، آهنگ مصرف و تفکیک روزانه ترافیک</span>
+                                </div>
+                            </div>
+                            <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-3 py-1 small d-inline-flex align-items-center gap-1 flex-shrink-0">
+                                <span>مشاهده</span>
+                                <i class="fas fa-chevron-left" style="font-size: 0.65rem;"></i>
+                            </span>
                         </div>
                     </div>
                 </div>
 
                 <div class="col-md-5">
-                    <div class="bento-card text-center d-flex flex-column justify-content-between">
+                    <div class="bento-card text-center d-flex flex-column justify-content-between h-100">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-secondary small"><i class="fas fa-hourglass-half me-1 text-warning"></i>مهلت انقضا</span>
                             {% if server_status and server_status.state == 'operational' %}
@@ -3365,6 +3380,42 @@
                             <span class="text-secondary small">حجم مانده: </span>
                             <strong class="text-success font-monospace">{{ "%.2f"|format(remain_gb) }} GB</strong>
                         </div>
+
+                        <!-- کادر سطح وفاداری و باشگاه مشتریان در بنتو -->
+                        {% if loyalty_tier_info %}
+                        <div class="p-2 p-md-3 mt-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 text-start">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-2">
+                                <div class="d-flex align-items-center gap-1 flex-wrap">
+                                    <span class="small text-secondary fw-bold" style="font-size: 0.75rem;">سطح وفاداری:</span>
+                                    {{ loyalty_tier_info.badge_html | safe }}
+                                </div>
+                                <div>
+                                    {% if loyalty_tier_info.birthday %}
+                                    <span class="badge bg-dark text-info border border-secondary px-2 py-1 rounded-pill" style="font-size: 0.70rem;">
+                                        <i class="fas fa-cake-candles me-1 text-warning"></i>تولد: {{ loyalty_tier_info.birthday }}
+                                    </span>
+                                    {% else %}
+                                    <button type="button" class="btn btn-xs btn-outline-info rounded-pill py-0 px-2" style="font-size: 0.70rem;" data-bs-toggle="modal" data-bs-target="#birthdayModal">
+                                        <i class="fas fa-cake-candles me-1 text-warning"></i>ثبت تولد (دریافت هدیه)
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if loyalty_tier_info.next_tier %}
+                            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1" style="font-size: 0.72rem;">
+                                <span>پیشرفت تا سطح {{ loyalty_tier_info.next_tier_title }}:</span>
+                                <span class="font-monospace">{{ loyalty_tier_info.progress_percent }}٪ (نیاز به {{ "{:,}".format(loyalty_tier_info.remaining_tomans) }} تومان خرید دیگر)</span>
+                            </div>
+                            <div class="progress" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 6px;">
+                                <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ loyalty_tier_info.progress_percent }}%;"></div>
+                            </div>
+                            {% else %}
+                            <div class="small text-warning text-center" style="font-size: 0.72rem;">
+                                <i class="fas fa-crown me-1"></i>بالاترین سطح باشگاه مشتریان
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -3380,6 +3431,14 @@
                             <span>QR / کپی لینک</span>
                         </button>
                         {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
+                            <i class="fas fa-clock-rotate-left me-1"></i>سوابق
+                        </button>
+                        {% if troubleshoot_url %}
+                        <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace d-inline-flex align-items-center gap-1" style="font-size: 11px;" title="آموزش و عیب‌یابی اتصال">
+                            <i class="fas fa-circle-question me-1 text-warning"></i>آموزش و عیب‌یابی
+                        </a>
+                        {% endif %}
                         {% if actual_sub_url %}
                         <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i>Hiddify</a>
                         <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i>Streisand</a>
@@ -3387,13 +3446,6 @@
                         <a href="v2box://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i>V2box</a>
                         <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
                         {% endif %}
-                        {% if troubleshoot_url %}
-                        <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace d-inline-flex align-items-center gap-1" style="font-size: 11px;" title="آموزش و عیب‌یابی اتصال">
-                            <i class="fas fa-circle-question me-1 text-warning"></i>آموزش و عیب‌یابی
-                        </a>
-                        {% endif %}
-                        <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#trafficAnalyticsModal"><i class="fas fa-chart-line me-1"></i>آمار مصرف</button>
-                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
                     </div>
                 </div>
             </div>
