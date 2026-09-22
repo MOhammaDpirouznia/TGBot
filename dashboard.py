@@ -14547,13 +14547,14 @@ def trigger_auto_backup():
     """اجرای فوری پشتیبان‌گیری دستی و ارسال به تلگرام"""
     data = request.get_json(silent=True) or request.form
     b_type = data.get("backup_type", "main_panel")
+    t_chat = data.get("target_chat", "").strip() or None
 
     if b_type == "hiddify":
         from backup import trigger_hiddify_panel_backup
-        res = trigger_hiddify_panel_backup(trigger_type="manual")
+        res = trigger_hiddify_panel_backup(trigger_type="manual", target_chat=t_chat)
     else:
         from backup import trigger_main_panel_backup
-        res = trigger_main_panel_backup(trigger_type="manual")
+        res = trigger_main_panel_backup(trigger_type="manual", target_chat=t_chat)
 
     if res.get("success"):
         label = "پنل هیدیفای" if b_type == "hiddify" else "پنل اصلی"

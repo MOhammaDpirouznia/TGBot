@@ -559,11 +559,13 @@ async function triggerManualBackup(type, btn) {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال تهیه و ارسال...';
     btn.disabled = true;
 
+    const targetChat = document.getElementById('backupTelegramTarget')?.value?.trim() || '';
+
     try {
         const resp = await fetch('{{ url_for("trigger_auto_backup") }}', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({backup_type: type})
+            body: JSON.stringify({backup_type: type, target_chat: targetChat})
         });
         const data = await resp.json();
         if (data.success) {

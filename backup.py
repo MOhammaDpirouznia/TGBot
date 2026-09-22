@@ -19,6 +19,9 @@ import sqlite3
 import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from database import db, DB_DIR
 from utils import get_now_shamsi, get_now_naive, get_now, get_now_iso
@@ -113,25 +116,43 @@ class BackupManager:
         return self.create_database_backup(compress=True)
 
     async def create_hiddify_backup(self):
-        """دریافت فایل پشتیبان کامل از پنل هیدیفای به صورت JSON"""
+        """دریافت فایل پشتیبان کامل از پنل هیدیفای به صورت JSON با مشخصات معتبر دیتابیس و محیط"""
         try:
             b_txt = None
-            try:
-                from bot import hidify
-                if hidify:
-                    b_txt = await hidify.get_backup()
-            except Exception as e_bot:
-                logger.debug(f"Could not use bot.hidify client: {e_bot}")
 
-            if not b_txt:
-                panel_url = os.getenv("HIDIFY_PANEL_URL")
-                api_key = os.getenv("HIDIFY_API_KEY")
-                proxy_path = os.getenv("HIDIFY_PROXY_PATH")
-                if panel_url and api_key:
-                    from hidify import HidifyClient
-                    temp_client = HidifyClient(panel_url, api_key, proxy_path)
-                    b_txt = await temp_client.get_backup()
-                    await temp_client.close()
+            # واکشی مشخصات اتصال به هیدیفای با اولویت دیتابیس سپس متغیرهای محیطی
+            from database import db
+            panel_url = (
+                db.get_setting("hidify_panel_url")
+                or db.get_setting("hiddify_url")
+                or os.getenv("HIDIFY_PANEL_URL")
+                or ""
+            ).strip().rstrip("/")
+            api_key = (
+                db.get_setting("hidify_api_key")
+                or db.get_setting("hiddify_api_key")
+                or os.getenv("HIDIFY_API_KEY")
+                or ""
+            ).strip()
+            proxy_path = (
+                db.get_setting("hidify_proxy_path")
+                or db.get_setting("hiddify_proxy_path")
+                or os.getenv("HIDIFY_PROXY_PATH")
+                or ""
+            ).strip().strip("/")
+
+            if not panel_url or not api_key:
+                return {
+                    "success": False,
+                    "error": "مشخصات اتصال به پنل هیدیفای (آدرس پنل یا کلید API) در تنظیمات سامانه یافت نشد."
+                }
+
+            from hidify import HidifyClient
+            temp_client = HidifyClient(panel_url, api_key, proxy_path)
+            try:
+                b_txt = await temp_client.get_backup()
+            finally:
+                await temp_client.close()
 
             if not b_txt:
                 return {"success": False, "error": "دریافت اطلاعات پشتیبان از وب‌سرویس هیدیفای ناموفق بود."}
@@ -142,12 +163,20 @@ class BackupManager:
             file_path.write_text(b_txt, encoding="utf-8")
             file_size = file_path.stat().st_size
 
-            details = {"users_count": 0, "domains_count": 0, "status": "ok"}
+            details = {
+                "users_count": 0,
+                "domains_count": 0,
+                "proxies_count": 0,
+                "admin_users_count": 0,
+                "status": "ok"
+            }
             try:
                 parsed = json.loads(b_txt)
                 if isinstance(parsed, dict):
                     details["users_count"] = len(parsed.get("users", [])) or len(parsed.get("user", []))
                     details["domains_count"] = len(parsed.get("domains", []))
+                    details["proxies_count"] = len(parsed.get("proxies", []))
+                    details["admin_users_count"] = len(parsed.get("admin_users", []))
                 elif isinstance(parsed, list):
                     details["users_count"] = len(parsed)
             except Exception:
@@ -277,6 +306,27 @@ def get_effective_bot_token() -> str:
     return (db.get_setting("bot_token") or "").strip()
 
 
+def normalize_telegram_chat_id(target_chat: str) -> str:
+    """اصلاح و استانداردسازی آیدی یا شناسه کانال/گروه تلگرام و پاکسازی کاراکترهای مخفی RTL و اعداد فارسی"""
+    if not target_chat:
+        return ""
+    s = str(target_chat).strip()
+    for c in ["\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\ufeff"]:
+        s = s.replace(c, "")
+    s = s.strip()
+    fa_digits = "۰۱۲۳۴۵۶۷۸۹"
+    ar_digits = "٠١٢٣٤٥٦٧٨٩"
+    for i in range(10):
+        s = s.replace(fa_digits[i], str(i)).replace(ar_digits[i], str(i))
+    s = s.strip()
+    if s.startswith("@"):
+        return s
+    # در صورت وجود منفی در انتها بر اثر کپی در محیط راست‌به‌چپ (مثلاً 5362393523-)
+    if s.endswith("-") and not s.startswith("-"):
+        s = "-" + s[:-1].strip()
+    return s
+
+
 def send_telegram_backup_file(target_chat: str, file_path: str, filename: str, caption: str) -> dict:
     """
     ارسال فایل پشتیبان به کانال یا گروه تلگرام با استفاده از httpx
@@ -286,7 +336,7 @@ def send_telegram_backup_file(target_chat: str, file_path: str, filename: str, c
     if not token:
         return {"success": False, "error": "توکن ربات تلگرام (BOT_TOKEN) تنظیم نشده است."}
 
-    clean_target = str(target_chat or "").strip()
+    clean_target = normalize_telegram_chat_id(target_chat)
     if not clean_target:
         return {"success": False, "error": "شناسه یا آیدی کانال/گروه تلگرام مقصد مشخص نشده است."}
 
@@ -328,7 +378,7 @@ def test_telegram_connection(target_chat: str) -> dict:
     if not token:
         return {"success": False, "error": "توکن ربات تلگرام تنظیم نشده است."}
 
-    clean_target = str(target_chat or "").strip()
+    clean_target = normalize_telegram_chat_id(target_chat)
     if not clean_target:
         return {"success": False, "error": "لطفاً شناسه کانال یا گروه تلگرام را وارد فرمایید."}
 
@@ -441,7 +491,8 @@ def trigger_main_panel_backup(trigger_type: str = "auto", target_chat: str = Non
 
 async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_chat: str = None) -> dict:
     """اجرای ناهمگام پشتیبان‌گیری هیدیفای"""
-    dest_chat = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
+    raw_dest = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
+    dest_chat = normalize_telegram_chat_id(raw_dest)
 
     # ۱. دریافت بکاپ هیدیفای
     h_res = await backup_manager.create_hiddify_backup()
@@ -465,6 +516,12 @@ async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_
     now_sh = get_now_shamsi()
     trigger_label = "خودکار (زمان‌بندی‌شده)" if trigger_type == "auto" else "دستی (توسط ادمین)"
 
+    extra_details = ""
+    if details.get("proxies_count"):
+        extra_details += f"🔌 <b>تعداد کانفیگ‌ها و پروکسی‌ها:</b> {details.get('proxies_count', 0):,}\n"
+    if details.get("admin_users_count"):
+        extra_details += f"👔 <b>تعداد مدیران پنل:</b> {details.get('admin_users_count', 0):,}\n"
+
     caption = (
         "⚡ <b>پشتیبان خودکار پنل هیدیفای (Hiddify)</b>\n"
         "━━━━━━━━━━━━━━━━━\n"
@@ -472,7 +529,8 @@ async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_
         f"📁 <b>نام فایل:</b> <code>{f_name}</code>\n"
         f"📊 <b>حجم فایل:</b> {format_file_size(f_size)}\n\n"
         f"👥 <b>تعداد کاربران ثبت‌شده در هیدیفای:</b> {details.get('users_count', 0):,}\n"
-        f"🌐 <b>تعداد دامنه‌ها و نودها:</b> {details.get('domains_count', 0):,}\n\n"
+        f"🌐 <b>تعداد دامنه‌ها و نودها:</b> {details.get('domains_count', 0):,}\n"
+        f"{extra_details}\n"
         f"⚙️ <b>نوع اجرا:</b> {trigger_label}\n"
         "━━━━━━━━━━━━━━━━━\n"
         "🔒 سامانه مدیریت یکپارچه سرویس"

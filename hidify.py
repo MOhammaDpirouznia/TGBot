@@ -341,14 +341,84 @@ class HidifyClient:
         return await self._request("GET", "/admin/server_status/")
 
     async def get_backup(self) -> str:
-        """دریافت بکاپ پنل بصورت متن خام json"""
+        """دریافت بکاپ کامل پنل هیدیفای بصورت متن خام JSON با پشتیبانی از اندپوینت‌های رسمی و فال‌بک هوشمند"""
+        import json
+        client = await self._get_client()
+
+        # ۱. تلاش برای دریافت فایل بکاپ رسمی از اندپوینت‌های مختلف هیدیفای
+        candidate_urls = [
+            f"{self.panel_url}/{self.proxy_path}/admin/backup/backupfile/",
+            f"{self.panel_url}/{self.proxy_path}/admin/backup/backupfile",
+            f"{self.panel_url}/{self.proxy_path}/admin/backup/backup.json",
+            f"{self.base_api}/admin/backup/backupfile/",
+            f"{self.base_api}/admin/backup/",
+            f"{self.panel_url}/{self.proxy_path}/admin/backup/",
+        ]
+
+        for url in candidate_urls:
+            if not url or "//admin" in url:
+                continue
+            try:
+                resp = await client.get(url, headers=self.headers, timeout=25.0)
+                if resp.status_code == 200 and resp.text:
+                    clean_txt = resp.text.strip()
+                    # بررسی اینکه پاسخ واقعاً JSON معتبر است (نه صفحه HTML)
+                    if (clean_txt.startswith("{") or clean_txt.startswith("[")) and not clean_txt.startswith("<!DOCTYPE"):
+                        try:
+                            json.loads(clean_txt)
+                            logger.info(f"Successfully retrieved official Hiddify backup from {url} ({len(clean_txt):,} chars)")
+                            return clean_txt
+                        except Exception:
+                            pass
+            except Exception as e_cand:
+                logger.debug(f"Candidate backup url {url} failed: {e_cand}")
+
+        # ۲. در صورت عدم دسترسی به فایل مستقیم، ایجاد نسخه پشتیبان یکپارچه از طریق API v2
+        logger.warning("Direct backupfile endpoint was not accessible. Falling back to comprehensive v2 API export...")
         try:
-            client = await self._get_client()
-            resp = await client.get(f"{self.base_api}/admin/backup/")
-            if resp.status_code == 200:
-                return resp.text
+            backup_data = {
+                "source": "hiddify_v2_api_export",
+                "export_date": datetime.now().isoformat(),
+                "users": [],
+                "domains": [],
+                "server_status": {},
+                "admin_users": []
+            }
+
+            try:
+                users = await self.get_users()
+                if isinstance(users, list):
+                    backup_data["users"] = users
+            except Exception as e_u:
+                logger.warning(f"Fallback export: error fetching users: {e_u}")
+
+            try:
+                domains = await self.get_domains()
+                if isinstance(domains, list):
+                    backup_data["domains"] = domains
+            except Exception as e_d:
+                logger.warning(f"Fallback export: error fetching domains: {e_d}")
+
+            try:
+                status = await self.get_server_status()
+                if isinstance(status, dict):
+                    backup_data["server_status"] = status
+            except Exception as e_s:
+                logger.warning(f"Fallback export: error fetching server_status: {e_s}")
+
+            try:
+                admins = await self._request("GET", "/admin/admin_user/")
+                if isinstance(admins, list):
+                    backup_data["admin_users"] = admins
+            except Exception as e_a:
+                logger.warning(f"Fallback export: error fetching admin_users: {e_a}")
+
+            if backup_data["users"] or backup_data["domains"] or backup_data["admin_users"]:
+                return json.dumps(backup_data, ensure_ascii=False, indent=2)
+
         except Exception as e:
-            logger.error(f"Error fetching Hiddify backup: {e}")
+            logger.error(f"Error creating fallback Hiddify backup: {e}", exc_info=True)
+
         return None
 
     # ─── Domain & Node Management (for Health Check & Failover) ───

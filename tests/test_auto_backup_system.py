@@ -161,6 +161,18 @@ class TestAutoBackupSystem(unittest.TestCase):
         self.assertEqual(format_file_size(2048), "2.0 KB")
         self.assertEqual(format_file_size(2097152), "2.00 MB")
 
+    def test_telegram_chat_id_normalization(self):
+        """تست نرمال‌سازی شناسه‌های تلگرام و پاک‌سازی فرمت‌های مختلف"""
+        from backup import normalize_telegram_chat_id
+        self.assertEqual(normalize_telegram_chat_id("-5362393523"), "-5362393523")
+        self.assertEqual(normalize_telegram_chat_id("5362393523-"), "-5362393523")
+        self.assertEqual(normalize_telegram_chat_id(" 5362393523- "), "-5362393523")
+        self.assertEqual(normalize_telegram_chat_id("-۵۳۶۲۳۹۳۵۲۳"), "-5362393523")
+        self.assertEqual(normalize_telegram_chat_id("@backup_channel"), "@backup_channel")
+        self.assertEqual(normalize_telegram_chat_id("-1001234567890"), "-1001234567890")
+        self.assertEqual(normalize_telegram_chat_id(""), "")
+        self.assertEqual(normalize_telegram_chat_id(None), "")
+
 
 if __name__ == "__main__":
     unittest.main()
