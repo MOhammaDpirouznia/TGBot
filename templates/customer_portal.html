@@ -1104,6 +1104,35 @@
             box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
         }
 
+        /* کادر دعوت دوستان بنتو گرید */
+        .bento-referral-banner {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .bento-referral-banner:hover {
+            box-shadow: 0 6px 24px -2px rgba(245, 158, 11, 0.25) !important;
+            transform: translateY(-1px);
+        }
+        [data-bs-theme="light"] .bento-referral-banner,
+        :root:not([data-bs-theme="dark"]) .bento-referral-banner {
+            background: linear-gradient(135deg, #fffbeb 0%, #fdf4ff 50%, #eff6ff 100%) !important;
+            border: 1.5px solid #fcd34d !important;
+            box-shadow: 0 4px 18px rgba(245, 158, 11, 0.14) !important;
+        }
+        [data-bs-theme="light"] .bento-referral-banner h6,
+        :root:not([data-bs-theme="dark"]) .bento-referral-banner h6 {
+            color: #b45309 !important;
+        }
+        [data-bs-theme="light"] .bento-referral-banner p,
+        :root:not([data-bs-theme="dark"]) .bento-referral-banner p {
+            color: #334155 !important;
+        }
+        [data-bs-theme="light"] .bento-referral-banner .badge.bg-black,
+        :root:not([data-bs-theme="dark"]) .bento-referral-banner .badge.bg-black {
+            background: #ffffff !important;
+            color: #334155 !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+
         /* ب) تب‌بندی مینیمال و متمرکز (Minimal Tabbed) */
         .portal-tab-nav {
             display: flex;
@@ -3345,96 +3374,167 @@
             <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
             <div class="row g-3 mb-3">
                 <div class="col-md-7">
-                    <div class="bento-card">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div class="d-flex align-items-center gap-2 customer-profile-trigger position-relative p-1 rounded-3" 
-                                 role="button" 
+                    <div class="bento-card d-flex flex-column justify-content-between h-100">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="d-flex align-items-center gap-2 customer-profile-trigger position-relative p-1 rounded-3" 
+                                     role="button" 
+                                     data-bs-toggle="modal" 
+                                     data-bs-target="#customerProfileModal" 
+                                     title="برای مشاهده و ویرایش مشخصات پروفایل کلیک کنید">
+                                    <div class="position-relative flex-shrink-0">
+                                        <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
+                                             alt="{{ sub.get('account_name') or 'کاربر' }}" 
+                                             class="rounded-circle border border-primary border-opacity-50 shadow-sm customer-avatar-img" 
+                                             style="width: 42px; height: 42px; object-fit: cover;" 
+                                             onerror="this.onerror=null; this.src='/avatar/User';">
+                                        <span class="position-absolute bottom-0 end-0 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow" 
+                                              style="width: 17px; height: 17px; font-size: 8px; border: 1.5px solid #0f172a;" 
+                                              title="ویرایش مشخصات">
+                                            <i class="fas fa-pen"></i>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <h5 class="fw-bold mb-0 text-white font-monospace customer-name-label">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-1 py-0 rounded-pill" style="font-size: 0.65rem;" title="تکمیل پروفایل">
+                                                <i class="fas fa-user-pen me-1"></i>پروفایل
+                                            </span>
+                                            {% if sub.get('status') == 'active' %}
+                                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
+                                            {% elif sub.get('status') == 'expired' %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
+                                            {% elif sub.get('status') == 'disabled' %}
+                                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
+                                            {% elif sub.get('status') == 'limited' %}
+                                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% if sub.get('phone_number') or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                                <small class="text-secondary font-monospace" style="font-size: 0.72rem;">{{ sub.get('phone_number') or ('آیدی: ' ~ sub.get('telegram_id')) }}</small>
+                                                <span class="text-secondary opacity-50" style="font-size: 0.65rem;">•</span>
+                                            {% endif %}
+                                            <span class="text-info small text-decoration-underline" style="font-size: 0.69rem;">
+                                                <i class="fas fa-edit me-1"></i>تکمیل مشخصات
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
+                            </div>
+
+                            {% set used_gb = sub.get('data_used', 0) | float %}
+                            {% set total_gb = sub.get('data_limit', 0) | float %}
+                            {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+                            {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
+                            <div class="d-flex justify-content-between text-secondary small mb-2 align-items-center">
+                                <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
+                                    <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
+                                        <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
+                                    </span>
+                                    {% endif %}
+                                    <strong class="text-white font-monospace">{{ percent }}٪</strong>
+                                </div>
+                            </div>
+                            <div class="progress mb-3" style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+                                <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
+                            </div>
+
+                            <!-- کادر هوشمند تحلیل و نمودار مصرف ساعتی و روزانه -->
+                            <div class="d-flex justify-content-between align-items-center p-2 p-md-3 rounded-3 mt-2" 
+                                 style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.35); cursor: pointer; transition: all 0.2s ease;" 
                                  data-bs-toggle="modal" 
-                                 data-bs-target="#customerProfileModal" 
-                                 title="برای مشاهده و ویرایش مشخصات پروفایل کلیک کنید">
-                                <div class="position-relative flex-shrink-0">
-                                    <img src="{{ avatar_url(sub.get('telegram_id') or telegram_id or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
-                                         alt="{{ sub.get('account_name') or 'کاربر' }}" 
-                                         class="rounded-circle border border-primary border-opacity-50 shadow-sm customer-avatar-img" 
-                                         style="width: 42px; height: 42px; object-fit: cover;" 
-                                         onerror="this.onerror=null; this.src='/avatar/User';">
-                                    <span class="position-absolute bottom-0 end-0 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow" 
-                                          style="width: 17px; height: 17px; font-size: 8px; border: 1.5px solid #0f172a;" 
-                                          title="ویرایش مشخصات">
-                                        <i class="fas fa-pen"></i>
+                                 data-bs-target="#trafficAnalyticsModal" 
+                                 onmouseover="this.style.background='rgba(14, 165, 233, 0.16)'" 
+                                 onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'"
+                                 title="برای مشاهده تحلیل و نمودار مصرف کلیک کنید">
+                                <div class="d-flex align-items-center gap-2 gap-md-3">
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-20 text-info shadow-sm flex-shrink-0" style="width: 36px; height: 36px; font-size: 1.05rem;">
+                                        <i class="fas fa-chart-simple"></i>
+                                    </div>
+                                    <div class="text-start">
+                                        <span class="d-block small fw-bold text-info" style="font-size: 0.84rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
+                                        <span class="d-block text-secondary" style="font-size: 0.72rem;">ساعات اوج مصرف، آهنگ مصرف و تفکیک روزانه ترافیک</span>
+                                    </div>
+                                </div>
+                                <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-3 py-1 small d-inline-flex align-items-center gap-1 flex-shrink-0">
+                                    <span>مشاهده</span>
+                                    <i class="fas fa-chevron-left" style="font-size: 0.65rem;"></i>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- کادر ویژه دعوت از دوستان و دریافت پاداش (بنتو گرید) -->
+                        <div class="bento-referral-banner p-3 rounded-3 mt-3 position-relative overflow-hidden" 
+                             style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(168, 85, 247, 0.10) 50%, rgba(59, 130, 246, 0.08) 100%); border: 1.5px solid rgba(245, 158, 11, 0.35); box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12);">
+                            <!-- المان نور پس‌زمینه -->
+                            <div class="position-absolute pointer-events-none" style="right: -10px; bottom: -15px; font-size: 4.5rem; opacity: 0.08; color: #f59e0b;">
+                                <i class="fas fa-gift"></i>
+                            </div>
+
+                            <div class="position-relative" style="z-index: 1;">
+                                <!-- ردیف عنوان و بج پاداش -->
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark shadow-sm flex-shrink-0" style="width: 32px; height: 32px; font-size: 0.95rem;">
+                                            <i class="fas fa-hand-holding-dollar"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="fw-bold mb-0 text-warning" style="font-size: 0.88rem;">
+                                                🎉 با دعوت دوستان، هدیه نقدی و حجم رایگان بگیرید!
+                                            </h6>
+                                        </div>
+                                    </div>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 px-2 py-1 rounded-pill" style="font-size: 0.68rem;">
+                                        <i class="fas fa-coins me-1"></i>پاداش ویژه
                                     </span>
                                 </div>
-                                <div>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <h5 class="fw-bold mb-0 text-white font-monospace customer-name-label">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
-                                        <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-1 py-0 rounded-pill" style="font-size: 0.65rem;" title="تکمیل پروفایل">
-                                            <i class="fas fa-user-pen me-1"></i>پروفایل
-                                        </span>
-                                        {% if sub.get('status') == 'active' %}
-                                            <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
-                                        {% elif sub.get('status') == 'expired' %}
-                                            <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
-                                        {% elif sub.get('status') == 'disabled' %}
-                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
-                                        {% elif sub.get('status') == 'limited' %}
-                                            <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
-                                        {% endif %}
-                                    </div>
-                                    <div class="d-flex align-items-center gap-2">
-                                        {% if sub.get('phone_number') or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
-                                            <small class="text-secondary font-monospace" style="font-size: 0.72rem;">{{ sub.get('phone_number') or ('آیدی: ' ~ sub.get('telegram_id')) }}</small>
-                                            <span class="text-secondary opacity-50" style="font-size: 0.65rem;">•</span>
-                                        {% endif %}
-                                        <span class="text-info small text-decoration-underline" style="font-size: 0.69rem;">
-                                            <i class="fas fa-edit me-1"></i>تکمیل مشخصات
-                                        </span>
-                                    </div>
+
+                                <!-- توضیحات تشویق‌کننده و جذاب -->
+                                <p class="small text-light mb-2" style="font-size: 0.77rem; line-height: 1.65;">
+                                    با معرفی اینترنت آزاد و پرسرعت به دوستان و آشنایان، به ازای هر خرید آن‌ها پاداش نقدی در کیف‌پول دریافت کنید و دوره‌های بعدی خود را <b>کاملاً رایگان</b> تمدید فرمایید. بدون محدودیت در تعداد دعوت!
+                                </p>
+
+                                <!-- بج‌های مزیت‌های تشویقی -->
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                                    <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.69rem;">
+                                        <i class="fas fa-wallet text-success me-1"></i>شارژ خودکار کیف‌پول
+                                    </span>
+                                    <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.69rem;">
+                                        <i class="fas fa-percent text-info me-1"></i>تخفیف ویژه برای دوستان شما
+                                    </span>
+                                    <span class="badge bg-black bg-opacity-40 text-light border border-secondary border-opacity-25 px-2 py-1" style="font-size: 0.69rem;">
+                                        <i class="fas fa-infinity text-warning me-1"></i>فرصت نامحدود کسب هدیه
+                                    </span>
+                                </div>
+
+                                <!-- دکمه کپی لینک دعوت بدون نمایش کادر لینک -->
+                                <div class="d-flex align-items-center gap-2 flex-wrap pt-2 border-top border-secondary border-opacity-25">
+                                    <button type="button" 
+                                            class="btn btn-warning btn-sm fw-bold px-3 py-2 rounded-pill shadow-sm d-inline-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0" 
+                                            id="btnBentoCopyInvite"
+                                            onclick="copyBentoReferralLink('{{ effective_invite_link or customer_web_ref_link or customer_ref_link or '' }}')">
+                                        <i class="fas fa-copy"></i>
+                                        <span>کپی لینک دعوت</span>
+                                    </button>
+                                    {% if customer_ref_link %}
+                                    <a href="https://t.me/share/url?url={{ (customer_web_ref_link or customer_ref_link)|urlencode }}&text={{ 'اینترنت پرسرعت و پایدار، بدون قطعی:'|urlencode }}" 
+                                       target="_blank" 
+                                       class="btn btn-outline-info btn-sm rounded-pill px-3 py-2 d-inline-flex align-items-center gap-1 shadow-xs" 
+                                       title="ارسال مستقیم به دوستان در تلگرام">
+                                        <i class="fab fa-telegram"></i>
+                                        <span>ارسال به دوستان</span>
+                                    </a>
+                                    {% endif %}
+                                    <small class="text-secondary ms-auto d-none d-md-inline" style="font-size: 0.7rem;">
+                                        <i class="fas fa-share-nodes text-warning me-1"></i>لینک اختصاصی شما آماده اشتراک‌گذاری است.
+                                    </small>
                                 </div>
                             </div>
-                            <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
-                        </div>
-
-                        {% set used_gb = sub.get('data_used', 0) | float %}
-                        {% set total_gb = sub.get('data_limit', 0) | float %}
-                        {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
-                        {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
-
-                        <div class="d-flex justify-content-between text-secondary small mb-2 align-items-center">
-                            <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
-                            <div class="d-flex align-items-center gap-2">
-                                {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
-                                <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
-                                    <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
-                                </span>
-                                {% endif %}
-                                <strong class="text-white font-monospace">{{ percent }}٪</strong>
-                            </div>
-                        </div>
-                        <div class="progress mb-3" style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 10px;">
-                            <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
-                        </div>
-
-                        <!-- کادر هوشمند تحلیل و نمودار مصرف ساعتی و روزانه -->
-                        <div class="d-flex justify-content-between align-items-center p-2 p-md-3 rounded-3 mt-2" 
-                             style="background: rgba(14, 165, 233, 0.08); border: 1px dashed rgba(14, 165, 233, 0.35); cursor: pointer; transition: all 0.2s ease;" 
-                             data-bs-toggle="modal" 
-                             data-bs-target="#trafficAnalyticsModal" 
-                             onmouseover="this.style.background='rgba(14, 165, 233, 0.16)'" 
-                             onmouseout="this.style.background='rgba(14, 165, 233, 0.08)'"
-                             title="برای مشاهده تحلیل و نمودار مصرف کلیک کنید">
-                            <div class="d-flex align-items-center gap-2 gap-md-3">
-                                <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-20 text-info shadow-sm flex-shrink-0" style="width: 36px; height: 36px; font-size: 1.05rem;">
-                                    <i class="fas fa-chart-simple"></i>
-                                </div>
-                                <div class="text-start">
-                                    <span class="d-block small fw-bold text-info" style="font-size: 0.84rem;">تحلیل و نمودار مصرف ساعتی و روزانه</span>
-                                    <span class="d-block text-secondary" style="font-size: 0.72rem;">ساعات اوج مصرف، آهنگ مصرف و تفکیک روزانه ترافیک</span>
-                                </div>
-                            </div>
-                            <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-3 py-1 small d-inline-flex align-items-center gap-1 flex-shrink-0">
-                                <span>مشاهده</span>
-                                <i class="fas fa-chevron-left" style="font-size: 0.65rem;"></i>
-                            </span>
                         </div>
                     </div>
                 </div>
@@ -3664,22 +3764,61 @@
 
     <!-- مودال ثبت تاریخ تولد مشتری جهت شارژ خودکار هدیه -->
     <div class="modal fade" id="birthdayModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content glass-card border-0 text-white p-3 shadow-lg">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-card border-0 text-white p-3 shadow-lg" style="background: rgba(15, 23, 42, 0.97); backdrop-filter: blur(25px); border-radius: 20px;">
                 <div class="modal-header border-0 pb-0">
-                    <h6 class="modal-title fw-bold"><i class="fas fa-cake-candles text-warning me-1"></i> ثبت تاریخ تولد (هدیه ویژه)</h6>
+                    <h6 class="modal-title fw-bold"><i class="fas fa-cake-candles text-warning me-1"></i> ثبت تاریخ تولد (هدیه ویژه سالانه 🎂)</h6>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body pt-3">
-                    <p class="small text-secondary mb-3">با ثبت روز و ماه تولد، سیستم باشگاه مشتریان در روز تولدتان به صورت خودکار ترافیک یا اعتبار نقدی به شما هدیه می‌دهد! 🎂</p>
+                    <p class="small text-secondary mb-3">با ثبت روز، ماه و سال تولد، سیستم باشگاه مشتریان در سالروز تولدتان به صورت خودکار ترافیک رایگان و کد تخفیف ویژه تقدیم شما می‌کند! 🎉</p>
                     <div class="mb-3">
-                        <label class="form-label small text-light fw-bold">تاریخ تولد (روز / ماه):</label>
-                        <input type="text" id="userBirthdayInput" class="form-control font-monospace text-center" placeholder="مثال: 05/12 یا 1380/05/12" value="{{ loyalty_tier_info.birthday or '' }}">
-                        <div class="form-text text-secondary" style="font-size: 0.72rem;">فقط کافیست روز و ماه (مثل ۰۵/۱۲) یا سال را وارد فرمایید.</div>
+                        <label class="form-label small text-light fw-bold d-flex align-items-center justify-content-between">
+                            <span><i class="fas fa-calendar-day text-warning me-1"></i> تاریخ تولد شمسی:</span>
+                            <span class="badge bg-warning text-dark font-monospace" style="font-size: 0.68rem;">🎁 هدیه سالانه</span>
+                        </label>
+                        <!-- منوی انتخابی سال، ماه، روز شمسی -->
+                        <div class="row g-1 mb-2">
+                            <div class="col-4">
+                                <select class="form-select form-select-sm bg-dark text-white border-secondary" id="bdayModalYearSelect" onchange="syncBdayModalFromSelects()">
+                                    <option value="">سال</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <select class="form-select form-select-sm bg-dark text-white border-secondary" id="bdayModalMonthSelect" onchange="syncBdayModalFromSelects()">
+                                    <option value="">ماه</option>
+                                    <option value="01">فروردین</option>
+                                    <option value="02">اردیبهشت</option>
+                                    <option value="03">خرداد</option>
+                                    <option value="04">تیر</option>
+                                    <option value="05">مرداد</option>
+                                    <option value="06">شهریور</option>
+                                    <option value="07">مهر</option>
+                                    <option value="08">آبان</option>
+                                    <option value="09">آذر</option>
+                                    <option value="10">دی</option>
+                                    <option value="11">بهمن</option>
+                                    <option value="12">اسفند</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <select class="form-select form-select-sm bg-dark text-white border-secondary" id="bdayModalDaySelect" onchange="syncBdayModalFromSelects()">
+                                    <option value="">روز</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- کادر متنی دستی -->
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-secondary bg-opacity-25 text-secondary border-secondary" style="font-size: 0.72rem;">تایپ دستی:</span>
+                            <input type="text" dir="ltr" id="userBirthdayInput" class="form-control bg-dark text-white border-secondary font-monospace text-center" placeholder="1375/06/15" value="{{ (cust_user.get('birthday') if cust_user else '') or (sub.get('birthday') or '') or (loyalty_tier_info.birthday if loyalty_tier_info else '') }}" oninput="syncBdayModalFromInput()">
+                        </div>
+                        <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
+                            <i class="fas fa-gift text-warning me-1"></i> می‌توانید تاریخ را از منوهای بالا انتخاب کنید یا به صورت مستقیم تایپ فرمایید.
+                        </div>
                     </div>
                     <div id="birthdayAlert" class="alert d-none py-2 small mb-3"></div>
                     <button type="button" class="btn btn-warning w-100 text-dark fw-bold shadow-sm" id="saveBirthdayBtn" onclick="submitUserBirthday()">
-                        <i class="fas fa-check me-1"></i> ذخیره تاریخ تولد
+                        <i class="fas fa-check me-1"></i> ذخیره تاریخ تولد و فعال‌سازی هدیه
                     </button>
                 </div>
             </div>
@@ -3707,13 +3846,17 @@
 
                 <div class="modal-body p-3 p-md-4">
                     <!-- نوار پیشرفت تکمیل مشخصات پروفایل -->
-                    <div class="mb-4 p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                    <div class="mb-4 p-3 rounded-3 bg-black bg-opacity-40 border border-secondary border-opacity-25 shadow-sm">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="small fw-bold text-white"><i class="fas fa-chart-line text-primary me-1"></i> درصد تکمیل مشخصات پروفایل:</span>
-                            <span class="badge bg-primary font-monospace" id="profileCompletionBadge">{{ profile_completion_pct or 20 }}%</span>
+                            <span class="badge bg-primary font-monospace px-2 py-1" id="profileCompletionBadge">{{ profile_completion_pct or 0 }}%</span>
                         </div>
-                        <div class="progress" style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-gradient" id="profileProgressBar" role="progressbar" style="width: {{ profile_completion_pct or 20 }}%; background: linear-gradient(90deg, #38bdf8, #3b82f6);" aria-valuenow="{{ profile_completion_pct or 20 }}" aria-valuemin="0" aria-valuemax="100"></div>
+                        <div class="progress position-relative" style="height: 24px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="profileProgressBar" role="progressbar" 
+                                 style="width: {{ profile_completion_pct or 0 }}%; min-width: 2.2rem; background: {% if (profile_completion_pct or 0) >= 80 %}linear-gradient(90deg, #10b981, #059669){% elif (profile_completion_pct or 0) >= 40 %}linear-gradient(90deg, #0284c7, #38bdf8){% else %}linear-gradient(90deg, #f59e0b, #ef4444){% endif %}; font-size: 0.82rem; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.8); line-height: 24px;" 
+                                 aria-valuenow="{{ profile_completion_pct or 0 }}" aria-valuemin="0" aria-valuemax="100">
+                                <span id="profileProgressBarText">{{ profile_completion_pct or 0 }}%</span>
+                            </div>
                         </div>
                         <div class="mt-2 d-flex justify-content-between text-secondary" style="font-size: 0.72rem;">
                             <span>تکمیل اطلاعات جهت پایداری اتصال و دریافت هدایای دوره‌ای توصیه می‌شود.</span>
@@ -3931,15 +4074,26 @@
                                     <div class="input-group">
                                         <span class="input-group-text bg-secondary bg-opacity-25 text-secondary border-secondary">@</span>
                                         <input type="text" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace" id="profTelegramUsername" name="telegram_username" 
-                                               value="{{ (cust_user.get('username') if cust_user else '') or (sub.get('telegram_username') or '') }}" 
+                                               value="{{ clean_tg_username or '' }}" 
                                                placeholder="username" 
                                                {% if cust_user and cust_user.get('is_verified') %}readonly style="background-color: rgba(16, 185, 129, 0.08) !important;"{% endif %}>
                                     </div>
+                                    {% if effective_numeric_tg_id and effective_numeric_tg_id|int > 0 %}
+                                    <div class="mt-2 p-2 rounded-2 bg-dark bg-opacity-75 border border-info border-opacity-25 d-flex align-items-center justify-content-between">
+                                        <span class="small text-light"><i class="fas fa-fingerprint text-info me-1"></i> شناسه عددی تلگرام:</span>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <span class="badge bg-info-subtle text-info border border-info border-opacity-50 font-monospace fs-6 px-2 py-1">{{ effective_numeric_tg_id }}</span>
+                                            {% if cust_user and cust_user.get('is_verified') %}
+                                            <span class="badge bg-success-subtle text-success border border-success border-opacity-50 px-2 py-1" style="font-size: 0.7rem;"><i class="fas fa-check-circle me-1"></i>احراز هویت شده</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endif %}
                                     <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
                                         {% if (cust_user and cust_user.get('is_verified')) or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
-                                            <i class="fas fa-check-circle text-success me-1"></i> این حساب به شناسه تلگرام <code>{{ sub.get('telegram_id') or cust_user.get('telegram_id') }}</code> متصل و تایید رسمی شده است.
+                                            <i class="fas fa-check-circle text-success me-1"></i> این حساب به صورت مستقیم با ربات تلگرام احراز و پیوند خورده است.
                                         {% else %}
-                                            <i class="fas fa-circle-info text-info me-1"></i> جهت ارتباط با کارشناسان پشتیبانی و دریافت اعلان‌های اختصاصی تلگرامی.
+                                            <i class="fas fa-circle-info text-info me-1"></i> نام کاربری تلگرام (اختیاری) جهت ارتباط با پشتیبانی و دریافت اعلان‌ها.
                                         {% endif %}
                                     </div>
                                 </div>
@@ -5318,6 +5472,70 @@ function copyText(text, label) {
     }).catch(() => {
         prompt('کپی کنید:', text);
     });
+}
+
+function copyBentoReferralLink(link) {
+    let inviteUrl = (link || '').trim();
+    if (!inviteUrl || inviteUrl === 'None' || inviteUrl === 'null') {
+        const refCode = '{{ customer_ref_code or "" }}';
+        if (refCode) {
+            inviteUrl = window.location.origin + '/register?ref=' + refCode;
+        } else {
+            inviteUrl = window.location.href;
+        }
+    }
+
+    const btn = document.getElementById('btnBentoCopyInvite');
+    const origHtml = btn ? btn.innerHTML : '';
+    const origClass = btn ? btn.className : '';
+
+    const handleSuccess = () => {
+        if (btn) {
+            btn.className = 'btn btn-success btn-sm fw-bold px-3 py-2 rounded-pill shadow-sm d-inline-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0';
+            btn.innerHTML = '<i class="fas fa-check"></i><span>لینک کپی شد! ✓</span>';
+            setTimeout(() => {
+                if (btn) {
+                    btn.className = origClass;
+                    btn.innerHTML = origHtml;
+                }
+            }, 2500);
+        }
+        if (window.Swal) {
+            Swal.fire({
+                icon: 'success',
+                title: 'لینک دعوت کپی شد! 🎉',
+                text: 'لینک اختصاصی با موفقیت کپی شد. اکنون می‌توانید آن را برای دوستان و آشنایان خود ارسال نمایید و پاداش بگیرید.',
+                confirmButtonText: 'متوجه شدم',
+                timer: 3500,
+                timerProgressBar: true
+            });
+        } else {
+            alert('🎉 لینک دعوت اختصاصی شما با موفقیت کپی شد!');
+        }
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(inviteUrl).then(handleSuccess).catch(() => {
+            prompt('لینک دعوت اختصاصی شما (کپی کنید):', inviteUrl);
+        });
+    } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = inviteUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            textArea.remove();
+            handleSuccess();
+        } catch (err) {
+            textArea.remove();
+            prompt('لینک دعوت اختصاصی شما (کپی کنید):', inviteUrl);
+        }
+    }
 }
 
 let currentDiscountData = null;
@@ -7224,8 +7442,13 @@ async function submitUserBirthday() {
                 alertBox.innerText = data.message || 'تاریخ تولد با موفقیت ثبت شد!';
                 alertBox.classList.remove('d-none');
             }
-            launchWheelConfetti();
-            setTimeout(() => { window.location.reload(); }, 1500);
+            const profBdayEl = document.getElementById('profBirthday');
+            if (profBdayEl) {
+                profBdayEl.value = val;
+                if (typeof syncBdayFromInput === 'function') syncBdayFromInput();
+            }
+            if (typeof launchWheelConfetti === 'function') launchWheelConfetti();
+            setTimeout(() => { window.location.reload(); }, 1200);
         } else {
             if (saveBtn) saveBtn.disabled = false;
             if (alertBox) {
@@ -8022,6 +8245,96 @@ function syncBdayFromInput() {
     }
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// 🎂 مدیریت تقویم انتخابی مودال هدیه سالانه تولد
+// ═════════════════════════════════════════════════════════════════════
+function initBirthdayModalPicker() {
+    const yearSelect = document.getElementById('bdayModalYearSelect');
+    const daySelect = document.getElementById('bdayModalDaySelect');
+    const monthSelect = document.getElementById('bdayModalMonthSelect');
+    const bdayInput = document.getElementById('userBirthdayInput');
+
+    if (yearSelect && yearSelect.options.length <= 1) {
+        for (let y = 1405; y >= 1330; y--) {
+            const opt = document.createElement('option');
+            opt.value = y.toString();
+            opt.textContent = y.toString();
+            yearSelect.appendChild(opt);
+        }
+    }
+
+    if (daySelect && daySelect.options.length <= 1) {
+        for (let d = 1; d <= 31; d++) {
+            const opt = document.createElement('option');
+            const val = d < 10 ? '0' + d : d.toString();
+            opt.value = val;
+            opt.textContent = val;
+            daySelect.appendChild(opt);
+        }
+    }
+
+    if (bdayInput && bdayInput.value) {
+        syncBdayModalSelectsFromString(bdayInput.value);
+    }
+}
+
+function syncBdayModalSelectsFromString(val) {
+    if (!val) return;
+    const clean = val.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+                     .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+                     .trim();
+    const parts = clean.split(/[/ -]/).filter(p => p.length > 0);
+    const yearSelect = document.getElementById('bdayModalYearSelect');
+    const monthSelect = document.getElementById('bdayModalMonthSelect');
+    const daySelect = document.getElementById('bdayModalDaySelect');
+
+    if (parts.length === 3) {
+        let [y, m, d] = parts;
+        if (y.length === 2) y = '13' + y;
+        if (m.length === 1) m = '0' + m;
+        if (d.length === 1) d = '0' + d;
+        if (yearSelect) yearSelect.value = y;
+        if (monthSelect) monthSelect.value = m;
+        if (daySelect) daySelect.value = d;
+    } else if (parts.length === 2) {
+        let [m, d] = parts;
+        if (m.length === 1) m = '0' + m;
+        if (d.length === 1) d = '0' + d;
+        if (monthSelect) monthSelect.value = m;
+        if (daySelect) daySelect.value = d;
+    }
+}
+
+function syncBdayModalFromSelects() {
+    const yearSelect = document.getElementById('bdayModalYearSelect');
+    const monthSelect = document.getElementById('bdayModalMonthSelect');
+    const daySelect = document.getElementById('bdayModalDaySelect');
+    const bdayInput = document.getElementById('userBirthdayInput');
+
+    if (!bdayInput) return;
+    const y = yearSelect ? yearSelect.value : '';
+    const m = monthSelect ? monthSelect.value : '';
+    const d = daySelect ? daySelect.value : '';
+
+    if (y && m && d) {
+        bdayInput.value = `${y}/${m}/${d}`;
+    } else if (m && d) {
+        bdayInput.value = `${m}/${d}`;
+    }
+}
+
+function syncBdayModalFromInput() {
+    const bdayInput = document.getElementById('userBirthdayInput');
+    if (bdayInput) {
+        syncBdayModalSelectsFromString(bdayInput.value);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('birthdayModal')?.addEventListener('show.bs.modal', initBirthdayModalPicker);
+    document.getElementById('customerProfileModal')?.addEventListener('show.bs.modal', initJalaliDatePicker);
+});
+
 function selectAvatarPreset(presetId, el) {
     document.querySelectorAll('.avatar-preset-item').forEach(item => {
         item.classList.remove('active');
@@ -8132,15 +8445,25 @@ async function submitCustomerProfile(event) {
 
             if (data.score !== undefined) {
                 const progBar = document.getElementById('profileProgressBar');
+                const progBarText = document.getElementById('profileProgressBarText');
                 const progBadge = document.getElementById('profileCompletionBadge');
                 const progHint = document.getElementById('profileStatusHint');
+                const sc = Number(data.score) || 0;
                 if (progBar) {
-                    progBar.style.width = data.score + '%';
-                    progBar.setAttribute('aria-valuenow', data.score);
+                    progBar.style.width = sc + '%';
+                    progBar.setAttribute('aria-valuenow', sc);
+                    if (sc >= 80) {
+                        progBar.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+                    } else if (sc >= 40) {
+                        progBar.style.background = 'linear-gradient(90deg, #0284c7, #38bdf8)';
+                    } else {
+                        progBar.style.background = 'linear-gradient(90deg, #f59e0b, #ef4444)';
+                    }
                 }
-                if (progBadge) progBadge.textContent = data.score + '%';
+                if (progBarText) progBarText.textContent = sc + '%';
+                if (progBadge) progBadge.textContent = sc + '%';
                 if (progHint) {
-                    progHint.textContent = data.score >= 80 ? 'پروفایل کامل و تایید شده ✨' : 'در حال تکمیل... ⏳';
+                    progHint.textContent = sc >= 80 ? 'پروفایل کامل و تایید شده ✨' : 'در حال تکمیل... ⏳';
                 }
             }
 

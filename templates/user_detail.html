@@ -81,6 +81,17 @@
                         <p class="mb-2"><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if (user and user['created_at']) else '-' }}</p>
                     </div>
                 </div>
+                <hr class="my-3 opacity-25">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <p class="mb-2"><strong>نام و نام‌خانوادگی:</strong> <span class="fw-bold">{{ user['full_name'] if (user and user['full_name']) else '-' }}</span></p>
+                        <p class="mb-2"><strong>تاریخ تولد شمسی:</strong> <span class="fw-bold">{{ user['birthday'] if (user and user['birthday']) else '-' }}</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-2"><strong>اپراتور اصلی مصرف:</strong> <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25">{{ user['primary_isp'] if (user and user['primary_isp']) else 'مشخص نشده' }}</span></p>
+                        <p class="mb-2"><strong>اپراتور رزرو (ثانویه):</strong> <span class="badge bg-secondary-subtle text-secondary border">{{ user['secondary_isp'] if (user and user['secondary_isp']) else 'مشخص نشده' }}</span></p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

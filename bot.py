@@ -592,6 +592,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data["pending_ref"] = str(ref_id_int)
             except Exception as e_ref:
                 logger.debug(f"Error parsing referral in start: {e_ref}")
+        elif arg.startswith("portal"):
+            try:
+                full_nm = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                db.save_user(telegram_id=user.id, username=user.username, full_name=full_nm)
+
+                if "_ref_" in arg:
+                    ref_part = arg.split("_ref_")[1].strip()
+                    ref_info = db.lookup_customer_referrer_by_phone(ref_part)
+                    if ref_info and ref_info.get("telegram_id") and int(ref_info["telegram_id"]) != user.id:
+                        db.add_customer_referral(referrer_id=int(ref_info["telegram_id"]), referred_id=user.id, reseller_id=0)
+
+                web_dom = db.get_setting("custom_domain") or ""
+                if web_dom and not web_dom.startswith("http"):
+                    web_dom = f"https://{web_dom}"
+                portal_url = f"{web_dom.rstrip('/')}/webapp?tg_id={user.id}" if web_dom else ""
+
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+                buttons = []
+                if portal_url:
+                    buttons.append([InlineKeyboardButton("🚀 ورود مستقیم به پرتال مشتری", web_app=WebAppInfo(url=portal_url))])
+
+                await update.message.reply_text(
+                    f"🎉 <b>خوش آمدید {user.first_name} عزیز!</b>\n\n"
+                    f"هویت تلگرام شما تایید گردید. جهت انتخاب و خرید بسته یا مشاهده وضعیت اشتراک، بر روی دکمه زیر کلیک فرمایید:",
+                    reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+                    parse_mode="HTML"
+                )
+            except Exception as e_p:
+                logger.debug(f"Error handling portal start arg: {e_p}")
 
     # بررسی بلاک بودن کاربر
     if db.is_blocked(user.id) and user.id != ADMIN_ID:

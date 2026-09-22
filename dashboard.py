@@ -21008,23 +21008,56 @@ def customer_register():
     portal_subtitle = r_info.get("portal_subtitle") or db.get_setting("portal_subtitle") or "عضویت و ایجاد حساب کاربری مشتری"
     primary_color = r_info.get("primary_color") or db.get_setting("primary_color") or "#4f46e5"
     support_username = r_info.get("support_username") or db.get_setting("support_username") or ""
+    bot_username = db.get_setting("bot_username") or ""
+    bot_token = get_bot_token()
+    bot_id = bot_token.split(":")[0] if (bot_token and ":" in bot_token) else ""
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         phone = request.form.get("phone", "").strip()
-        password = request.form.get("password", "").strip()
+        primary_isp = request.form.get("primary_isp", "").strip()
         referrer_phone = request.form.get("referrer_phone", "").strip() or prefilled_ref
+
+        if not username or not phone:
+            flash("وارد کردن نام و نام خانوادگی و شماره موبایل الزامی است.", "danger")
+            return render_template(
+                "customer_register.html",
+                brand_title=brand_title,
+                logo_url=logo_url,
+                favicon_url=favicon_url,
+                portal_subtitle=portal_subtitle,
+                primary_color=primary_color,
+                support_username=support_username,
+                bot_username=bot_username,
+                bot_id=bot_id,
+                reseller_id=effective_r_id,
+                prefilled_ref=referrer_phone,
+                prefilled_name=username,
+                prefilled_phone=phone,
+                prefilled_isp=primary_isp
+            )
 
         res = db.register_customer_user(
             phone=phone,
             username=username,
-            password=password,
+            password="",
             full_name=username,
             referrer_phone=referrer_phone,
-            reseller_id=effective_r_id
+            reseller_id=effective_r_id,
+            primary_isp=primary_isp
         )
 
         if not res.get("success"):
+            if res.get("error") == "already_registered":
+                tg_id = res.get("telegram_id")
+                session["customer_phone"] = phone
+                session["customer_tg_id"] = tg_id
+                session["customer_reseller_id"] = res.get("reseller_id", effective_r_id)
+                if primary_isp:
+                    db.update_customer_profile(telegram_id=tg_id, primary_isp=primary_isp)
+                flash("🎉 خوش آمدید! ورود به پرتال با موفقیت انجام شد.", "success")
+                return redirect(url_for("customer_portal", telegram_id=tg_id, r=effective_r_id))
+
             flash(res.get("message") or "خطا در ثبت‌نام.", "danger")
             return render_template(
                 "customer_register.html",
@@ -21034,10 +21067,13 @@ def customer_register():
                 portal_subtitle=portal_subtitle,
                 primary_color=primary_color,
                 support_username=support_username,
+                bot_username=bot_username,
+                bot_id=bot_id,
                 reseller_id=effective_r_id,
                 prefilled_ref=referrer_phone,
                 prefilled_name=username,
-                prefilled_phone=phone
+                prefilled_phone=phone,
+                prefilled_isp=primary_isp
             )
 
         synthetic_tg_id = res.get("telegram_id")
@@ -21057,9 +21093,125 @@ def customer_register():
         portal_subtitle=portal_subtitle,
         primary_color=primary_color,
         support_username=support_username,
+        bot_username=bot_username,
+        bot_id=bot_id,
         reseller_id=effective_r_id,
         prefilled_ref=prefilled_ref
     )
+
+
+@app.route("/api/customer/telegram-auth", methods=["POST"])
+def api_customer_telegram_auth():
+    """
+    احراز هویت و ورود مستقیم مشتری با حساب کاربری تلگرام (از طریق WebApp یا Telegram Login Widget)
+    دریافت مشخصات تلگرام، ساخت/بروزرسانی حساب مشتری و هدایت بدون بازگشت مستقیم به پرتال مشتری
+    """
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    tg_id = data.get("id") or data.get("telegram_id")
+    if not tg_id:
+        return jsonify({"success": False, "error": "شناسه کاربری تلگرام یافت نشد."}), 400
+
+    try:
+        tg_id_int = int(tg_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "شناسه تلگرام نامعتبر است."}), 400
+
+    first_name = str(data.get("first_name") or "").strip()
+    last_name = str(data.get("last_name") or "").strip()
+    full_name = f"{first_name} {last_name}".strip()
+    username = str(data.get("username") or "").strip().lstrip("@")
+    photo_url = str(data.get("photo_url") or "").strip()
+    phone_number = str(data.get("phone_number") or "").strip()
+    r_val = data.get("reseller_id") or request.args.get("r")
+    effective_r_id = 0
+    if g.get("custom_reseller") and g.custom_reseller.get("id"):
+        effective_r_id = int(g.custom_reseller["id"])
+    elif r_val:
+        try:
+            effective_r_id = int(r_val)
+        except (ValueError, TypeError):
+            effective_r_id = 0
+
+    ref_code = str(data.get("ref") or "").strip()
+
+    clean_name = full_name or username or f"کاربر {tg_id_int}"
+    clean_username = username or f"tg_{tg_id_int}"
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    now = get_now_iso()
+    try:
+        cursor.execute("SELECT id, telegram_id, phone_number, full_name, reseller_id, referred_by FROM users WHERE telegram_id = ?", (tg_id_int,))
+        existing_user = cursor.fetchone()
+
+        if existing_user:
+            user_id = existing_user["id"]
+            u_updates = ["is_verified = 1", "updated_at = ?"]
+            u_params = [now]
+            if clean_name and (not existing_user["full_name"] or existing_user["full_name"].startswith("user_")):
+                u_updates.append("full_name = ?")
+                u_params.append(clean_name)
+            if clean_username:
+                u_updates.append("username = ?")
+                u_params.append(clean_username)
+            if phone_number and not existing_user["phone_number"]:
+                u_updates.append("phone_number = ?")
+                u_params.append(phone_number)
+            if effective_r_id > 0 and not existing_user.get("reseller_id"):
+                u_updates.append("reseller_id = ?")
+                u_params.append(effective_r_id)
+
+            u_params.append(user_id)
+            cursor.execute(f"UPDATE users SET {', '.join(u_updates)} WHERE id = ?", tuple(u_params))
+        else:
+            cursor.execute("""
+                INSERT INTO users (telegram_id, username, phone_number, is_verified, full_name, reseller_id, wallet_balance, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?)
+            """, (tg_id_int, clean_username, phone_number or None, clean_name, effective_r_id, now, now))
+            user_id = cursor.lastrowid
+
+            if ref_code:
+                clean_ref = normalize_phone_number(ref_code) if ref_code.isdigit() else ref_code
+                ref_info = db.lookup_customer_referrer_by_phone(clean_ref, domain_reseller_id=effective_r_id)
+                if ref_info:
+                    referrer_tg = ref_info.get("telegram_id")
+                    if not referrer_tg or referrer_tg == 0:
+                        referrer_tg = -(int(ref_info["phone_number"])) if ref_info.get("phone_number") and ref_info["phone_number"].isdigit() else 0
+                    if referrer_tg and referrer_tg != tg_id_int:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO referrals (referrer_id, referred_id, reseller_id, reward_amount, status, created_at, updated_at)
+                                VALUES (?, ?, ?, 0, 'pending', ?, ?)
+                            """, (referrer_tg, tg_id_int, effective_r_id, now, now))
+                            cursor.execute("UPDATE users SET referred_by = ? WHERE id = ?", (referrer_tg, user_id))
+                        except Exception as e_ref:
+                            logger.warning(f"Could not connect telegram user referral: {e_ref}")
+
+        if photo_url:
+            try:
+                cursor.execute("UPDATE users SET custom_avatar = ? WHERE id = ? AND (custom_avatar IS NULL OR custom_avatar = '')", (photo_url, user_id))
+            except Exception:
+                pass
+
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error in api_customer_telegram_auth: {e}")
+        return jsonify({"success": False, "error": "خطای سرور در ثبت احراز هویت تلگرام."}), 500
+    finally:
+        conn.close()
+
+    session["customer_tg_id"] = tg_id_int
+    if phone_number:
+        session["customer_phone"] = phone_number
+    session["customer_reseller_id"] = effective_r_id
+
+    portal_url = url_for("customer_portal", telegram_id=tg_id_int, r=effective_r_id)
+    return jsonify({
+        "success": True,
+        "message": f"خوش آمدید {clean_name}!",
+        "telegram_id": tg_id_int,
+        "redirect_url": portal_url
+    })
 
 
 @app.route("/api/customer/lookup-referrer", methods=["GET", "POST"])
@@ -21724,8 +21876,19 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             cust_user = db.get_customer_user_by_id(int(sub["telegram_id"])) or db.get_user(int(sub["telegram_id"]))
         if not cust_user and sub.get("phone_number"):
             cust_user = db.get_customer_user_by_phone(sub["phone_number"], reseller_id)
-        if cust_user and not sub.get("phone_number") and cust_user.get("phone_number"):
-            sub["phone_number"] = cust_user.get("phone_number")
+        if cust_user:
+            # اگر کاربر در تلگرام تایید شده باشد یا اشتراک متصل به تلگرام باشد، اطلاعات تلگرامی با اولویت جایگزین می‌شود
+            is_tg_verified = cust_user.get("is_verified") or (sub.get("telegram_id") and int(sub["telegram_id"]) > 0)
+            if cust_user.get("phone_number") and (is_tg_verified or not sub.get("phone_number")):
+                sub["phone_number"] = cust_user.get("phone_number")
+            if cust_user.get("full_name") and (is_tg_verified or not sub.get("full_name")):
+                sub["full_name"] = cust_user.get("full_name")
+            if cust_user.get("birthday") and not sub.get("birthday"):
+                sub["birthday"] = cust_user.get("birthday")
+            if cust_user.get("primary_isp") and not sub.get("primary_isp"):
+                sub["primary_isp"] = cust_user.get("primary_isp")
+            if cust_user.get("secondary_isp") and not sub.get("secondary_isp"):
+                sub["secondary_isp"] = cust_user.get("secondary_isp")
 
         # روزهای مانده از تابع غنی‌ساز هیدیفای
         days_left = sub.get("remaining_days", sub.get("duration", 30))
@@ -22036,54 +22199,57 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     customer_ref_code = ""
     customer_ref_stats = {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0, "wallet_balance": user_wallet}
 
-    if customer_ref_enabled:
-        bot_username = ""
-        r_info_ref = {}
-        if effective_r_id and int(effective_r_id) > 0:
-            r_info_ref = db.get_reseller(int(effective_r_id)) or {}
-            bot_username = (r_info_ref.get("bot_username") or "").replace("@", "").strip()
-        if not bot_username:
-            bot_username = (db.get_setting("bot_username") or "").replace("@", "").strip()
+    bot_username = ""
+    r_info_ref = {}
+    if effective_r_id and int(effective_r_id) > 0:
+        r_info_ref = db.get_reseller(int(effective_r_id)) or {}
+        bot_username = (r_info_ref.get("bot_username") or "").replace("@", "").strip()
+    if not bot_username:
+        bot_username = (db.get_setting("bot_username") or "").replace("@", "").strip()
 
-        target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
-        if target_tg_id:
-            customer_ref_stats = db.get_customer_referral_stats(target_tg_id, reseller_id=effective_r_id or 0)
-            customer_ref_stats["wallet_balance"] = user_wallet
+    target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
+    if target_tg_id:
+        customer_ref_stats = db.get_customer_referral_stats(target_tg_id, reseller_id=effective_r_id or 0)
+        customer_ref_stats["wallet_balance"] = user_wallet
 
-        # استخراج شماره تماس یا کد معرف مشتری
-        cust_phone = (cust_user.get("phone_number") if cust_user else "") or (sub.get("phone_number") if sub else "") or session.get("customer_phone", "")
-        if cust_phone:
-            customer_ref_code = cust_phone
-        elif target_tg_id and target_tg_id > 0:
-            customer_ref_code = str(target_tg_id)
-        elif target_tg_id and target_tg_id < 0:
-            customer_ref_code = f"0{abs(target_tg_id)}"
+    # استخراج شماره تماس یا کد معرف مشتری
+    cust_phone = (cust_user.get("phone_number") if cust_user else "") or (sub.get("phone_number") if sub else "") or session.get("customer_phone", "")
+    if cust_phone:
+        customer_ref_code = cust_phone
+    elif target_tg_id and int(target_tg_id) > 0:
+        customer_ref_code = str(target_tg_id)
+    elif target_tg_id and int(target_tg_id) < 0:
+        customer_ref_code = f"0{abs(target_tg_id)}"
+    else:
+        customer_ref_code = str(token or (sub.get("hidify_uuid") if sub else "") or (sub.get("id") if sub else ""))
 
-        # ساخت لینک وب‌سایت کسب درآمد بر اساس دامنه اختصاصی یا دامنه سرور
-        base_domain = ""
-        if g.get("custom_reseller") and g.custom_reseller.get("id"):
-            base_domain = request.host_url.rstrip('/') if request else ""
-        elif effective_r_id and int(effective_r_id) > 0 and r_info_ref.get("custom_domain"):
-            r_dom = r_info_ref["custom_domain"].strip()
-            base_domain = f"https://{r_dom}" if not r_dom.startswith("http") else r_dom
+    # ساخت لینک وب‌سایت کسب درآمد بر اساس دامنه اختصاصی یا دامنه سرور
+    base_domain = ""
+    if g.get("custom_reseller") and g.custom_reseller.get("id"):
+        base_domain = request.host_url.rstrip('/') if request else ""
+    elif effective_r_id and int(effective_r_id) > 0 and r_info_ref.get("custom_domain"):
+        r_dom = r_info_ref["custom_domain"].strip()
+        base_domain = f"https://{r_dom}" if not r_dom.startswith("http") else r_dom
+    else:
+        adm_dom = db.get_setting("custom_domain")
+        if adm_dom:
+            base_domain = f"https://{adm_dom}" if not adm_dom.startswith("http") else adm_dom
+        elif request:
+            base_domain = request.host_url.rstrip('/')
+
+    if base_domain and customer_ref_code:
+        if effective_r_id and int(effective_r_id) > 0 and not (g.get("custom_reseller") and int(g.custom_reseller.get("id", 0)) == int(effective_r_id)):
+            customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}&r={effective_r_id}"
         else:
-            adm_dom = db.get_setting("custom_domain")
-            if adm_dom:
-                base_domain = f"https://{adm_dom}" if not adm_dom.startswith("http") else adm_dom
-            elif request:
-                base_domain = request.host_url.rstrip('/')
+            customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}"
 
-        if base_domain and customer_ref_code:
-            if effective_r_id and int(effective_r_id) > 0 and not (g.get("custom_reseller") and int(g.custom_reseller.get("id", 0)) == int(effective_r_id)):
-                customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}&r={effective_r_id}"
-            else:
-                customer_web_ref_link = f"{base_domain.rstrip('/')}/register?ref={customer_ref_code}"
+    # لینک دعوت در ربات تلگرام
+    if target_tg_id and bot_username:
+        customer_ref_link = f"https://t.me/{bot_username}?start=ref_{target_tg_id}"
+    elif bot_username:
+        customer_ref_link = f"https://t.me/{bot_username}"
 
-        # لینک دعوت در ربات تلگرام
-        if target_tg_id and bot_username:
-            customer_ref_link = f"https://t.me/{bot_username}?start=ref_{target_tg_id}"
-        elif bot_username:
-            customer_ref_link = f"https://t.me/{bot_username}"
+    effective_invite_link = customer_web_ref_link or customer_ref_link or (f"{base_domain}/register?ref={customer_ref_code}" if (base_domain and customer_ref_code) else "")
 
     lucky_wheel_global_enabled = db.get_setting("lucky_wheel_enabled", "1") != "0"
     if reseller_id and int(reseller_id) > 0:
@@ -22099,14 +22265,33 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     }
     user_social_tasks = db.get_user_social_tasks_progress(target_tg_id or 0, reseller_id=reseller_id or 0) if target_tg_id else []
 
+    # استخراج تمیز نام کاربری تلگرام (بدون ارقام خالی و بدون شناسه عددی اشتباه)
+    clean_tg_username = ""
+    if cust_user and cust_user.get("username"):
+        u = str(cust_user.get("username")).strip().lstrip("@")
+        if not u.isdigit():
+            clean_tg_username = u
+    if not clean_tg_username and sub and sub.get("telegram_username"):
+        u = str(sub.get("telegram_username")).strip().lstrip("@")
+        if not u.isdigit():
+            clean_tg_username = u
+
+    effective_numeric_tg_id = None
+    if sub and sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
+        effective_numeric_tg_id = int(sub["telegram_id"])
+    elif cust_user and cust_user.get("telegram_id") and int(cust_user["telegram_id"]) > 0:
+        effective_numeric_tg_id = int(cust_user["telegram_id"])
+    elif telegram_id and int(telegram_id) > 0:
+        effective_numeric_tg_id = int(telegram_id)
+
     # محاسبه درصد تکمیل مشخصات پروفایل برای نمایش به کاربر
     prof_acc = (sub.get("account_name") or "").strip() if sub else ""
-    prof_full = (cust_user.get("full_name") if cust_user else "") or ""
+    prof_full = (cust_user.get("full_name") if cust_user else "") or (sub.get("full_name") if sub else "") or ""
     prof_phone = (sub.get("phone_number") or (cust_user.get("phone_number") if cust_user else "")) or ""
-    prof_bday = (cust_user.get("birthday") if cust_user else "") or ""
+    prof_bday = (cust_user.get("birthday") if cust_user else "") or (sub.get("birthday") if sub else "") or ""
     prof_isp = (cust_user.get("primary_isp") if cust_user else (sub.get("primary_isp") or "")) or ""
     prof_avatar = (sub.get("custom_avatar") or (cust_user.get("custom_avatar") if cust_user else "")) or ""
-    prof_tg = telegram_id or (sub.get("telegram_id") if sub else 0)
+    prof_tg = effective_numeric_tg_id or 0
 
     profile_score = 0
     if prof_acc and prof_acc != "کاربر گرامی": profile_score += 20
@@ -22115,12 +22300,14 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     if prof_bday.strip(): profile_score += 15
     if prof_isp.strip(): profile_score += 15
     if prof_avatar.strip() or (prof_tg and int(prof_tg) > 0): profile_score += 10
-    profile_completion_pct = min(100, max(15, profile_score))
+    profile_completion_pct = min(100, profile_score)
     avatar_presets = avatar_generator.PRESETS
 
     return render_template(
         "customer_portal.html",
         cust_user=cust_user,
+        clean_tg_username=clean_tg_username,
+        effective_numeric_tg_id=effective_numeric_tg_id,
         profile_completion_pct=profile_completion_pct,
         avatar_presets=avatar_presets,
         bot_username=bot_username,
@@ -22176,6 +22363,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         customer_ref_enabled=customer_ref_enabled,
         customer_ref_link=customer_ref_link,
         customer_web_ref_link=customer_web_ref_link,
+        effective_invite_link=effective_invite_link,
         customer_ref_code=customer_ref_code,
         customer_ref_stats=customer_ref_stats,
         customer_ref_cfg=customer_ref_cfg,
@@ -24283,21 +24471,26 @@ def api_portal_set_birthday(token: str):
 
     sub = dict(sub_row)
     user_id = sub.get("telegram_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "شناسه کاربری جهت ثبت تاریخ تولد نامعتبر است."}), 400
 
     data = request.get_json(silent=True) or request.form.to_dict() or {}
     birthday = str(data.get("birthday") or "").strip()
     if not birthday:
         return jsonify({"success": False, "error": "لطفاً تاریخ تولد معتبر وارد فرمایید."}), 400
 
-    ok = db.set_user_birthday(user_id, birthday)
-    # بررسی فوری اینکه آیا امروز روز تولد کاربر است تا پاداش را اعطا کند
-    granted = db.process_vip_anniversary_and_birthday_rewards(user_id)
+    # بروزرسانی در جدول‌های اشتراک و اطلاعات مشتری
+    tg_id_int = int(user_id) if (user_id and str(user_id).isdigit() and int(user_id) > 0) else None
+    db.update_customer_profile(sub_id=sub["id"], telegram_id=tg_id_int, birthday=birthday)
+
+    granted = []
+    if tg_id_int:
+        db.set_user_birthday(tg_id_int, birthday)
+        # بررسی فوری اینکه آیا امروز روز تولد کاربر است تا پاداش را اعطا کند
+        granted = db.process_vip_anniversary_and_birthday_rewards(tg_id_int)
+
     return jsonify({
-        "success": ok,
+        "success": True,
         "birthday": birthday,
-        "message": "تاریخ تولد شما با موفقیت ثبت شد.",
+        "message": "تاریخ تولد شما با موفقیت ثبت شد. 🎂",
         "rewards_granted": granted
     })
 

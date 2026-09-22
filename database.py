@@ -1701,6 +1701,9 @@ class Database:
         for s_prof_col in [
             ("primary_isp", "TEXT DEFAULT NULL"),
             ("secondary_isp", "TEXT DEFAULT NULL"),
+            ("full_name", "TEXT DEFAULT NULL"),
+            ("birthday", "TEXT DEFAULT NULL"),
+            ("telegram_username", "TEXT DEFAULT NULL"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {s_prof_col[0]} {s_prof_col[1]}")
@@ -9657,29 +9660,52 @@ class Database:
                 if s_r:
                     int_sub_id = s_r["id"]
 
-            if int_sub_id:
-                cursor.execute("UPDATE subscriptions SET telegram_id = ?, updated_at = ? WHERE id = ?", (int(telegram_id), now_str, int(int_sub_id)))
-            else:
-                cursor.execute("UPDATE subscriptions SET telegram_id = ?, updated_at = ? WHERE hidify_uuid = ?", (int(telegram_id), now_str, str(sub_id)))
-
-            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (int(telegram_id),))
+            cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (int(telegram_id),))
             u_row = cursor.fetchone()
+            u_dict = dict(u_row) if u_row else {}
+            u_phone = u_dict.get("phone_number")
+            u_full_name = full_name or u_dict.get("full_name")
+            u_birthday = u_dict.get("birthday")
+            u_username = (username or u_dict.get("username") or "").strip().lstrip("@")
+
+            sub_updates = ["telegram_id = ?", "updated_at = ?"]
+            sub_params = [int(telegram_id), now_str]
+            if u_phone:
+                sub_updates.append("phone_number = ?")
+                sub_params.append(u_phone)
+            if u_full_name:
+                sub_updates.append("full_name = ?")
+                sub_params.append(u_full_name)
+            if u_username:
+                sub_updates.append("telegram_username = ?")
+                sub_params.append(u_username)
+            if u_birthday:
+                sub_updates.append("birthday = ?")
+                sub_params.append(u_birthday)
+
+            if int_sub_id:
+                sub_params.append(int(int_sub_id))
+                cursor.execute(f"UPDATE subscriptions SET {', '.join(sub_updates)} WHERE id = ?", sub_params)
+            else:
+                sub_params.append(str(sub_id))
+                cursor.execute(f"UPDATE subscriptions SET {', '.join(sub_updates)} WHERE hidify_uuid = ?", sub_params)
+
             if u_row:
                 updates = ["is_verified = 1", "updated_at = ?"]
                 params = [now_str]
                 if username:
                     updates.append("username = ?")
-                    params.append(username)
+                    params.append(username.strip().lstrip("@"))
                 if full_name:
                     updates.append("full_name = ?")
-                    params.append(full_name)
+                    params.append(full_name.strip())
                 params.append(int(telegram_id))
                 cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE telegram_id = ?", params)
             else:
                 cursor.execute("""
                     INSERT INTO users (telegram_id, username, full_name, is_verified, created_at, updated_at)
                     VALUES (?, ?, ?, 1, ?, ?)
-                """, (int(telegram_id), username or "", full_name or "", now_str, now_str))
+                """, (int(telegram_id), (username or "").strip().lstrip("@"), (full_name or "").strip(), now_str, now_str))
 
             conn.commit()
             logger.info(f"Linked subscription #{sub_id} to telegram_id {telegram_id}")
@@ -9728,12 +9754,22 @@ class Database:
                     if secondary_isp is not None:
                         s_updates.append("secondary_isp = ?")
                         s_params.append(secondary_isp.strip())
+                    if full_name is not None:
+                        s_updates.append("full_name = ?")
+                        s_params.append(full_name.strip())
+                    if birthday is not None:
+                        s_updates.append("birthday = ?")
+                        s_params.append(birthday.strip())
+                    if telegram_username is not None:
+                        s_updates.append("telegram_username = ?")
+                        s_params.append(telegram_username.strip().lstrip("@"))
 
                     s_params.append(int(sub_id))
                     cursor.execute(f"UPDATE subscriptions SET {', '.join(s_updates)} WHERE id = ?", s_params)
 
-            eff_tg_id = telegram_id or (sub_row["telegram_id"] if sub_row and sub_row["telegram_id"] and int(sub_row["telegram_id"]) > 0 else None)
-            eff_phone = clean_phone or (sub_row["phone_number"] if sub_row and sub_row["phone_number"] else None)
+            sub_dict = dict(sub_row) if sub_row else {}
+            eff_tg_id = telegram_id or (sub_dict.get("telegram_id") if sub_dict.get("telegram_id") and int(sub_dict["telegram_id"]) > 0 else None)
+            eff_phone = clean_phone or sub_dict.get("phone_number")
 
             user_row = None
             if eff_tg_id:
@@ -9743,20 +9779,22 @@ class Database:
                 cursor.execute("SELECT * FROM users WHERE phone_number = ? ORDER BY id DESC LIMIT 1", (eff_phone,))
                 user_row = cursor.fetchone()
 
-            eval_acc = (account_name or (sub_row["account_name"] if sub_row else "")) or ""
-            eval_full = (full_name or (user_row["full_name"] if user_row else "")) or ""
-            eval_phone = (eff_phone or "")
-            eval_bday = (birthday or (user_row["birthday"] if user_row else "")) or ""
-            eval_isp = (primary_isp or (user_row["primary_isp"] if user_row else "")) or ""
-            eval_avatar = (custom_avatar or (user_row["custom_avatar"] if user_row else (sub_row["custom_avatar"] if sub_row else ""))) or ""
+            user_dict = dict(user_row) if user_row else {}
+
+            eval_acc = (account_name or sub_dict.get("account_name") or "")
+            eval_full = (full_name or user_dict.get("full_name") or sub_dict.get("full_name") or "")
+            eval_phone = (clean_phone or user_dict.get("phone_number") or sub_dict.get("phone_number") or "")
+            eval_bday = (birthday or user_dict.get("birthday") or sub_dict.get("birthday") or "")
+            eval_isp = (primary_isp or user_dict.get("primary_isp") or sub_dict.get("primary_isp") or "")
+            eval_avatar = (custom_avatar or user_dict.get("custom_avatar") or sub_dict.get("custom_avatar") or "")
 
             score = 0
-            if eval_acc.strip(): score += 20
-            if eval_full.strip(): score += 20
-            if eval_phone.strip(): score += 20
-            if eval_bday.strip(): score += 15
-            if eval_isp.strip(): score += 15
-            if eval_avatar.strip() or (eff_tg_id and int(eff_tg_id) > 0): score += 10
+            if str(eval_acc).strip() and str(eval_acc).strip() != "کاربر گرامی": score += 20
+            if str(eval_full).strip(): score += 20
+            if str(eval_phone).strip(): score += 20
+            if str(eval_bday).strip(): score += 15
+            if str(eval_isp).strip(): score += 15
+            if str(eval_avatar).strip() or (eff_tg_id and int(eff_tg_id) > 0): score += 10
             is_completed = 1 if score >= 80 else 0
 
             if user_row:
@@ -9766,8 +9804,10 @@ class Database:
                     u_updates.append("full_name = ?")
                     u_params.append(full_name.strip())
                 if clean_phone:
-                    u_updates.append("phone_number = ?")
-                    u_params.append(clean_phone)
+                    # اگر کاربر در تلگرام تایید نشده باشد یا شماره نداشته باشد، شماره جدید ست می‌شود
+                    if not user_dict.get("is_verified") or not user_dict.get("phone_number"):
+                        u_updates.append("phone_number = ?")
+                        u_params.append(clean_phone)
                 if birthday is not None and birthday.strip():
                     u_updates.append("birthday = ?")
                     u_params.append(birthday.strip())
@@ -9783,11 +9823,11 @@ class Database:
                 if custom_avatar is not None and custom_avatar.strip():
                     u_updates.append("custom_avatar = ?")
                     u_params.append(custom_avatar.strip())
-                if telegram_username is not None and telegram_username.strip() and not user_row.get("is_verified"):
+                if telegram_username is not None and telegram_username.strip() and not user_dict.get("is_verified"):
                     u_updates.append("username = ?")
                     u_params.append(telegram_username.strip().lstrip("@"))
 
-                u_params.append(user_row["id"])
+                u_params.append(user_dict["id"])
                 cursor.execute(f"UPDATE users SET {', '.join(u_updates)} WHERE id = ?", u_params)
             else:
                 new_tg = int(eff_tg_id) if eff_tg_id else 0
@@ -9830,9 +9870,8 @@ class Database:
         finally:
             conn.close()
 
-    def register_customer_user(self, phone: str, username: str, password: Optional[str] = None,
-                               full_name: Optional[str] = None, referrer_phone: Optional[str] = None,
-                               reseller_id: int = 0) -> dict:
+    def register_customer_user(self, phone: str, username: str, password: str = "", full_name: str = "",
+                               referrer_phone: str = None, reseller_id: int = 0, primary_isp: str = "") -> dict:
         """
         ثبت‌نام مشتری جدید از طریق فرم وب با اعتبارسنجی شماره معرف، سپرهای ضد تقلب
         و انتساب خودکار رفرال در صورت وجود معرف معتبر
@@ -9847,6 +9886,7 @@ class Database:
 
         clean_name = (full_name or "").strip() or clean_username
         effective_r_id = int(reseller_id or 0)
+        clean_isp = (primary_isp or "").strip()
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -9863,7 +9903,9 @@ class Database:
                     "success": False,
                     "error": "already_registered",
                     "message": "حساب کاربری با این شماره موبایل از قبل وجود دارد. لطفاً وارد شوید یا از شماره دیگری استفاده نمایید.",
-                    "user_id": existing["id"]
+                    "user_id": existing["id"],
+                    "telegram_id": existing["telegram_id"],
+                    "reseller_id": existing["reseller_id"]
                 }
 
             # ۲. بررسی معرف در صورت ارسال
@@ -9902,9 +9944,9 @@ class Database:
 
             # ۴. ایجاد رکورد کاربر در جدول users
             cursor.execute("""
-                INSERT INTO users (telegram_id, username, phone_number, is_verified, password_hash, full_name, reseller_id, wallet_balance, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)
-            """, (synthetic_tg_id, clean_username, clean_phone, pwd_hash, clean_name, effective_r_id, now, now))
+                INSERT INTO users (telegram_id, username, phone_number, is_verified, password_hash, full_name, primary_isp, reseller_id, wallet_balance, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?)
+            """, (synthetic_tg_id, clean_username, clean_phone, pwd_hash, clean_name, clean_isp or None, effective_r_id, now, now))
             new_user_id = cursor.lastrowid
 
             # ۵. ثبت رفرال در صورت وجود معرف
@@ -9935,6 +9977,7 @@ class Database:
                 "phone_number": clean_phone,
                 "username": clean_username,
                 "full_name": clean_name,
+                "primary_isp": clean_isp,
                 "reseller_id": effective_r_id,
                 "has_referrer": bool(referrer_info)
             }
@@ -10390,6 +10433,11 @@ class Database:
                     "telegram_id": int(tg_id) if (tg_id and int(tg_id) > 0) else 0,
                     "username": acc_name,
                     "phone_number": phone or "",
+                    "full_name": sub_dict.get("full_name") or "",
+                    "birthday": sub_dict.get("birthday") or "",
+                    "primary_isp": sub_dict.get("primary_isp") or "",
+                    "secondary_isp": sub_dict.get("secondary_isp") or "",
+                    "telegram_username": sub_dict.get("telegram_username") or "",
                     "is_verified": bool(phone),
                     "wallet_balance": 0,
                     "is_vip": bool(sub_dict.get("is_vip")),
@@ -10399,6 +10447,32 @@ class Database:
                 }
             else:
                 user_dict["is_synthetic"] = False
+                if not user_dict.get("full_name"):
+                    user_dict["full_name"] = sub_dict.get("full_name") or ""
+                if not user_dict.get("birthday"):
+                    user_dict["birthday"] = sub_dict.get("birthday") or ""
+                if not user_dict.get("primary_isp"):
+                    user_dict["primary_isp"] = sub_dict.get("primary_isp") or ""
+                if not user_dict.get("secondary_isp"):
+                    user_dict["secondary_isp"] = sub_dict.get("secondary_isp") or ""
+                if not user_dict.get("telegram_username"):
+                    user_dict["telegram_username"] = sub_dict.get("telegram_username") or ""
+
+            # محاسبه درصد تکمیل مشخصات پرونده مشتری
+            p_score = 0
+            if (sub_dict.get("account_name") or user_dict.get("username") or "").strip() and (sub_dict.get("account_name") or "").strip() != "کاربر گرامی":
+                p_score += 20
+            if (user_dict.get("full_name") or "").strip():
+                p_score += 20
+            if (user_dict.get("phone_number") or sub_dict.get("phone_number") or "").strip():
+                p_score += 20
+            if (user_dict.get("birthday") or "").strip():
+                p_score += 15
+            if (user_dict.get("primary_isp") or "").strip():
+                p_score += 15
+            if (user_dict.get("custom_avatar") or sub_dict.get("custom_avatar") or (user_dict.get("telegram_id") and int(user_dict["telegram_id"]) > 0)):
+                p_score += 10
+            user_dict["profile_completion_pct"] = min(100, p_score)
 
             # دریافت موجودی کیف پول کاربر در صورت داشتن آیدی تلگرام
             if user_dict.get("telegram_id") and user_dict["telegram_id"] > 0:
