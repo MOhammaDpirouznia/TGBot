@@ -24757,6 +24757,17 @@ def api_portal_social_tasks(token: str):
         "tasks": tasks
     })
 
+@app.route("/api/portal/server-time", methods=["GET"])
+@app.route("/api/server-time", methods=["GET"])
+def api_portal_server_time():
+    """دریافت زمان دقیق جهانی سرور جهت اعتبارسنجی بلادرنگ ساعت دستگاه مشتری"""
+    now_ms = int(time.time() * 1000)
+    return jsonify({
+        "success": True,
+        "server_time_ms": now_ms,
+        "server_iso": get_now_iso()
+    })
+
 @app.route("/api/portal/<token>/social-tasks/verify-claim", methods=["POST"])
 def api_portal_social_tasks_claim(token: str):
     """بررسی ضدتقلب و اهدای آنی پاداش ماموریت اجتماعی"""

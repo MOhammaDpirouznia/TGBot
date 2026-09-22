@@ -2211,6 +2211,17 @@
                 <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" style="left: 1rem !important; right: auto !important; top: 1rem !important; margin: 0 !important; z-index: 10;" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissCustomerNotice('{{ sub.get('id') }}', '{{ (sub.get('customer_note') or '')|length }}')" title="بستن پیام"></button>
             </div>
         </div>
+        <script>
+        (function() {
+            try {
+                var k = 'dismissed_cust_notice_{{ sub.get('id') }}_{{ (sub.get('customer_note') or '')|length }}';
+                if (localStorage.getItem(k) === '1' || sessionStorage.getItem(k) === '1') {
+                    var el = document.getElementById('customerNoticeBanner');
+                    if (el) el.style.display = 'none';
+                }
+            } catch(e) {}
+        })();
+        </script>
         {% endif %}
 
         {% if user_subscriptions and user_subscriptions|length > 1 %}
@@ -3301,7 +3312,10 @@
     {% if portal_banners %}
         <div class="portal-banners-container mb-4 d-flex flex-column gap-2">
             {% for bnr in portal_banners %}
-                <div class="alert alert-{{ bnr.level or 'info' }} {% if bnr.is_dismissible != false %}alert-dismissible{% endif %} fade show shadow-sm border-0 rounded-3 p-3 mb-0" role="alert" style="backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                {% set bnr_id = bnr.id or (loop.index ~ '_' ~ (bnr.title or '')|length ~ '_' ~ (bnr.message or '')|length) %}
+                <div class="alert alert-{{ bnr.level or 'info' }} {% if bnr.is_dismissible != false %}alert-dismissible{% endif %} fade show shadow-sm border-0 rounded-3 p-3 mb-0" 
+                     id="portalBanner_{{ bnr_id }}" 
+                     role="alert" style="backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
                     <div class="d-flex align-items-start gap-2">
                         <i class="fas fa-{% if bnr.level == 'danger' %}circle-exclamation text-danger{% elif bnr.level == 'warning' %}triangle-exclamation text-warning{% elif bnr.level == 'success' %}circle-check text-success{% elif bnr.level == 'purple' or bnr.level == 'primary' %}star text-primary{% else %}bullhorn text-info{% endif %} fs-5 mt-1 flex-shrink-0"></i>
                         <div class="flex-grow-1">
@@ -3318,10 +3332,21 @@
                             {% endif %}
                         </div>
                         {% if bnr.is_dismissible != false %}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن" onclick="dismissPortalBanner('{{ bnr_id }}')" title="بستن بنر"></button>
                         {% endif %}
                     </div>
                 </div>
+                <script>
+                (function() {
+                    try {
+                        var bk = 'dismissed_portal_bnr_{{ bnr_id }}';
+                        if (localStorage.getItem(bk) === '1' || sessionStorage.getItem(bk) === '1') {
+                            var bel = document.getElementById('portalBanner_{{ bnr_id }}');
+                            if (bel) bel.style.display = 'none';
+                        }
+                    } catch(e) {}
+                })();
+                </script>
             {% endfor %}
         </div>
     {% endif %}
@@ -8369,23 +8394,49 @@ window.tgHaptic = function(type = 'light') {
             renderChart(currentRange);
         });
     }
-    // مدیریت پنهان‌سازی هوشمند پیام مدیریت در پورتال
+    // مدیریت پنهان‌سازی دائمی پیام مدیریت در پورتال (ذخیره در localStorage و sessionStorage)
     window.dismissCustomerNotice = function(subId, noteLen) {
+        const key = 'dismissed_cust_notice_' + subId + '_' + noteLen;
         try {
-            sessionStorage.setItem('dismissed_cust_notice_' + subId + '_' + noteLen, '1');
+            localStorage.setItem(key, '1');
+            sessionStorage.setItem(key, '1');
         } catch(e) {}
+        const noticeEl = document.getElementById('customerNoticeBanner');
+        if (noticeEl) noticeEl.style.display = 'none';
     };
 
     const noticeEl = document.getElementById('customerNoticeBanner');
     if (noticeEl) {
         const subId = "{{ sub.get('id') }}";
         const noteLen = "{{ (sub.get('customer_note') or '')|length }}";
+        const storageKey = 'dismissed_cust_notice_' + subId + '_' + noteLen;
         try {
-            if (sessionStorage.getItem('dismissed_cust_notice_' + subId + '_' + noteLen) === '1') {
+            if (localStorage.getItem(storageKey) === '1' || sessionStorage.getItem(storageKey) === '1') {
                 noticeEl.style.display = 'none';
             }
         } catch(e) {}
     }
+
+    // مدیریت پنهان‌سازی دائمی بنرهای سراسری پرتال در مراجعات بعدی
+    window.dismissPortalBanner = function(bnrId) {
+        const key = 'dismissed_portal_bnr_' + bnrId;
+        try {
+            localStorage.setItem(key, '1');
+            sessionStorage.setItem(key, '1');
+        } catch(e) {}
+        const el = document.getElementById('portalBanner_' + bnrId);
+        if (el) el.style.display = 'none';
+    };
+
+    document.querySelectorAll('[id^="portalBanner_"]').forEach(function(bnrEl) {
+        const bnrId = bnrEl.id.replace('portalBanner_', '');
+        const key = 'dismissed_portal_bnr_' + bnrId;
+        try {
+            if (localStorage.getItem(key) === '1' || sessionStorage.getItem(key) === '1') {
+                bnrEl.style.display = 'none';
+            }
+        } catch(e) {}
+    });
 })();
 
 // ─── پایش هوشمند عدم تطابق ساعت و تاریخ دستگاه مشتری (Smart Device Clock Desync Monitor) ───
@@ -8395,15 +8446,8 @@ window.tgHaptic = function(type = 'light') {
 
     if (!clockCheckEnabled || !serverTimeMs) return;
 
-    // محاسبه میزان اختلاف زمانی دستگاه مشتری با زمان استاندارد جهانی سرور
-    const nowDeviceMs = Date.now();
-    const diffMs = Math.abs(nowDeviceMs - serverTimeMs);
-    const diffMinutes = Math.round(diffMs / 60000);
-
-    // اگر اختلاف بیش از ۲ دقیقه (۱۲۰,۰۰۰ میلی‌ثانیه) باشد
-    if (diffMs > 120000) {
-        console.warn(`[ClockDesync] Device time diff: ~${diffMinutes} minutes with server.`);
-
+    // توابع کمکی نمایش و پنهان‌سازی هشدار
+    function displayClockWarning(diffMinutes) {
         const diffText = document.getElementById('deviceClockDiffText');
         if (diffText) {
             diffText.innerText = `ساعت دستگاه شما حدود ${diffMinutes} دقیقه با زمان دقیق جهانی اختلاف دارد`;
@@ -8417,23 +8461,108 @@ window.tgHaptic = function(type = 'light') {
         const banner = document.getElementById('deviceClockBottomBanner');
         if (banner) banner.classList.remove('d-none');
 
-        // نمایش پاپ‌آپ هشدار (حداکثر یک‌بار در روز)
+        // بررسی اینکه آیا کاربر امروز هشدار را بسته است یا خیر
         const todayStr = new Date().toISOString().slice(0, 10);
         let dismissedDate = null;
         try {
             dismissedDate = localStorage.getItem('device_clock_dismissed_date');
         } catch(e) {}
 
+        // نمایش مودال فقط در صورتی که کاربر امروز آن را تایید نکرده باشد
         if (dismissedDate !== todayStr) {
             setTimeout(function() {
                 showClockWarningModal();
-            }, 1000);
+            }, 800);
         }
     }
 
+    function hideClockWarning() {
+        const banner = document.getElementById('deviceClockBottomBanner');
+        if (banner) banner.classList.add('d-none');
+
+        const modalEl = document.getElementById('deviceClockModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+        }
+    }
+
+    // بررسی اصلی با راستی‌آزمایی بلادرنگ از وب‌سرویس سرور
+    function verifyClockWithServer() {
+        // ۱. قاعده زمانی: اگر بیش از ۳۰ ثانیه از ناوبری/باز شدن صفحه گذشته باشد،
+        // یا صفحه از تب پیش‌فرض کش (Discarded/bfcache) بازیافت شده باشد، هرگز هشدار نده.
+        const pageElapsedMs = window.performance && performance.now ? performance.now() : 0;
+        if (pageElapsedMs > 30000 || document.wasDiscarded) {
+            hideClockWarning();
+            return;
+        }
+
+        const nowDeviceMs = Date.now();
+        const initialDiffMs = Math.abs(nowDeviceMs - serverTimeMs);
+
+        // اگر اختلاف اولیه کمتر از ۲ دقیقه باشد، ساعت دقیق است و نیازی به هیچ اقدامی نیست
+        if (initialDiffMs <= 120000) {
+            hideClockWarning();
+            return;
+        }
+
+        // ۲. راستی‌آزمایی دقیق با وب‌سرویس زنده سرور جهت رفع قطعی خطای کش تب‌های باز مانده
+        const tStart = Date.now();
+        fetch('/api/portal/server-time', { cache: 'no-store' })
+        .then(function(res) {
+            if (!res.ok) throw new Error('Failed to fetch server time');
+            return res.json();
+        })
+        .then(function(data) {
+            if (data && data.success && data.server_time_ms) {
+                const tEnd = Date.now();
+                const latency = Math.round((tEnd - tStart) / 2);
+                const liveServerMs = data.server_time_ms + latency;
+                const liveDiffMs = Math.abs(Date.now() - liveServerMs);
+                const liveDiffMinutes = Math.round(liveDiffMs / 60000);
+
+                // ۳. شرط قطعی نمایش: فقط در صورتی که با زمان زنده سرور اختلاف بیش از ۲ دقیقه باشد
+                // و همچنین هنوز در محدوده ۳۰ ثانیه اولیه مراجعه به صفحه باشیم
+                const currentElapsed = window.performance && performance.now ? performance.now() : 0;
+                if (liveDiffMs > 120000 && currentElapsed <= 30000) {
+                    console.warn(`[ClockDesync] Confirmed clock desync with live server: ~${liveDiffMinutes} min`);
+                    displayClockWarning(liveDiffMinutes);
+                } else {
+                    // ساعت دستگاه هماهنگ است و اختلاف مربوط به سابقه تب بوده است
+                    hideClockWarning();
+                }
+            }
+        })
+        .catch(function(err) {
+            // در صورت بروز خطا در دریافت زمان زنده، برای جلوگیری از هرگونه هشدار کاذب، پیام پنهان می‌ماند
+            console.debug('[ClockDesync] Live verification skipped or failed:', err);
+        });
+    }
+
+    // اجرای بررسی در هنگام لود صفحه
+    verifyClockWithServer();
+
+    // مدیریت بازگشت به صفحه از کش مرورگر یا سوییچ بین تب‌ها (BFCache / Visibility Change)
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            // صفحه از کش مرورگر بازیابی شده است، هشدارهای احتمالی قدیمی را فوراً ببند
+            hideClockWarning();
+        }
+    });
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            const currentElapsed = window.performance && performance.now ? performance.now() : 0;
+            // در صورت بازگشت پس از ۳۰ ثانیه، اجازه نمایش هشدار تاریخ گذشته را نده
+            if (currentElapsed > 30000) {
+                hideClockWarning();
+            }
+        }
+    });
+
     window.showClockWarningModal = function() {
         const modalEl = document.getElementById('deviceClockModal');
-        if (modalEl) {
+        if (modalEl && typeof bootstrap !== 'undefined') {
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
             modal.show();
         }
@@ -8444,11 +8573,7 @@ window.tgHaptic = function(type = 'light') {
         try {
             localStorage.setItem('device_clock_dismissed_date', todayStr);
         } catch(e) {}
-        const modalEl = document.getElementById('deviceClockModal');
-        if (modalEl) {
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            if (modal) modal.hide();
-        }
+        hideClockWarning();
     };
 })();
 
