@@ -2959,13 +2959,17 @@ class Database:
                 pass
         return True
 
-    def get_user_loyalty_tier(self, telegram_id: int) -> dict:
+    def get_user_loyalty_tier(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
         """
         محاسبه دقیق سطح وفاداری مشتری (عادی، برنزی، نقره‌ای، طلایی)
         بر اساس مجموع خریدهای تایید شده و مجموع ترافیک اشتراک‌ها
         با اعمال خودکار ۵ تا ۱۵ درصد تخفیف همیشگی برای سطوح بالا و درصد کش‌بک
         """
         user = self.get_user(telegram_id)
+        if reseller_id is None and user:
+            reseller_id = user.get("reseller_id")
+        effective_r_id = int(reseller_id) if reseller_id else 0
+
         is_vip_flag = self.is_user_vip(telegram_id) if user else False
         vip_tier_db = (user.get("vip_tier") or "none").lower() if user else "none"
 
@@ -2975,22 +2979,37 @@ class Database:
         total_orders = 0
         total_gb = 0
         try:
-            cursor.execute("""
-                SELECT COALESCE(SUM(amount), 0) as total_spent,
-                       COALESCE(COUNT(id), 0) as total_orders
-                FROM transactions
-                WHERE user_id = ? AND status = 'approved'
-            """, (telegram_id,))
+            if effective_r_id > 0:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total_spent,
+                           COALESCE(COUNT(id), 0) as total_orders
+                    FROM transactions
+                    WHERE user_id = ? AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)
+                """, (telegram_id, effective_r_id))
+            else:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total_spent,
+                           COALESCE(COUNT(id), 0) as total_orders
+                    FROM transactions
+                    WHERE user_id = ? AND status = 'approved'
+                """, (telegram_id,))
             row = cursor.fetchone()
             if row:
                 total_spent = int(row["total_spent"] or 0)
                 total_orders = int(row["total_orders"] or 0)
 
-            cursor.execute("""
-                SELECT COALESCE(SUM(data_limit), 0) as total_gb
-                FROM subscriptions
-                WHERE telegram_id = ?
-            """, (telegram_id,))
+            if effective_r_id > 0:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                    FROM subscriptions
+                    WHERE telegram_id = ? AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)
+                """, (telegram_id, effective_r_id))
+            else:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                    FROM subscriptions
+                    WHERE telegram_id = ?
+                """, (telegram_id,))
             row_gb = cursor.fetchone()
             if row_gb:
                 total_gb = float(row_gb["total_gb"] or 0)
@@ -2999,7 +3018,7 @@ class Database:
         finally:
             conn.close()
 
-        sets = self.get_vip_settings()
+        sets = self.get_vip_settings(reseller_id=effective_r_id)
         b_tomans = sets["bronze_threshold_tomans"]
         b_gb = sets["bronze_threshold_gb"]
         b_disc = sets["bronze_discount_percent"]
@@ -3405,84 +3424,95 @@ class Database:
             "cashback_percent": tier_info["cashback_percent"]
         }
 
-    def get_vip_settings(self) -> dict:
-        """دریافت تنظیمات جامع باشگاه وفاداری، سطوح سه‌گانه، تخفیف‌ها و هدایای تولد/سالگرد"""
+    def get_vip_settings(self, reseller_id: int = 0) -> dict:
+        """دریافت تنظیمات جامع باشگاه وفاداری، سطوح سه‌گانه، تخفیف‌ها و هدایای تولد/سالگرد (پشتیبانی از تفکیک نماینده)"""
+        prefix = f"vip_r_{reseller_id}_" if reseller_id and int(reseller_id) > 0 else "vip_"
+
+        def _get_val(key, default):
+            raw = self.get_setting(f"{prefix}{key}")
+            if raw is None and prefix != "vip_":
+                # فال‌بک به تنظیمات سراسری در صورت عدم تنظیم اختصاصی توسط نماینده
+                raw = self.get_setting(f"vip_{key}")
+            return raw if raw is not None else default
+
         def _to_int(key, default):
             try:
-                val = self.get_setting(key, default)
+                val = _get_val(key, default)
                 return int(val) if val is not None else default
             except Exception:
                 return default
 
-        auto_enabled = str(self.get_setting("vip_auto_enabled", "1")).lower() in ("1", "true", "yes")
-        enabled = str(self.get_setting("vip_system_enabled", "1")).lower() in ("1", "true", "yes")
-        priority_support = str(self.get_setting("vip_priority_support", "1")).lower() in ("1", "true", "yes")
-        vip_server_access = str(self.get_setting("vip_server_access", "1")).lower() in ("1", "true", "yes")
-        free_config_regen = str(self.get_setting("vip_free_config_regen", "1")).lower() in ("1", "true", "yes")
-        show_vip_badge = str(self.get_setting("vip_show_badge", "1")).lower() in ("1", "true", "yes")
+        auto_enabled = str(_get_val("auto_enabled", "1")).lower() in ("1", "true", "yes")
+        enabled = str(_get_val("system_enabled", "1")).lower() in ("1", "true", "yes")
+        priority_support = str(_get_val("priority_support", "1")).lower() in ("1", "true", "yes")
+        vip_server_access = str(_get_val("vip_server_access", "1")).lower() in ("1", "true", "yes")
+        free_config_regen = str(_get_val("free_config_regen", "1")).lower() in ("1", "true", "yes")
+        show_vip_badge = str(_get_val("show_badge", "1")).lower() in ("1", "true", "yes")
 
-        b_enabled = str(self.get_setting("vip_birthday_reward_enabled", "1")).lower() in ("1", "true", "yes")
-        a_enabled = str(self.get_setting("vip_anniversary_reward_enabled", "1")).lower() in ("1", "true", "yes")
+        b_enabled = str(_get_val("birthday_reward_enabled", "1")).lower() in ("1", "true", "yes")
+        a_enabled = str(_get_val("anniversary_reward_enabled", "1")).lower() in ("1", "true", "yes")
 
         return {
             "enabled": enabled,
             "auto_enabled": auto_enabled,
-            "auto_threshold": _to_int("vip_auto_threshold", 1000000),
-            "min_purchases": _to_int("vip_min_purchases", 3),
-            "discount_percent": _to_int("vip_discount_percent", 15),
-            "cashback_percent": _to_int("vip_cashback_percent", 10),
-            "bonus_data_gb": _to_int("vip_bonus_data_gb", 5),
-            "extended_grace_hours": _to_int("vip_extended_grace_hours", 48),
+            "auto_threshold": _to_int("auto_threshold", 1000000),
+            "min_purchases": _to_int("min_purchases", 3),
+            "discount_percent": _to_int("discount_percent", 15),
+            "cashback_percent": _to_int("cashback_percent", 10),
+            "bonus_data_gb": _to_int("bonus_data_gb", 5),
+            "extended_grace_hours": _to_int("extended_grace_hours", 48),
             "priority_support": priority_support,
             "vip_server_access": vip_server_access,
             "free_config_regen": free_config_regen,
             "show_vip_badge": show_vip_badge,
             # تنظیمات سطوح سه‌گانه وفاداری (Loyalty Tiers)
-            "bronze_threshold_tomans": _to_int("vip_bronze_threshold_tomans", 300000),
-            "bronze_threshold_gb": _to_int("vip_bronze_threshold_gb", 30),
-            "bronze_discount_percent": _to_int("vip_bronze_discount_percent", 5),
-            "bronze_cashback_percent": _to_int("vip_bronze_cashback_percent", 5),
-            "silver_threshold_tomans": _to_int("vip_silver_threshold_tomans", 800000),
-            "silver_threshold_gb": _to_int("vip_silver_threshold_gb", 80),
-            "silver_discount_percent": _to_int("vip_silver_discount_percent", 10),
-            "silver_cashback_percent": _to_int("vip_silver_cashback_percent", 10),
-            "gold_threshold_tomans": _to_int("vip_gold_threshold_tomans", 1500000),
-            "gold_threshold_gb": _to_int("vip_gold_threshold_gb", 150),
-            "gold_discount_percent": _to_int("vip_gold_discount_percent", 15),
-            "gold_cashback_percent": _to_int("vip_gold_cashback_percent", 15),
+            "bronze_threshold_tomans": _to_int("bronze_threshold_tomans", 300000),
+            "bronze_threshold_gb": _to_int("bronze_threshold_gb", 30),
+            "bronze_discount_percent": _to_int("bronze_discount_percent", 5),
+            "bronze_cashback_percent": _to_int("bronze_cashback_percent", 5),
+            "silver_threshold_tomans": _to_int("silver_threshold_tomans", 800000),
+            "silver_threshold_gb": _to_int("silver_threshold_gb", 80),
+            "silver_discount_percent": _to_int("silver_discount_percent", 10),
+            "silver_cashback_percent": _to_int("silver_cashback_percent", 10),
+            "gold_threshold_tomans": _to_int("gold_threshold_tomans", 1500000),
+            "gold_threshold_gb": _to_int("gold_threshold_gb", 150),
+            "gold_discount_percent": _to_int("gold_discount_percent", 15),
+            "gold_cashback_percent": _to_int("gold_cashback_percent", 15),
             # هدایای مناسبتی (تولد و سالگرد عضویت)
             "birthday_reward_enabled": b_enabled,
-            "birthday_reward_type": self.get_setting("vip_birthday_reward_type", "traffic"),
-            "birthday_reward_val": self.get_setting("vip_birthday_reward_val", "5"),
+            "birthday_reward_type": _get_val("birthday_reward_type", "traffic"),
+            "birthday_reward_val": _get_val("birthday_reward_val", "5"),
             "anniversary_reward_enabled": a_enabled,
-            "anniversary_reward_type": self.get_setting("vip_anniversary_reward_type", "traffic"),
-            "anniversary_reward_val": self.get_setting("vip_anniversary_reward_val", "5")
+            "anniversary_reward_type": _get_val("anniversary_reward_type", "traffic"),
+            "anniversary_reward_val": _get_val("anniversary_reward_val", "5")
         }
 
-    def save_vip_settings(self, *args, **kwargs) -> bool:
-        """ذخیره تنظیمات باشگاه وفاداری و سطوح VIP (پشتیبانی از هر دو حالت دیکشنری و آرگومان‌های مجزا)"""
+    def save_vip_settings(self, *args, reseller_id: int = 0, **kwargs) -> bool:
+        """ذخیره تنظیمات باشگاه وفاداری و سطوح VIP (پشتیبانی از هر دو حالت دیکشنری، آرگومان‌های مجزا و تفکیک نماینده)"""
         try:
+            r_id = kwargs.pop("reseller_id", reseller_id)
+            prefix = f"vip_r_{r_id}_" if r_id and int(r_id) > 0 else "vip_"
             if args and isinstance(args[0], dict):
                 data = args[0]
                 for k, v in data.items():
                     val_str = "1" if v is True else ("0" if v is False else str(v))
-                    key_name = k if k.startswith("vip_") else f"vip_{k}"
-                    self.set_setting(key_name, val_str)
+                    clean_k = k[4:] if k.startswith("vip_") else k
+                    self.set_setting(f"{prefix}{clean_k}", val_str)
                 return True
             elif len(args) >= 1:
                 # فراخوانی با آرگومان‌های پوزیشنی قدیمی (enabled, threshold, cashback)
                 enabled = args[0]
                 threshold = args[1] if len(args) > 1 else 1000000
                 cashback = args[2] if len(args) > 2 else 10
-                self.set_setting("vip_auto_enabled", "1" if enabled else "0")
-                self.set_setting("vip_auto_threshold", str(threshold))
-                self.set_setting("vip_cashback_percent", str(cashback))
+                self.set_setting(f"{prefix}auto_enabled", "1" if enabled else "0")
+                self.set_setting(f"{prefix}auto_threshold", str(threshold))
+                self.set_setting(f"{prefix}cashback_percent", str(cashback))
                 return True
             elif kwargs:
                 for k, v in kwargs.items():
                     val_str = "1" if v is True else ("0" if v is False else str(v))
-                    key_name = k if k.startswith("vip_") else f"vip_{k}"
-                    self.set_setting(key_name, val_str)
+                    clean_k = k[4:] if k.startswith("vip_") else k
+                    self.set_setting(f"{prefix}{clean_k}", val_str)
                 return True
             return True
         except Exception as e:
@@ -3493,13 +3523,17 @@ class Database:
     # سیستم ماموریت‌های اجتماعی و کسب حجم رایگان (Social Tasks & Quests)
     # ═══════════════════════════════════════════════════════════════
 
-    def get_social_tasks(self, reseller_id: int = 0, active_only: bool = True) -> list:
-        """دریافت لیست ماموریت‌های فعال برای کاربران"""
+    def get_social_tasks(self, reseller_id: int = 0, active_only: bool = True, strict_reseller: bool = False) -> list:
+        """دریافت لیست ماموریت‌های فعال برای کاربران یا لیست ماموریت‌های اختصاصی نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            query = "SELECT * FROM social_tasks WHERE (reseller_id = ? OR reseller_id = 0)"
-            params = [reseller_id]
+            if strict_reseller:
+                query = "SELECT * FROM social_tasks WHERE reseller_id = ?"
+                params = [reseller_id]
+            else:
+                query = "SELECT * FROM social_tasks WHERE (reseller_id = ? OR reseller_id = 0)"
+                params = [reseller_id]
             if active_only:
                 query += " AND is_active = 1"
             query += " ORDER BY order_num ASC, id ASC"
@@ -3508,7 +3542,6 @@ class Database:
             return [dict(r) for r in rows]
         except Exception as e:
             logger.error(f"Error fetching social tasks: {e}")
-            return []
         finally:
             conn.close()
 
@@ -3811,26 +3844,59 @@ class Database:
         finally:
             conn.close()
 
-    def get_vip_users_list(self) -> list:
-        """دریافت لیست تمام مشتریان پرمیوم و اعضای سطوح وفاداری همراه با آمار خرید و اشتراک‌های فعال"""
+    def is_user_owned_by_reseller(self, reseller_id: int, telegram_id: int) -> bool:
+        """بررسی آیا کاربر متعلق به نماینده مشخص‌شده است یا خیر"""
+        if not reseller_id or not telegram_id:
+            return False
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT u.*,
-                       COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_spent,
-                       COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_orders,
-                       COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active'), 0) as active_subs
-                FROM users u
-                WHERE u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')
-                ORDER BY total_spent DESC, u.id DESC
-            """)
+                SELECT 1 FROM users WHERE telegram_id = ? AND reseller_id = ?
+                UNION
+                SELECT 1 FROM subscriptions WHERE telegram_id = ? AND reseller_id = ?
+                LIMIT 1
+            """, (telegram_id, reseller_id, telegram_id, reseller_id))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Error checking user reseller ownership: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_vip_users_list(self, reseller_id: int = 0) -> list:
+        """دریافت لیست تمام مشتریان پرمیوم و اعضای سطوح وفاداری همراه با آمار خرید و اشتراک‌های فعال (پشتیبانی از تفکیک نماینده)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id and int(reseller_id) > 0:
+                r_id = int(reseller_id)
+                cursor.execute("""
+                    SELECT u.*,
+                           COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as total_spent,
+                           COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as total_orders,
+                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as active_subs
+                    FROM users u
+                    WHERE (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold'))
+                      AND (u.reseller_id = ? OR u.telegram_id IN (SELECT telegram_id FROM subscriptions WHERE reseller_id = ?))
+                    ORDER BY total_spent DESC, u.id DESC
+                """, (r_id, r_id, r_id, r_id, r_id))
+            else:
+                cursor.execute("""
+                    SELECT u.*,
+                           COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_spent,
+                           COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_orders,
+                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active'), 0) as active_subs
+                    FROM users u
+                    WHERE u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')
+                    ORDER BY total_spent DESC, u.id DESC
+                """)
             rows = cursor.fetchall()
             user_list = []
             for r in rows:
                 ud = dict(r)
                 tid = ud.get("telegram_id")
-                loyalty = self.get_user_loyalty_tier(tid) if tid else {}
+                loyalty = self.get_user_loyalty_tier(tid, reseller_id=reseller_id) if tid else {}
                 ud["loyalty_tier"] = loyalty.get("tier", ud.get("vip_tier") or "none")
                 ud["tier_title"] = loyalty.get("title", "عادی")
                 ud["tier_badge_html"] = loyalty.get("badge_html", "")
@@ -3844,32 +3910,64 @@ class Database:
         finally:
             conn.close()
 
-    def get_vip_dashboard_stats(self) -> dict:
-        """محاسبه آمار و شاخص‌های تحلیلی مشتریان پرمیوم برای داشبورد"""
+    def get_vip_dashboard_stats(self, reseller_id: int = 0) -> dict:
+        """محاسبه آمار و شاخص‌های تحلیلی مشتریان پرمیوم برای داشبورد (پشتیبانی از تفکیک نماینده)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT COUNT(id) FROM users WHERE is_vip = 1")
-            total_vips = cursor.fetchone()[0] or 0
+            if reseller_id and int(reseller_id) > 0:
+                r_id = int(reseller_id)
+                user_filter = "WHERE (u.reseller_id = ? OR u.telegram_id IN (SELECT telegram_id FROM subscriptions WHERE reseller_id = ?))"
 
-            cursor.execute("SELECT COUNT(id) FROM users WHERE is_vip = 1 AND vip_type = 'auto'")
-            auto_vips = cursor.fetchone()[0] or 0
+                cursor.execute(f"""
+                    SELECT COUNT(u.id) FROM users u
+                    {user_filter} AND (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold'))
+                """, (r_id, r_id))
+                total_vips = cursor.fetchone()[0] or 0
 
-            cursor.execute("""
-                SELECT COALESCE(SUM(t.amount), 0)
-                FROM transactions t
-                JOIN users u ON t.user_id = u.telegram_id
-                WHERE u.is_vip = 1 AND t.status = 'approved'
-            """)
-            vip_revenue = cursor.fetchone()[0] or 0
+                cursor.execute(f"""
+                    SELECT COUNT(u.id) FROM users u
+                    {user_filter} AND (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')) AND u.vip_type = 'auto'
+                """, (r_id, r_id))
+                auto_vips = cursor.fetchone()[0] or 0
 
-            cursor.execute("""
-                SELECT COALESCE(COUNT(s.id), 0)
-                FROM subscriptions s
-                JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE u.is_vip = 1 AND s.status = 'active'
-            """)
-            vip_active_subs = cursor.fetchone()[0] or 0
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(t.amount), 0)
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.telegram_id
+                    {user_filter} AND (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')) AND t.status = 'approved'
+                """, (r_id, r_id))
+                vip_revenue = cursor.fetchone()[0] or 0
+
+                cursor.execute("""
+                    SELECT COALESCE(COUNT(s.id), 0)
+                    FROM subscriptions s
+                    JOIN users u ON s.telegram_id = u.telegram_id
+                    WHERE s.reseller_id = ? AND (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')) AND s.status = 'active'
+                """, (r_id,))
+                vip_active_subs = cursor.fetchone()[0] or 0
+            else:
+                cursor.execute("SELECT COUNT(id) FROM users WHERE is_vip = 1 OR vip_tier IN ('bronze', 'silver', 'gold')")
+                total_vips = cursor.fetchone()[0] or 0
+
+                cursor.execute("SELECT COUNT(id) FROM users WHERE (is_vip = 1 OR vip_tier IN ('bronze', 'silver', 'gold')) AND vip_type = 'auto'")
+                auto_vips = cursor.fetchone()[0] or 0
+
+                cursor.execute("""
+                    SELECT COALESCE(SUM(t.amount), 0)
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.telegram_id
+                    WHERE (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')) AND t.status = 'approved'
+                """)
+                vip_revenue = cursor.fetchone()[0] or 0
+
+                cursor.execute("""
+                    SELECT COALESCE(COUNT(s.id), 0)
+                    FROM subscriptions s
+                    JOIN users u ON s.telegram_id = u.telegram_id
+                    WHERE (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')) AND s.status = 'active'
+                """)
+                vip_active_subs = cursor.fetchone()[0] or 0
 
             return {
                 "total_vips": total_vips,

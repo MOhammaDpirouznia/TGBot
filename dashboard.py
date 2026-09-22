@@ -25075,6 +25075,290 @@ def reseller_lucky_wheel_prize_delete(prize_id: int):
     return redirect(url_for("reseller_lucky_wheel_page"))
 
 
+# ─── باشگاه مشتریان و سطوح وفاداری نماینده (Reseller VIP Club) ───
+
+@app.route("/reseller/vip-settings", methods=["GET", "POST"])
+@reseller_required
+def reseller_vip_settings():
+    """تنظیمات و مدیریت مشتریان پرمیوم و باشگاه مشتریان VIP نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    if request.method == "POST":
+        settings_data = {
+            "system_enabled": request.form.get("system_enabled") == "1",
+            "auto_enabled": request.form.get("auto_enabled") == "1",
+            "auto_threshold": int(request.form.get("auto_threshold") or 1000000),
+            "min_purchases": int(request.form.get("min_purchases") or 3),
+            "discount_percent": int(request.form.get("discount_percent") or 15),
+            "cashback_percent": int(request.form.get("cashback_percent") or 10),
+            "bonus_data_gb": int(request.form.get("bonus_data_gb") or 5),
+            "extended_grace_hours": int(request.form.get("extended_grace_hours") or 48),
+            "priority_support": request.form.get("priority_support") == "1",
+            "vip_server_access": request.form.get("vip_server_access") == "1",
+            "free_config_regen": request.form.get("free_config_regen") == "1",
+            "show_badge": request.form.get("show_badge") == "1",
+            # سطوح سه‌گانه وفاداری
+            "bronze_threshold_tomans": int(request.form.get("bronze_threshold_tomans") or 300000),
+            "bronze_threshold_gb": int(request.form.get("bronze_threshold_gb") or 30),
+            "bronze_discount_percent": int(request.form.get("bronze_discount_percent") or 5),
+            "bronze_cashback_percent": int(request.form.get("bronze_cashback_percent") or 5),
+            "silver_threshold_tomans": int(request.form.get("silver_threshold_tomans") or 800000),
+            "silver_threshold_gb": int(request.form.get("silver_threshold_gb") or 80),
+            "silver_discount_percent": int(request.form.get("silver_discount_percent") or 10),
+            "silver_cashback_percent": int(request.form.get("silver_cashback_percent") or 10),
+            "gold_threshold_tomans": int(request.form.get("gold_threshold_tomans") or 1500000),
+            "gold_threshold_gb": int(request.form.get("gold_threshold_gb") or 150),
+            "gold_discount_percent": int(request.form.get("gold_discount_percent") or 15),
+            "gold_cashback_percent": int(request.form.get("gold_cashback_percent") or 15),
+            # هدایای مناسبتی (تولد و سالگرد)
+            "birthday_reward_enabled": request.form.get("birthday_reward_enabled") in ("1", "on"),
+            "birthday_reward_type": request.form.get("birthday_reward_type", "traffic"),
+            "birthday_reward_val": request.form.get("birthday_reward_val", "5"),
+            "anniversary_reward_enabled": request.form.get("anniversary_reward_enabled") in ("1", "on"),
+            "anniversary_reward_type": request.form.get("anniversary_reward_type", "traffic"),
+            "anniversary_reward_val": request.form.get("anniversary_reward_val", "5")
+        }
+        db.save_vip_settings(settings_data, reseller_id=reseller_id)
+        flash("تنظیمات باشگاه مشتریان و سطوح وفاداری نماینده با موفقیت ذخیره شد.", "success")
+        return redirect(url_for("reseller_vip_settings"))
+
+    vip_sets = db.get_vip_settings(reseller_id=reseller_id)
+    vip_stats = db.get_vip_dashboard_stats(reseller_id=reseller_id)
+    vip_users = db.get_vip_users_list(reseller_id=reseller_id)
+    return render_template(
+        "reseller_vip_settings.html",
+        reseller=reseller,
+        vip_settings=vip_sets,
+        vip_stats=vip_stats,
+        vip_users=vip_users
+    )
+
+@app.route("/reseller/vip-user/add", methods=["POST"])
+@reseller_required
+def reseller_vip_user_add():
+    """افزودن مستقیم مشتری نماینده به لیست مشتریان پرمیوم (VIP)"""
+    reseller_id = session.get("reseller_id")
+    user_input = request.form.get("user_identifier", "").strip()
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+
+    if not user_input:
+        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
+        return redirect(url_for("reseller_vip_settings"))
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    if user_input.isdigit():
+        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE telegram_id = ?", (int(user_input),))
+    else:
+        clean_uname = user_input.replace("@", "").strip()
+        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
+    user_row = cursor.fetchone()
+    conn.close()
+
+    if not user_row:
+        flash(f"کاربری با شناسه «{user_input}» در سیستم یافت نشد.", "danger")
+        return redirect(url_for("reseller_vip_settings"))
+
+    tg_id = user_row["telegram_id"]
+    if not db.is_user_owned_by_reseller(reseller_id, tg_id):
+        flash("این کاربر متعلق به مشتریان نمایندگی شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings"))
+
+    expire_at = None
+    if days_str and days_str.isdigit() and int(days_str) > 0:
+        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+
+    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
+
+    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
+    flash(f"مشتری {tg_id} با موفقیت به لیست مشتریان پرمیوم (سطح {vip_tier}) افزوده شد.", "success")
+    return redirect(url_for("reseller_vip_settings"))
+
+@app.route("/reseller/vip-user/edit/<int:telegram_id>", methods=["POST"])
+@reseller_required
+def reseller_vip_user_edit(telegram_id: int):
+    """ویرایش مشخصات VIP مشتری نماینده"""
+    reseller_id = session.get("reseller_id")
+    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
+        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings"))
+
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
+
+    expire_at = None
+    if days_str and days_str.isdigit() and int(days_str) > 0:
+        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+
+    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+    db.set_user_vip(telegram_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
+    flash(f"مشخصات VIP مشتری {telegram_id} با موفقیت ویرایش شد.", "success")
+    return redirect(url_for("reseller_vip_settings"))
+
+@app.route("/reseller/vip-user/remove/<int:telegram_id>", methods=["POST"])
+@reseller_required
+def reseller_vip_user_remove(telegram_id: int):
+    """لغو وضعیت VIP مشتری نماینده"""
+    reseller_id = session.get("reseller_id")
+    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
+        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings"))
+
+    db.set_user_vip(telegram_id, is_vip=False, vip_type="none", vip_tier="none")
+    flash(f"عضویت VIP کاربر {telegram_id} با موفقیت لغو شد.", "info")
+    return redirect(url_for("reseller_vip_settings"))
+
+
+# ─── ماموریت‌ها و پاداش‌های اجتماعی نماینده (Reseller Social Tasks) ───
+
+@app.route("/reseller/social-tasks", methods=["GET"])
+@reseller_required
+def reseller_social_tasks_page():
+    """مدیریت اختصاصی ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("حساب نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    tasks = db.get_social_tasks(reseller_id=reseller_id, active_only=False, strict_reseller=True)
+    total_active = sum(1 for t in tasks if t.get("is_active"))
+
+    total_claims = 0
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT COUNT(*) as total
+            FROM user_social_tasks ust
+            JOIN social_tasks st ON ust.task_id = st.id
+            WHERE ust.status = 'claimed' AND st.reseller_id = ?
+        """, (reseller_id,))
+        row = cursor.fetchone()
+        if row:
+            total_claims = int(row["total"] or 0)
+    except Exception:
+        total_claims = 0
+    finally:
+        conn.close()
+
+    plans_list = db.get_reseller_plans(reseller_id)
+    plans_dict = {str(p.get("plan_id", p.get("id"))): (p.get("custom_name") or p.get("name") or p.get("title", f"بسته {p.get('id')}")) for p in plans_list}
+
+    return render_template(
+        "reseller_social_tasks.html",
+        reseller=reseller,
+        tasks=tasks,
+        total_tasks=len(tasks),
+        total_active=total_active,
+        total_claims=total_claims,
+        plans=plans_dict,
+        plans_list=plans_list
+    )
+
+@app.route("/reseller/social-tasks/add", methods=["POST"])
+@reseller_required
+def reseller_social_task_add():
+    """افزودن ماموریت اختصاصی توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    title = request.form.get("title", "").strip()
+    task_type = request.form.get("task_type", "custom").strip()
+    reward_type = request.form.get("reward_type", "traffic").strip()
+    reward_value = request.form.get("reward_value", "1").strip()
+    target_count = max(1, int(request.form.get("target_count") or 1))
+    description = request.form.get("description", "").strip()
+    target_channel_id = request.form.get("target_channel_id", "").strip()
+    target_link = request.form.get("target_link", "").strip()
+    plan_id = request.form.get("plan_id", "").strip() or None
+    icon = request.form.get("icon", "fa-gift").strip()
+    badge_text = request.form.get("badge_text", "").strip()
+    order_num = int(request.form.get("order_num") or 0)
+    is_active = 1 if request.form.get("is_active") in ("1", "on") else 0
+
+    if not title:
+        flash("عنوان ماموریت الزامی است.", "danger")
+        return redirect(url_for("reseller_social_tasks_page"))
+
+    new_id = db.add_social_task(
+        title=title, task_type=task_type, reward_type=reward_type, reward_value=reward_value,
+        target_count=target_count, description=description, target_channel_id=target_channel_id,
+        target_link=target_link, plan_id=plan_id, icon=icon, badge_text=badge_text,
+        is_active=is_active, order_num=order_num, reseller_id=reseller_id
+    )
+    if new_id:
+        flash(f"ماموریت «{title}» با موفقیت افزوده شد.", "success")
+    else:
+        flash("خطا در ایجاد ماموریت.", "danger")
+    return redirect(url_for("reseller_social_tasks_page"))
+
+@app.route("/reseller/social-tasks/edit/<int:task_id>", methods=["POST"])
+@reseller_required
+def reseller_social_task_edit(task_id: int):
+    """ویرایش ماموریت اختصاصی نماینده با بررسی مالکیت"""
+    reseller_id = session.get("reseller_id")
+    task = db.get_social_task(task_id)
+    if not task or task.get("reseller_id") != reseller_id:
+        flash("شما مجاز به ویرایش این ماموریت نیستید.", "danger")
+        return redirect(url_for("reseller_social_tasks_page"))
+
+    update_data = {
+        "title": request.form.get("title", "").strip(),
+        "task_type": request.form.get("task_type", "custom").strip(),
+        "reward_type": request.form.get("reward_type", "traffic").strip(),
+        "reward_value": request.form.get("reward_value", "1").strip(),
+        "target_count": max(1, int(request.form.get("target_count") or 1)),
+        "description": request.form.get("description", "").strip(),
+        "target_channel_id": request.form.get("target_channel_id", "").strip(),
+        "target_link": request.form.get("target_link", "").strip(),
+        "plan_id": request.form.get("plan_id", "").strip() or None,
+        "icon": request.form.get("icon", "fa-gift").strip(),
+        "badge_text": request.form.get("badge_text", "").strip(),
+        "order_num": int(request.form.get("order_num") or 0),
+        "is_active": 1 if request.form.get("is_active") in ("1", "on") else 0
+    }
+    ok = db.update_social_task(task_id, **update_data)
+    if ok:
+        flash("ماموریت با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash("خطا در ویرایش ماموریت.", "danger")
+    return redirect(url_for("reseller_social_tasks_page"))
+
+@app.route("/reseller/social-tasks/toggle/<int:task_id>", methods=["POST"])
+@reseller_required
+def reseller_social_task_toggle(task_id: int):
+    """تغییر وضعیت فعال/غیرفعال ماموریت نماینده"""
+    reseller_id = session.get("reseller_id")
+    task = db.get_social_task(task_id)
+    if not task or task.get("reseller_id") != reseller_id:
+        flash("شما مجاز به تغییر این ماموریت نیستید.", "danger")
+        return redirect(url_for("reseller_social_tasks_page"))
+
+    db.toggle_social_task(task_id)
+    flash("وضعیت ماموریت بروزرسانی شد.", "success")
+    return redirect(url_for("reseller_social_tasks_page"))
+
+@app.route("/reseller/social-tasks/delete/<int:task_id>", methods=["POST"])
+@reseller_required
+def reseller_social_task_delete(task_id: int):
+    """حذف ماموریت اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    task = db.get_social_task(task_id)
+    if not task or task.get("reseller_id") != reseller_id:
+        flash("شما مجاز به حذف این ماموریت نیستید.", "danger")
+        return redirect(url_for("reseller_social_tasks_page"))
+
+    db.delete_social_task(task_id)
+    flash("ماموریت با موفقیت حذف گردید.", "info")
+    return redirect(url_for("reseller_social_tasks_page"))
+
+
 # ─── وب‌اپلیکیشن پیش‌رونده قابل نصب (PWA Core) ───
 
 @app.route("/sw.js")

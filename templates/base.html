@@ -1611,12 +1611,48 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
                     <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
                 </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
-                    <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_ai_studio' %}active{% endif %}" href="{{ url_for('reseller_ai_studio') }}">
-                    <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی
-                </a>
+                {% endif %}
+
+                <!-- منوی کشویی فروش و بازاریابی -->
+                {% if not sub_role or sub_role in ['partner', 'manager2'] %}
+                {% set is_marketing_active = request.endpoint in ['reseller_broadcast', 'reseller_discounts', 'reseller_plans', 'reseller_vip_settings', 'reseller_social_tasks_page', 'reseller_lucky_wheel_page', 'reseller_ai_studio'] %}
+                <button class="sidebar-dropdown-toggle {% if is_marketing_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#resellerMarketingCollapse" 
+                        aria-expanded="{% if is_marketing_active %}true{% else %}false{% endif %}" 
+                        aria-controls="resellerMarketingCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-bullhorn text-warning"></i>
+                        <span>فروش و بازاریابی</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_marketing_active %}show{% endif %}" id="resellerMarketingCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
+                            <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
+                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
+                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_vip_settings' %}active{% endif %}" href="{{ url_for('reseller_vip_settings') }}">
+                            <i class="fas fa-crown text-warning"></i> باشگاه مشتریان
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_social_tasks_page' %}active{% endif %}" href="{{ url_for('reseller_social_tasks_page') }}">
+                            <i class="fas fa-tasks text-success"></i> ماموریت‌ها و پاداش‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_lucky_wheel_page' %}active{% endif %}" href="{{ url_for('reseller_lucky_wheel_page') }}">
+                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_ai_studio' %}active{% endif %}" href="{{ url_for('reseller_ai_studio') }}">
+                            <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی
+                        </a>
+                    </div>
+                </div>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
@@ -1625,7 +1661,7 @@
                 </a>
 
                 <!-- منوی کشویی امور مالی و گزارشات -->
-                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments', 'reseller_discounts', 'reseller_affiliates'] %}
+                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments', 'reseller_affiliates'] %}
                 <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1646,11 +1682,6 @@
                         <a class="submenu-item {% if request.endpoint in ['reseller_reports', 'reseller_payments'] %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                             <i class="fas fa-chart-line text-success"></i> گزارشات و سوابق مالی
                         </a>
-                        {% if not sub_role or sub_role in ['partner', 'manager2'] %}
-                        <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
-                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
-                        </a>
-                        {% endif %}
                         <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
                             <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
                         </a>
@@ -1660,7 +1691,7 @@
 
                 <!-- منوی کشویی تنظیمات -->
                 {% if not sub_role or sub_role in ['partner', 'manager2'] %}
-                {% set is_settings_active = request.endpoint in ['reseller_plans', 'reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding', 'reseller_sms_settings', 'reseller_lucky_wheel_page'] %}
+                {% set is_settings_active = request.endpoint in ['reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding', 'reseller_sms_settings'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1675,9 +1706,6 @@
                 </button>
                 <div class="collapse submenu-collapse {% if is_settings_active %}show{% endif %}" id="resellerSettingsCollapse">
                     <div class="submenu-inner">
-                        <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
-                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها
-                        </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
                             <i class="fas fa-robot text-primary"></i> ربات تلگرام
                         </a>
@@ -1692,9 +1720,6 @@
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
                             <i class="fas fa-palette text-warning"></i> هویت بصری و شخصی‌سازی
-                        </a>
-                        <a class="submenu-item {% if request.endpoint == 'reseller_lucky_wheel_page' %}active{% endif %}" href="{{ url_for('reseller_lucky_wheel_page') }}">
-                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
                         </a>
                     </div>
                 </div>

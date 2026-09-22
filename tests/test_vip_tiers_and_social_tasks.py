@@ -293,6 +293,86 @@ class TestVipTiersAndSocialTasks(unittest.TestCase):
         disc_amount_g = int(round((price * tier_g["discount_percent"]) / 100))
         self.assertEqual(price - disc_amount_g, 170000)
 
+    def test_reseller_vip_settings_isolation(self):
+        """Verify that reseller VIP settings are isolated per reseller and fall back cleanly."""
+        reseller_id_1 = 101
+        reseller_id_2 = 102
+
+        # Reseller 1 saves custom VIP settings (e.g. Bronze threshold = 200,000, 8% discount)
+        self.db.save_vip_settings({
+            "bronze_threshold_tomans": 200000,
+            "bronze_discount_percent": 8,
+            "gold_threshold_tomans": 1200000,
+            "gold_discount_percent": 20
+        }, reseller_id=reseller_id_1)
+
+        # Reseller 1 settings should reflect custom values
+        r1_sets = self.db.get_vip_settings(reseller_id=reseller_id_1)
+        self.assertEqual(r1_sets["bronze_threshold_tomans"], 200000)
+        self.assertEqual(r1_sets["bronze_discount_percent"], 8)
+        self.assertEqual(r1_sets["gold_threshold_tomans"], 1200000)
+        self.assertEqual(r1_sets["gold_discount_percent"], 20)
+
+        # Global admin settings should remain intact
+        admin_sets = self.db.get_vip_settings(reseller_id=0)
+        self.assertEqual(admin_sets["bronze_threshold_tomans"], 300000)
+        self.assertEqual(admin_sets["bronze_discount_percent"], 5)
+
+        # Reseller 2 has no custom settings -> falls back to admin defaults
+        r2_sets = self.db.get_vip_settings(reseller_id=reseller_id_2)
+        self.assertEqual(r2_sets["bronze_threshold_tomans"], 300000)
+        self.assertEqual(r2_sets["bronze_discount_percent"], 5)
+
+    def test_reseller_social_tasks_isolation(self):
+        """Verify that social tasks are strictly isolated between resellers."""
+        r1_id = 201
+        r2_id = 202
+
+        t1 = self.db.add_social_task("R1 Mission", "custom", "traffic", "2", reseller_id=r1_id)
+        t2 = self.db.add_social_task("R2 Mission", "custom", "wallet", "15000", reseller_id=r2_id)
+
+        # Strict reseller query for R1 should only return R1 tasks
+        r1_tasks = self.db.get_social_tasks(reseller_id=r1_id, active_only=False, strict_reseller=True)
+        r1_ids = [t["id"] for t in r1_tasks]
+        self.assertIn(t1, r1_ids)
+        self.assertNotIn(t2, r1_ids)
+
+        # Strict reseller query for R2 should only return R2 tasks
+        r2_tasks = self.db.get_social_tasks(reseller_id=r2_id, active_only=False, strict_reseller=True)
+        r2_ids = [t["id"] for t in r2_tasks]
+        self.assertIn(t2, r2_ids)
+        self.assertNotIn(t1, r2_ids)
+
+    def test_reseller_vip_dashboard_stats_and_user_ownership(self):
+        """Verify reseller-specific VIP dashboard stats and ownership check."""
+        r_id = 301
+        u_owned = 888111
+        u_other = 888222
+
+        conn = self.db.get_connection()
+        conn.execute("INSERT INTO users (telegram_id, username, reseller_id, is_vip, vip_tier) VALUES (?, 'r_user', ?, 1, 'gold')", (u_owned, r_id))
+        conn.execute("INSERT INTO users (telegram_id, username, reseller_id, is_vip, vip_tier) VALUES (?, 'other_user', 999, 1, 'gold')", (u_other,))
+        conn.execute("INSERT INTO transactions (order_id, user_id, amount, status, reseller_id) VALUES ('ORD-R301', ?, 100000, 'approved', ?)", (u_owned, r_id))
+        conn.execute("INSERT INTO subscriptions (telegram_id, reseller_id, status) VALUES (?, ?, 'active')", (u_owned, r_id))
+        conn.commit()
+        conn.close()
+
+        # Ownership test
+        self.assertTrue(self.db.is_user_owned_by_reseller(r_id, u_owned))
+        self.assertFalse(self.db.is_user_owned_by_reseller(r_id, u_other))
+
+        # Stats test
+        stats = self.db.get_vip_dashboard_stats(reseller_id=r_id)
+        self.assertEqual(stats["total_vips"], 1)
+        self.assertEqual(stats["vip_revenue"], 100000)
+        self.assertEqual(stats["vip_active_subs"], 1)
+
+        # Users list test
+        vip_list = self.db.get_vip_users_list(reseller_id=r_id)
+        self.assertEqual(len(vip_list), 1)
+        self.assertEqual(vip_list[0]["telegram_id"], u_owned)
+
 
 if __name__ == "__main__":
     unittest.main()
+
