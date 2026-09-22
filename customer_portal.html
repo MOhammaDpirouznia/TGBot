@@ -201,13 +201,15 @@
         }
         @media (min-width: 992px) {
             body.portal-layout-split_dashboard .portal-container,
-            body.portal-layout-bento_grid .portal-container {
+            body.portal-layout-bento_grid .portal-container,
+            body.portal-layout-minimal_tabbed .portal-container {
                 max-width: 1120px !important;
             }
         }
         @media (min-width: 1200px) {
             body.portal-layout-split_dashboard .portal-container,
-            body.portal-layout-bento_grid .portal-container {
+            body.portal-layout-bento_grid .portal-container,
+            body.portal-layout-minimal_tabbed .portal-container {
                 max-width: 1200px !important;
             }
         }
@@ -1155,12 +1157,47 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* استایل‌های اختصاصی تب‌بندی در حالت روشن */
+        [data-bs-theme="light"] .portal-tab-nav {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06) !important;
+        }
+        [data-bs-theme="light"] .portal-tab-btn {
+            color: #64748b !important;
+        }
+        [data-bs-theme="light"] .portal-tab-btn:hover {
+            color: #0f172a !important;
+            background: #f1f5f9 !important;
+        }
+        [data-bs-theme="light"] .portal-tab-btn.active {
+            background: var(--primary, #2563eb) !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35) !important;
+        }
+        [data-bs-theme="light"] .portal-tab-pane .table-dark {
+            --bs-table-bg: transparent !important;
+            --bs-table-color: #0f172a !important;
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .portal-tab-pane .table thead th {
+            color: #475569 !important;
+            border-bottom: 2px solid #e2e8f0 !important;
+        }
+        [data-bs-theme="light"] .portal-tab-pane .table tbody td {
+            border-bottom: 1px solid #f1f5f9 !important;
+        }
+
         /* ج) سایدبار چسبان داشبورد دو ستونه (Split Dashboard Sticky) */
         @media (min-width: 992px) {
             .portal-sticky-sidebar {
                 position: sticky;
                 top: 24px;
             }
+        }
+        body.portal-layout-split_dashboard .portal-sticky-sidebar > .glass-card,
+        body.portal-layout-split_dashboard .portal-sticky-sidebar > div > .glass-card {
+            margin-bottom: 0 !important;
         }
         .copy-btn:active {
             transform: scale(0.95);
@@ -2399,6 +2436,8 @@
                 </a>
                 {% endif %}
             </div>
+        </div>
+
         <!-- نوار وضعیت سطح وفاداری و باشگاه مشتریان (Loyalty Tier Bar) -->
         {% if loyalty_tier_info %}
         <div class="p-3 mb-3 rounded-3 shadow-sm" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);">
@@ -2754,6 +2793,11 @@
             <input type="hidden" name="telegram_id" value="{{ telegram_id or 0 }}">
             <input type="hidden" name="token" value="{{ token or '' }}">
             <input type="hidden" name="is_webapp" value="{% if is_webapp %}1{% else %}0{% endif %}">
+            {% if not plans or plans|length == 0 %}
+            <div class="alert alert-warning bg-warning bg-opacity-10 border border-warning border-opacity-25 text-warning p-3 rounded-3 small mb-3">
+                <i class="fas fa-box-open me-1"></i> در حال حاضر هیچ بسته‌ای برای خرید یا تمدید فعال نمی‌باشد. لطفاً با پشتیبانی هماهنگ فرمایید.
+            </div>
+            {% else %}
             <div class="portal-plans-wrapper plan-style-{{ portal_plan_style or 'glass_classic' }}">
                 <div class="row g-3 mb-3">
                     {% for p in plans %}
@@ -2781,6 +2825,7 @@
                     {% endfor %}
                 </div>
             </div>
+            {% endif %}
 
             <!-- کادر ورود و اعمال کد تخفیف اختصاصی -->
             <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-3">
@@ -2891,6 +2936,22 @@
                 </span>
             </button>
         </form>
+    </div>
+    {% else %}
+    <!-- پیام در صورت غیرفعال بودن تمدید آنلاین توسط مدیریت -->
+    <div class="glass-card p-4 mb-4 text-center">
+        <div class="avatar-md rounded-circle bg-secondary bg-opacity-20 text-secondary d-inline-flex align-items-center justify-content-center mb-3" style="width: 50px; height: 50px; font-size: 1.4rem;">
+            <i class="fas fa-lock"></i>
+        </div>
+        <h5 class="fw-bold mb-2">تمدید آنلاین در حال حاضر غیرفعال است</h5>
+        <p class="text-secondary small mb-3">
+            امکان تمدید یا ارتقای خودکار اشتراک از طریق پورتال در حال حاضر توسط مدیریت غیرفعال شده است. جهت تمدید یا ارتقای سرویس با پشتیبانی در ارتباط باشید.
+        </p>
+        {% if support_username %}
+        <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-4 py-2 fw-bold">
+            <i class="fab fa-telegram me-1"></i> هماهنگی با پشتیبانی
+        </a>
+        {% endif %}
     </div>
     {% endif %}
     {% endmacro %}
@@ -3255,6 +3316,22 @@
 
             <div id="tabSupport" class="portal-tab-pane">
                 {{ macro_server_status() }}
+                {% if portal_show_troubleshoot and troubleshoot_url %}
+                <div class="glass-card p-4 mb-4 text-center">
+                    <div class="d-flex align-items-center justify-content-center gap-2 mb-2">
+                        <div class="rounded-circle bg-warning bg-opacity-20 text-warning d-inline-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-size: 1.1rem;">
+                            <i class="fas fa-circle-question"></i>
+                        </div>
+                        <h6 class="fw-bold mb-0 text-white">راهنمای اتصال و رفع اختلال</h6>
+                    </div>
+                    <p class="text-secondary small mb-3">
+                        آموزش‌های گام‌به‌گام اتصال نرم‌افزارها، تنظیمات اختصاصی سیستم‌عامل‌ها و رفع خطاهای متداول.
+                    </p>
+                    <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning rounded-pill px-4 py-2 fw-bold">
+                        <i class="fas fa-external-link-alt me-1"></i> مشاهده آموزش و عیب‌یابی
+                    </a>
+                </div>
+                {% endif %}
                 {{ macro_support_card() }}
             </div>
         </div>
@@ -5224,6 +5301,9 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function switchPortalTab(tabId, btn) {
+    if (window.tgHaptic) {
+        try { window.tgHaptic('light'); } catch(e) {}
+    }
     document.querySelectorAll('.portal-tab-pane').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.portal-tab-btn').forEach(b => b.classList.remove('active'));
     const target = document.getElementById(tabId);
