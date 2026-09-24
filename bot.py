@@ -19,7 +19,7 @@ load_dotenv()
 
 from hidify import HidifyClient
 import threading
-from dashboard import run_dashboard, start_dashboard_thread
+from dashboard import run_dashboard, start_dashboard_thread, get_panel_port, get_panel_host
 from payment import PaymentManager, CryptoPaymentGateway
 from utils import (
     gregorian_to_shamsi, gregorian_to_shamsi_full, 
@@ -1552,14 +1552,15 @@ def start_dashboard_thread():
     """شروع پنل مدیریت در thread جداگانه"""
     global dashboard_thread
     if dashboard_thread is None or not dashboard_thread.is_alive():
-        port = int(os.getenv("PORT", 5000))
+        port = get_panel_port()
+        host = get_panel_host()
         dashboard_thread = threading.Thread(
             target=run_dashboard,
-            kwargs={"host": "0.0.0.0", "port": port, "debug": False},
+            kwargs={"host": host, "port": port, "debug": False},
             daemon=True
         )
         dashboard_thread.start()
-        logger.info(f"Dashboard thread started on port {port}")
+        logger.info(f"Dashboard thread started on {host}:{port}")
 
 
 async def dashboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1570,19 +1571,21 @@ async def dashboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ شما ادمین نیستید!")
         return
     
-    port = int(os.getenv("PORT", 5000))
+    port = get_panel_port()
+    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN")
+    panel_addr = f"https://{domain}" if domain else f"http://localhost:{port}"
     dashboard_text = f"""
 🌐 **پنل مدیریت وب**
 
 پنل مدیریت خودکار فعال است!
 
 **آدرس پنل:**
-`http://localhost:{port}`
+`{panel_addr}` (پورت داخلی: `{port}`)
 
 **نام کاربری:** `{ADMIN_USERNAME}`
 **رمز عبور:** `{ADMIN_PASSWORD}`
 
-⚠️ **نکته:** برای دسترسی از خارج سرور، آدرس IP سرور رو جایگزین localhost کنید.
+⚠️ **نکته:** برای دسترسی مستقیم، از آدرس `http://SERVER_IP:{port}` استفاده نمایید.
 """
     
     await update.message.reply_text(dashboard_text, parse_mode="Markdown")
@@ -2491,7 +2494,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         sandbox = gw_cfg.get("sandbox", False)
 
         order_id = f"ONL_{int(datetime.now().timestamp())}_{user.id % 10000}"
-        domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+        domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", f"http://localhost:{get_panel_port()}")
         if not str(domain).startswith("http"):
             domain = f"https://{domain}"
         callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
@@ -7880,7 +7883,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             sandbox = bool(admin_gw.get("sandbox", 0))
             price = bundle.get("price", 0)
             order_id = f"R_BUNDLE_ONL_{r_id}_{int(datetime.now().timestamp())}"
-            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", f"http://localhost:{get_panel_port()}")
             if not str(domain).startswith("http"):
                 domain = f"https://{domain}"
             callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
@@ -10332,7 +10335,7 @@ def main():
     # ۱. اجرای بلادرنگ پنل مدیریت وب در ترد مستقل (جلوگیری از توقف پروسس و کرش در ریلوی و لینوکس)
 
     try:
-        port = int(os.getenv("PORT", 5000))
+        port = get_panel_port()
         start_dashboard_thread()
         logger.info(f"Dashboard web server initiated on port {port}")
     except Exception as e:

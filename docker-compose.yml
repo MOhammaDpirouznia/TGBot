@@ -6,7 +6,7 @@ services:
     container_name: hiddibot_app
     restart: always
     ports:
-      - "5000:5000"
+      - "${PORT:-5000}:${PORT:-5000}"
     env_file:
       - .env
     volumes:
@@ -15,4 +15,5 @@ services:
       - ./static/uploads:/app/static/uploads
     environment:
       - PYTHONUNBUFFERED=1
-      - PORT=5000
+      - PORT=${PORT:-5000}
+      - PANEL_PORT=${PANEL_PORT:-5000}

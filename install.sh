@@ -83,7 +83,34 @@ SERVER_IP=${SERVER_IP:-"127.0.0.1"}
 # تولید DASHBOARD_SECRET تصادفی ایمن
 RANDOM_SECRET=$(openssl rand -hex 16 2>/dev/null || echo "hiddibot-secret-$(date +%s)")
 
-# ۷. سوال از کاربر درباره نحوه تنظیمات
+# ۷. بررسی تداخل پورت و توابع هوشمند هم‌زیستی پروژه‌ها
+is_port_in_use() {
+    local p="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -tuln 2>/dev/null | grep -qE "[: ]$p[ ]" && return 0
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tuln 2>/dev/null | grep -qE "[: ]$p[ ]" && return 0
+    elif command -v lsof >/dev/null 2>&1; then
+        lsof -i:"$p" >/dev/null 2>&1 && return 0
+    elif command -v fuser >/dev/null 2>&1; then
+        fuser "$p/tcp" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+
+find_next_free_port() {
+    local start_p="$1"
+    local check_p="$start_p"
+    while [ "$check_p" -le 65535 ]; do
+        if ! is_port_in_use "$check_p"; then
+            echo "$check_p"
+            return 0
+        fi
+        check_p=$((check_p + 1))
+    done
+    echo "$start_p"
+}
+
 echo ""
 echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}${BOLD}💡 آیا مایلید تنظیمات اولیه را هم‌اکنون در خط فرمان (CLI) انجام دهید؟${NC}"
@@ -95,7 +122,6 @@ read -p "آیا تنظیم در ترمینال انجام شود؟ [y/N] (پیش
 CLI_CHOICE=${CLI_CHOICE:-"N"}
 
 ENV_FILE="$INSTALL_DIR/.env"
-APP_PORT="5000"
 CUSTOM_DOMAIN=""
 BOT_TOKEN=""
 ADMIN_ID=""
@@ -104,8 +130,26 @@ if [[ "$CLI_CHOICE" =~ ^[Yy]$ ]]; then
     echo ""
     echo -e "${CYAN}⚙️ پیکربندی گام به گام در ترمینال:${NC}"
     
-    read -p "🔹 پورت مورد نظر برای پنل وب (پیش‌فرض: 5000): " INPUT_PORT
-    APP_PORT=${INPUT_PORT:-"5000"}
+    read -p "🔹 کلید لایسنس فعال‌سازی محصول (LICENSE_KEY): " INPUT_LICENSE
+    LICENSE_KEY=${INPUT_LICENSE:-""}
+
+    SUGGESTED_PORT=$(find_next_free_port 5000)
+    if is_port_in_use 5000; then
+        echo -e "${YELLOW}⚠️ توجه: پورت 5000 در این سرور اشغال است (احتمالاً توسط هیدیفای، لایسنس‌هاب یا پروژه‌ای دیگر).${NC}"
+        echo -e "${CYAN}💡 پورت پیشنهادی آزاد: ${BOLD}$SUGGESTED_PORT${NC}"
+        read -p "🔹 پورت مورد نظر برای پنل وب (پیش‌فرض: $SUGGESTED_PORT): " INPUT_PORT
+        APP_PORT=${INPUT_PORT:-"$SUGGESTED_PORT"}
+    else
+        read -p "🔹 پورت مورد نظر برای پنل وب (پیش‌فرض: 5000): " INPUT_PORT
+        APP_PORT=${INPUT_PORT:-"5000"}
+    fi
+
+    # بررسی نهایی در دسترس بودن پورت انتخابی
+    if is_port_in_use "$APP_PORT"; then
+        ALT_PORT=$(find_next_free_port $((APP_PORT + 1)))
+        echo -e "${RED}⚠️ پورت $APP_PORT نیز در حال حاضر اشغال است! تغییر خودکار به پورت آزاد $ALT_PORT${NC}"
+        APP_PORT="$ALT_PORT"
+    fi
 
     read -p "🔹 توکن ربات اصلی تلگرام (اختیاری - برای تنظیم بعداً Enter بزنید): " INPUT_TOKEN
     BOT_TOKEN=${INPUT_TOKEN:-""}
@@ -127,16 +171,29 @@ if [[ "$CLI_CHOICE" =~ ^[Yy]$ ]]; then
         fi
     fi
 else
+    # انتخاب خودکار پورت با بررسی اشغال بودن پورت 5000
+    if is_port_in_use 5000; then
+        APP_PORT=$(find_next_free_port 5001)
+        echo -e "${YELLOW}⚠️ توجه: پورت پیش‌فرض 5000 در سرور اشغال بود (تداخل با سایر پروژه‌ها).${NC}"
+        echo -e "${GREEN}✅ پورت آزاد ${BOLD}$APP_PORT${NC}${GREEN} به طور خودکار تعیین شد.${NC}"
+    else
+        APP_PORT="5000"
+    fi
     echo -e "${GREEN}⏩ رد کردن تنظیمات ترمینال. ادامه راه‌اندازی از طریق مرورگر انجام خواهد شد.${NC}"
 fi
 
 # ۸. ایجاد فایل .env
 cat <<EOF > "$ENV_FILE"
 PORT=$APP_PORT
+PANEL_PORT=$APP_PORT
+HOST=0.0.0.0
 DATA_DIR=$INSTALL_DIR/data
 DASHBOARD_SECRET=$RANDOM_SECRET
 EOF
 
+if [ -n "$LICENSE_KEY" ]; then
+    echo "LICENSE_KEY=$LICENSE_KEY" >> "$ENV_FILE"
+fi
 if [ -n "$BOT_TOKEN" ]; then
     echo "BOT_TOKEN=$BOT_TOKEN" >> "$ENV_FILE"
 fi
@@ -147,32 +204,46 @@ if [ -n "$CUSTOM_DOMAIN" ]; then
     echo "CUSTOM_DOMAIN=$CUSTOM_DOMAIN" >> "$ENV_FILE"
 fi
 
-# ۹. ساخت و فعال‌سازی سرویس Systemd
-SERVICE_FILE="/etc/systemd/system/tgbot.service"
+# ۹. ساخت و فعال‌سازی سرویس Systemd با تفکیک چندنسخه‌ای و حفاظت از رم
+SERVICE_NAME="tgbot"
+if [ -f "/etc/systemd/system/tgbot.service" ]; then
+    EXISTING_DIR=$(grep -E "^WorkingDirectory=" /etc/systemd/system/tgbot.service 2>/dev/null | cut -d'=' -f2)
+    if [ -n "$EXISTING_DIR" ] && [ "$EXISTING_DIR" != "$INSTALL_DIR" ]; then
+        SERVICE_NAME="tgbot-$(basename "$INSTALL_DIR")"
+        echo -e "${YELLOW}⚠️ یک سرویس TGBot دیگر در مسیر $EXISTING_DIR ثبت شده است.${NC}"
+        echo -e "${CYAN}📌 نام سرویس مستقل این پروژه: ${BOLD}$SERVICE_NAME.service${NC}"
+    fi
+fi
+
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 echo -e "${BLUE}⚙️ در حال ساخت سرویس سیستمی ($SERVICE_FILE)...${NC}"
 
 cat <<EOF > "$SERVICE_FILE"
 [Unit]
-Description=Telegram Multi-Bot & VPN Management Service
+Description=Telegram Multi-Bot & VPN Management Service ($SERVICE_NAME)
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/venv/bin/python main.py
+ExecStart=$INSTALL_DIR/venv/bin/python run.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=-$INSTALL_DIR/.env
+# محدودیت هوشمند منابع در صورت هم‌زیستی با هیدیفای و سایر سرویس‌ها
+MemoryHigh=600M
+MemoryMax=850M
+CPUQuota=100%
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable tgbot.service
-systemctl restart tgbot.service
+systemctl enable ${SERVICE_NAME}.service
+systemctl restart ${SERVICE_NAME}.service
 
 # ۱۰. نمایش پیام موفقیت نهایی
 echo ""
@@ -192,9 +263,9 @@ echo -e "${YELLOW}💡 نکته مهم:${NC} با ورود به لینک بال�
 echo "که می‌توانید دیتابیس قبلی خود را بازگردانی کرده یا متغیرها را داینامیک تنظیم نمایید."
 echo ""
 echo -e "${BOLD}🛠️ دستورات کاربردی مدیریت سرویس در سرور:${NC}"
-echo -e "   • مشاهده وضعیت:   ${CYAN}systemctl status tgbot${NC}"
-echo -e "   • شروع مجدد:     ${CYAN}systemctl restart tgbot${NC}"
-echo -e "   • مشاهده لاگ‌ها:   ${CYAN}journalctl -u tgbot -f${NC}"
-echo -e "   • توقف سرویس:     ${CYAN}systemctl stop tgbot${NC}"
+echo -e "   • مشاهده وضعیت:   ${CYAN}systemctl status ${SERVICE_NAME}${NC}"
+echo -e "   • شروع مجدد:     ${CYAN}systemctl restart ${SERVICE_NAME}${NC}"
+echo -e "   • مشاهده لاگ‌ها:   ${CYAN}journalctl -u ${SERVICE_NAME} -f${NC}"
+echo -e "   • توقف سرویس:     ${CYAN}systemctl stop ${SERVICE_NAME}${NC}"
 echo ""
 echo -e "${GREEN}${BOLD}==================================================================${NC}"

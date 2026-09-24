@@ -154,11 +154,15 @@
                                 </button>
                             </div>
 
-                            <div class="row g-3">
-                                <div class="col-md-12">
+                                <div class="col-md-6">
                                     <label class="form-label small fw-bold">دامنه اختصاصی متصل به این پنل (اختیاری):</label>
                                     <input type="text" name="custom_domain" class="form-control form-control-dark font-monospace" placeholder="مثال: bot.yourdomain.com" value="{{ config.custom_domain or '' }}">
-                                    <div class="form-text small text-muted">دامنه را بدون https:// وارد کنید. مطمئن شوید در کلودفلر یا DNS دامنه، یک رکورد A به آی‌پی بالا متصل کرده‌اید.</div>
+                                    <div class="form-text small text-muted">دامنه را بدون https:// وارد کنید (جهت اتصال مستقیم با SSL).</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">پورت اجرای وب‌پنل (اختیاری):</label>
+                                    <input type="number" name="panel_port" min="1" max="65535" class="form-control form-control-dark font-monospace" placeholder="5000" value="{{ config.panel_port or 5000 }}">
+                                    <div class="form-text small text-muted">پیش‌فرض: 5000 (جهت جلوگیری از تداخل با هیدیفای، لایسنس‌هاب و سایر پروژه‌ها).</div>
                                 </div>
                                 <div class="col-md-12">
                                     <div class="form-check form-switch p-3 rounded-3 mt-1" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">

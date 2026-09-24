@@ -48,12 +48,21 @@ BASE_DIR = Path(__file__).resolve().parent
 ENV_FILE = BASE_DIR / ".env"
 STATE_FILE = BASE_DIR / ".license_cache.dat"
 
+# بارگذاری خودکار فایل .env
+try:
+    from dotenv import load_dotenv
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE)
+except ImportError:
+    pass
+
 # تنظیمات پیش‌فرض
 PRODUCT_CODE = "TGBOT"
 CLIENT_VERSION = "v3.28"
 DEFAULT_SERVER_URL = "http://127.0.0.1:8890"  # آدرس سرور لایسنس شما
 GRACE_PERIOD_SECONDS = 72 * 3600  # ۷۲ ساعت مهلت در صورت قطعی اینترنت
 SHARED_SALT = b"NexusLicenseGuard_2026_SecureSalt"
+
 
 
 class LicenseGuard:

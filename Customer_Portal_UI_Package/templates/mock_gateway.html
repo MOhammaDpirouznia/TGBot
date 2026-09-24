@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>درگاه پرداخت اینترنتی شاپرک (شبیه‌ساز تستی)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" rel="stylesheet">
+    <style>
+        body { font-family: "Vazirmatn", sans-serif; background: #f1f5f9; color: #1e293b; }
+        .gateway-card { background: #ffffff; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); border: 1px solid #e2e8f0; overflow: hidden; }
+        .gateway-header { background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: white; padding: 1.5rem; }
+        .badge-shaparak { background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 30px; padding: 6px 14px; font-size: 0.85rem; }
+    </style>
+</head>
+<body class="py-5">
+
+<div class="container" style="max-width: 620px;">
+    <div class="gateway-card">
+        <div class="gateway-header text-center position-relative">
+            <div class="badge-shaparak d-inline-flex align-items-center gap-2 mb-2">
+                <i class="fas fa-shield-halved"></i> سامانه پرداخت اینترنتی شاپرک (محیط شبیه‌ساز)
+            </div>
+            <h4 class="fw-bold mb-1">درگاه پرداخت امن بانکی</h4>
+            <p class="small opacity-75 mb-0">پرتال مشتریان خدمات ابری</p>
+        </div>
+
+        <div class="p-4">
+            <div class="bg-light p-3 rounded-4 border mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-secondary small">پذیرنده / فروشنده:</span>
+                    <strong class="text-dark">سامانه خدمات آنلاین اینترنت آزاد</strong>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-secondary small">شناسه سفارش:</span>
+                    <span class="font-monospace fw-bold text-primary">{{ order_id }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                    <span class="fw-bold text-secondary">مبلغ قابل پرداخت:</span>
+                    <span class="fs-4 fw-bold text-success font-monospace">{{ "{:,}".format(amount) }} تومان</span>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary">شماره کارت بانکی (شبیه‌سازی):</label>
+                <input type="text" class="form-control text-center font-monospace fs-5 py-2" value="۶۰۳۷ - ۹۹۱۸ - **** - ۵۴۸۲" readonly style="letter-spacing: 2px;">
+            </div>
+
+            <div class="row g-2 mb-4">
+                <div class="col-6">
+                    <label class="form-label small text-secondary">رمز اینترنتی (پویا):</label>
+                    <input type="password" class="form-control text-center font-monospace" value="••••••" readonly>
+                </div>
+                <div class="col-3">
+                    <label class="form-label small text-secondary">CVV2:</label>
+                    <input type="text" class="form-control text-center font-monospace" value="•••" readonly>
+                </div>
+                <div class="col-3">
+                    <label class="form-label small text-secondary">انقضا:</label>
+                    <input type="text" class="form-control text-center font-monospace" value="۰۸/۰۶" readonly>
+                </div>
+            </div>
+
+            <div class="alert alert-info border-0 rounded-4 small p-3 mb-4 d-flex align-items-center gap-3" style="background: #e0f2fe; color: #0369a1;">
+                <i class="fas fa-flask fs-3 flex-shrink-0"></i>
+                <div>
+                    <strong>شبیه‌ساز پرداخت آنلاین:</strong>
+                    برای تست رفتار پرتال مشتری در هر دو حالت موفق و ناموفق، یکی از گزینه‌های زیر را انتخاب نمایید:
+                </div>
+            </div>
+
+            <div class="d-grid gap-2">
+                <a href="/portal?success_order={{ order_id }}&sub_id={{ sub_id }}&palette={{ active_palette }}&layout={{ layout }}&plan_style={{ plan_style }}" class="btn btn-success btn-lg py-3 rounded-pill fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
+                    <i class="fas fa-circle-check"></i>
+                    <span>تایید پرداخت (شبیه‌سازی تراکنش موفق)</span>
+                </a>
+
+                <a href="/portal?failed_order={{ order_id }}&sub_id={{ sub_id }}&palette={{ active_palette }}&layout={{ layout }}&plan_style={{ plan_style }}" class="btn btn-outline-danger btn-lg py-2 rounded-pill fw-bold d-flex align-items-center justify-content-center gap-2">
+                    <i class="fas fa-circle-xmark"></i>
+                    <span>انصراف از پرداخت (شبیه‌سازی تراکنش ناموفق)</span>
+                </a>
+            </div>
+
+            <div class="text-center mt-3">
+                <a href="/portal?sub_id={{ sub_id }}&palette={{ active_palette }}&layout={{ layout }}&plan_style={{ plan_style }}" class="text-secondary small text-decoration-none">
+                    <i class="fas fa-arrow-right me-1"></i> بازگشت به پرتال بدون تراکنش
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

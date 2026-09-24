@@ -172,6 +172,74 @@ def get_user_proxy() -> str:
         pass
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
 
+def get_panel_port(default: int = 5000) -> int:
+    """دریافت پورت وب‌پنل از دیتابیس یا متغیرهای محیطی با پیش‌فرض 5000"""
+    try:
+        val = db.get_setting("panel_port")
+        if val is not None and str(val).strip().isdigit():
+            p = int(str(val).strip())
+            if 1 <= p <= 65535:
+                return p
+    except Exception:
+        pass
+    try:
+        env_val = os.getenv("PORT") or os.getenv("PANEL_PORT")
+        if env_val and str(env_val).strip().isdigit():
+            p = int(str(env_val).strip())
+            if 1 <= p <= 65535:
+                return p
+    except Exception:
+        pass
+    return default
+
+
+def get_panel_host(default: str = "0.0.0.0") -> str:
+    """دریافت آدرس Bind هاست وب‌پنل (0.0.0.0 یا 127.0.0.1)"""
+    try:
+        val = db.get_setting("panel_host")
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("HOST", os.getenv("PANEL_HOST", default))
+
+
+def update_env_file(key_values: dict):
+    """بروزرسانی یا افزودن متغیرها در فایل .env پروژه جهت همگام‌سازی با سرویس لینوکس"""
+    try:
+        env_path = Path(__file__).resolve().parent / ".env"
+        lines = []
+        existing_keys = set()
+        if env_path.exists():
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                matched = False
+                for k, v in key_values.items():
+                    if stripped.startswith(f"{k}=") or stripped.startswith(f"export {k}="):
+                        new_lines.append(f"{k}={v}\n")
+                        existing_keys.add(k)
+                        matched = True
+                        break
+                if not matched:
+                    new_lines.append(line)
+            lines = new_lines
+
+        for k, v in key_values.items():
+            if k not in existing_keys:
+                lines.append(f"{k}={v}\n")
+
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+        for k, v in key_values.items():
+            os.environ[k] = str(v)
+    except Exception as ex:
+        logger.warning(f"Could not update .env file: {ex}")
+
+
 def get_panel_domain() -> str:
     try:
         val = db.get_setting("panel_domain") or db.get_setting("custom_domain")
@@ -179,7 +247,8 @@ def get_panel_domain() -> str:
             return str(val).strip().rstrip("/")
     except Exception:
         pass
-    return os.getenv("PANEL_DOMAIN", "http://localhost:5000").rstrip("/")
+    port = get_panel_port()
+    return os.getenv("PANEL_DOMAIN", f"http://localhost:{port}").rstrip("/")
 
 def is_setup_needed() -> bool:
     """بررسی نیاز به اجرای ویزارد راه‌اندازی اولیه سیستم"""
@@ -4157,6 +4226,13 @@ def setup_wizard():
                     except Exception as e:
                         logger.error(f"Error issuing SSL in wizard: {e}")
 
+            panel_port_in = request.form.get("panel_port", "").strip()
+            if panel_port_in and panel_port_in.isdigit():
+                p_int = int(panel_port_in)
+                if 1 <= p_int <= 65535:
+                    db.save_setting("panel_port", p_int)
+                    update_env_file({"PORT": str(p_int), "PANEL_PORT": str(p_int)})
+
             # ثبت یا بروزرسانی حساب مدیر ارشد در دیتابیس
             effective_tid = int(admin_tid) if (admin_tid and admin_tid.isdigit()) else None
             existing_super = None
@@ -4208,6 +4284,7 @@ def setup_wizard():
         "hidify_proxy_path": get_hiddify_proxy(),
         "user_proxy_path": get_user_proxy(),
         "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
+        "panel_port": get_panel_port(),
         "server_public_ip": server_public_ip,
         "ssl_status": db.get_setting("ssl_status") or "تنظیم نشده"
     }
@@ -13879,12 +13956,18 @@ def settings():
             h_proxy = request.form.get("hidify_proxy_path", "").strip()
             u_proxy = request.form.get("user_proxy_path", "").strip()
             c_domain = request.form.get("custom_domain", "").strip()
+            p_port = request.form.get("panel_port", "").strip()
+            p_host = request.form.get("panel_host", "").strip()
+
+            env_updates = {}
 
             if b_token:
                 db.save_setting("bot_token", b_token)
+                env_updates["BOT_TOKEN"] = b_token
             if a_id and a_id.isdigit():
                 db.save_setting("admin_id", a_id)
                 db.save_setting("admin_telegram_id", a_id)
+                env_updates["ADMIN_ID"] = a_id
             if h_url:
                 db.save_setting("hidify_panel_url", h_url)
                 db.save_setting("hiddify_url", h_url)
@@ -13901,6 +13984,26 @@ def settings():
                 clean_dom = ssl_manager.clean_domain(c_domain)
                 db.save_setting("custom_domain", clean_dom)
                 db.save_setting("panel_domain", clean_dom)
+                env_updates["CUSTOM_DOMAIN"] = clean_dom
+
+            port_msg = ""
+            if p_port and p_port.isdigit():
+                int_port = int(p_port)
+                if 1 <= int_port <= 65535:
+                    old_port = get_panel_port()
+                    db.save_setting("panel_port", int_port)
+                    env_updates["PORT"] = str(int_port)
+                    env_updates["PANEL_PORT"] = str(int_port)
+                    if old_port != int_port:
+                        port_msg = f" (پورت وب‌پنل به {int_port} تغییر کرد؛ لطفاً سرویس را در ترمینال با systemctl restart tgbot ری‌استارت کنید)"
+
+            if p_host in ("0.0.0.0", "127.0.0.1", "localhost"):
+                db.save_setting("panel_host", p_host)
+                env_updates["HOST"] = p_host
+                env_updates["PANEL_HOST"] = p_host
+
+            if env_updates:
+                update_env_file(env_updates)
 
             h_url_test = request.form.get("hidify_panel_url_test", "").strip()
             h_key_test = request.form.get("hidify_api_key_test", "").strip()
@@ -13921,7 +14024,7 @@ def settings():
             if d_secret:
                 db.save_setting("dashboard_secret", d_secret)
 
-            flash("متغیرهای پایه، سرور تست و راه‌اندازی زیرساخت با موفقیت ذخیره شدند.", "success")
+            flash(f"متغیرهای پایه، سرور تست و پورت زیرساخت با موفقیت ذخیره شدند.{port_msg}", "success")
             return redirect(url_for("settings", active_tab="infra"))
 
         elif action == "add_mandatory_channel":
@@ -14546,6 +14649,8 @@ def settings():
         "hidify_proxy_path": get_hiddify_proxy(),
         "user_proxy_path": get_user_proxy(),
         "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
+        "panel_port": get_panel_port(),
+        "panel_host": get_panel_host(),
         "hidify_panel_url_test": db.get_setting("hidify_panel_url_test") or os.getenv("HIDIFY_PANEL_URL_TEST") or "",
         "hidify_api_key_test": db.get_setting("hidify_api_key_test") or os.getenv("HIDIFY_API_KEY_TEST") or "",
         "hidify_proxy_path_test": db.get_setting("hidify_proxy_path_test") or os.getenv("HIDIFY_PROXY_PATH_TEST") or "",
@@ -26193,9 +26298,11 @@ def reseller_send_renewal_link(sub_id: int):
 
 # ─── راه‌اندازی سرور وب ───
 
-def run_dashboard(host="0.0.0.0", port=None, debug=False):
+def run_dashboard(host=None, port=None, debug=False):
     if port is None:
-        port = int(os.getenv("PORT", 5000))
+        port = get_panel_port()
+    if host is None:
+        host = get_panel_host()
     print(f"🌐 Modern Web Dashboard running at http://{host}:{port}")
 
     # راه‌اندازی خودکار کلیه ربات‌های فعال نمایندگان در پس‌زمینه
@@ -26272,7 +26379,9 @@ def run_dashboard(host="0.0.0.0", port=None, debug=False):
 def start_dashboard_thread():
     """اجرای داشبورد در thread جداگانه هنگام استارت بات"""
     import threading
-    t = threading.Thread(target=run_dashboard, daemon=True)
+    host = get_panel_host()
+    port = get_panel_port()
+    t = threading.Thread(target=run_dashboard, kwargs={"host": host, "port": port, "debug": False}, daemon=True)
     t.start()
     return t
 

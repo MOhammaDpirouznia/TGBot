@@ -222,6 +222,10 @@ class BackupManager:
 
             # کپی فایل دیتابیس
             shutil.copy2(actual_db_file, db.db_path)
+            try:
+                db.sync_configs_from_settings()
+            except Exception as e_sync:
+                logger.warning(f"Could not auto-sync configs after restore: {e_sync}")
 
             if temp_extracted and temp_extracted.exists():
                 try:

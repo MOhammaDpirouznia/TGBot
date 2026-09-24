@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>استودیو بازطراحی پرتال مشتری | Customer Portal UI Studio</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+        }
+        .hero-banner {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #06b6d4 100%);
+            color: white;
+            border-radius: 24px;
+            padding: 2.5rem 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.4);
+        }
+        .configurator-card {
+            background: white;
+            border-radius: 24px;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.15);
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+        }
+        .step-pill {
+            cursor: pointer;
+            border-radius: 14px;
+            padding: 10px 16px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #334155;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+        }
+        .step-pill:hover {
+            border-color: #93c5fd;
+            background: #f8fafc;
+            transform: translateY(-2px);
+        }
+        .step-pill.active {
+            border-color: #2563eb;
+            background: #eff6ff;
+            color: #1d4ed8;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+        }
+        .palette-chip {
+            cursor: pointer;
+            border-radius: 50px;
+            padding: 6px 14px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: #334155;
+        }
+        .palette-chip:hover {
+            transform: translateY(-2px);
+            border-color: #93c5fd;
+        }
+        .palette-chip.active {
+            border-color: #2563eb;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+        .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .feature-card {
+            background: white;
+            border-radius: 18px;
+            border: 1px solid #e2e8f0;
+            padding: 1.5rem;
+            height: 100%;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -6px rgba(0,0,0,0.08);
+            border-color: #cbd5e1;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container py-4" style="max-width: 1160px;">
+
+    <!-- بنر معرفی -->
+    <div class="hero-banner text-center position-relative">
+        <span class="badge bg-white text-primary rounded-pill px-3 py-2 fw-bold mb-3 shadow-sm">
+            <i class="fas fa-wand-magic-sparkles me-1"></i> استودیو طراحی رابط کاربری پرتال مشتریان (Customer Portal UI Studio)
+        </span>
+        <h2 class="fw-bold mb-2">تست و ترکیب آزادانه تمام چیدمان‌ها و استایل‌ها</h2>
+        <p class="mb-0 opacity-90 fs-6">
+            انتخاب قالب دلخواه (مینیمال، بنتو، کلاسیک)، ترکیب با هر استایل دکمه (سه‌بعدی، نئون، شیشه‌ای)، تنظیم تک/چند اشتراکه و مشاهده بلادرنگ
+        </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- 🎛️ سازنده ترکیب اختصاصی (Live Mix & Match Configurator) -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="configurator-card">
+        <div class="d-flex align-items-center justify-content-between mb-4 pb-2 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary rounded-circle p-2 d-inline-flex align-items-center justify-content-center shadow" style="width: 38px; height: 38px;">
+                    <i class="fas fa-sliders fs-5"></i>
+                </span>
+                <div>
+                    <h4 class="fw-bold mb-0">سازنده ترکیب اختصاصی (Mix & Match)</h4>
+                    <small class="text-muted">قالب، استایل دکمه، پالت رنگی و حالت اشتراک را به دلخواه ست کنید و یکجا تست بگیرید</small>
+                </div>
+            </div>
+            <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-2 fw-bold">
+                ترکیب آزادانه و نامحدود
+            </span>
+        </div>
+
+        <form id="comboForm" action="/portal" method="GET" target="_blank">
+            <!-- گام ۱: انتخاب چیدمان / قالب -->
+            <div class="mb-4">
+                <label class="form-label fw-bold d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">۱</span>
+                    <span>انتخاب قالب و چیدمان صفحه (Layout):</span>
+                </label>
+                <div class="d-flex flex-wrap gap-2" id="layoutPills">
+                    <div class="step-pill active" data-val="bento_grid">
+                        <i class="fas fa-table-cells-large text-primary"></i>
+                        <span>بنتو گرید (Bento Grid)</span>
+                    </div>
+                    <div class="step-pill" data-val="minimal_tabbed">
+                        <i class="fas fa-folder-tree text-info"></i>
+                        <span>تب‌بندی مینیمال (Minimal Tabbed)</span>
+                    </div>
+                    <div class="step-pill" data-val="split_dashboard">
+                        <i class="fas fa-columns text-success"></i>
+                        <span>داشبورد دو ستونه (Split)</span>
+                    </div>
+                    <div class="step-pill" data-val="classic">
+                        <i class="fas fa-bars-staggered text-secondary"></i>
+                        <span>کلاسیک آبشاری (Classic)</span>
+                    </div>
+                </div>
+                <input type="hidden" name="layout" id="inputLayout" value="bento_grid">
+            </div>
+
+            <!-- گام ۲: انتخاب استایل دکمه‌ها و کارت‌های پلن -->
+            <div class="mb-4">
+                <label class="form-label fw-bold d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">۲</span>
+                    <span>انتخاب استایل دکمه‌ها و کارت‌های خرید پلن (Plan & Button Style):</span>
+                </label>
+                <div class="d-flex flex-wrap gap-2" id="stylePills">
+                    <div class="step-pill active" data-val="glass_classic">
+                        <i class="fas fa-glass-martini-alt text-primary"></i>
+                        <span>شیشه‌ای مات کلاسیک (Glass Classic)</span>
+                    </div>
+                    <div class="step-pill" data-val="tactile_3d">
+                        <i class="fas fa-cube text-danger"></i>
+                        <span>برجسته لمسی ۳ بعدی (Tactile 3D)</span>
+                    </div>
+                    <div class="step-pill" data-val="cyber_neon_outline">
+                        <i class="fas fa-bolt text-warning"></i>
+                        <span>نئون سایبری (Cyber Neon)</span>
+                    </div>
+                    <div class="step-pill" data-val="floating_elevation">
+                        <i class="fas fa-cloud text-info"></i>
+                        <span>کارت معلق پرمیوم (Floating Elevation)</span>
+                    </div>
+                    <div class="step-pill" data-val="compact_row">
+                        <i class="fas fa-bars text-success"></i>
+                        <span>نواری فشرده (Compact Row)</span>
+                    </div>
+                </div>
+                <input type="hidden" name="plan_style" id="inputPlanStyle" value="glass_classic">
+            </div>
+
+            <!-- گام ۳: انتخاب پالت رنگی -->
+            <div class="mb-4">
+                <label class="form-label fw-bold d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">۳</span>
+                    <span>انتخاب پالت رنگی (Theme Palette):</span>
+                </label>
+                <div class="d-flex flex-wrap gap-2" id="palettePills">
+                    {% for p in all_palettes %}
+                    <div class="palette-chip {% if p.id == active_palette %}active{% endif %}" data-val="{{ p.id }}">
+                        <span class="color-dot" style="background: {{ p.preview.blob1 }};"></span>
+                        <span>{{ p.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="palette" id="inputPalette" value="{{ active_palette }}">
+            </div>
+
+            <!-- گام ۴: حالت اشتراک و دستگاه -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold d-flex align-items-center gap-2 mb-2">
+                        <span class="badge bg-primary rounded-pill">۴</span>
+                        <span>تعداد اشتراک‌های مشتری:</span>
+                    </label>
+                    <div class="d-flex flex-wrap gap-2" id="subModePills">
+                        <div class="step-pill active" data-val="multi">
+                            <i class="fas fa-users text-primary"></i>
+                            <span>چند اشتراکه (با نوار بالای صفحه)</span>
+                        </div>
+                        <div class="step-pill" data-val="single">
+                            <i class="fas fa-user text-secondary"></i>
+                            <span>اشتراک تکی (حذف کامل نوار بالا)</span>
+                        </div>
+                    </div>
+                    <input type="hidden" name="sub_mode" id="inputSubMode" value="multi">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold d-flex align-items-center gap-2 mb-2">
+                        <span class="badge bg-primary rounded-pill">۵</span>
+                        <span>دستگاه پیش‌فرض:</span>
+                    </label>
+                    <div class="d-flex flex-wrap gap-2" id="devicePills">
+                        <div class="step-pill active" data-val="sub_mobile">
+                            <i class="fas fa-mobile-alt text-primary"></i>
+                            <span>📱 موبایل (آیفون ۱۶ پرو)</span>
+                        </div>
+                        <div class="step-pill" data-val="sub_laptop">
+                            <i class="fas fa-laptop text-teal" style="color: #0d9488;"></i>
+                            <span>💻 لپ‌تاپ (ویندوز ۱۱)</span>
+                        </div>
+                    </div>
+                    <input type="hidden" name="sub_id" id="inputSubId" value="sub_mobile">
+                </div>
+            </div>
+
+            <!-- دکمه اقدام نهایی و URL پیش‌نمایش -->
+            <div class="p-3 bg-light rounded-4 border d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div class="small text-muted font-monospace text-truncate" style="max-width: 550px;">
+                    <i class="fas fa-link me-1 text-primary"></i>
+                    آدرس خروجی: <span class="text-primary fw-bold" id="previewUrlText">/portal?layout=bento_grid&plan_style=glass_classic</span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg px-5 py-2.5 rounded-pill fw-bold shadow-sm d-flex align-items-center gap-2">
+                    <i class="fas fa-rocket"></i>
+                    <span>مشاهده این ترکیب اختصاصی 🚀</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- بخش دسترسی سریع به فیچرهای جدید و شبیه‌سازها -->
+    <div class="row g-3 mb-4">
+        <!-- کارت باشگاه مشتریان -->
+        <div class="col-md-4">
+            <div class="feature-card border-warning border-opacity-50" style="background: #fffdf5;">
+                <div>
+                    <span class="badge bg-warning text-dark rounded-pill px-2 py-1 small mb-2">فیچر جدید</span>
+                    <h5 class="fw-bold text-warning-emphasis"><i class="fas fa-gift me-1"></i> باشگاه مشتریان و گردونه</h5>
+                    <p class="small text-muted mb-3">شامل گردونه شانس با انیمیشن روان و صدای چرخاندن، ماموریت‌های پاداش و کد اختصاصی دعوت دوستان.</p>
+                </div>
+                <a href="/portal?palette={{ active_palette }}" target="_blank" class="btn btn-warning rounded-pill w-100 fw-bold">
+                    مشاهده باشگاه مشتریان
+                </a>
+            </div>
+        </div>
+
+        <!-- کارت نمودار مصرف هوشمند -->
+        <div class="col-md-4">
+            <div class="feature-card border-info border-opacity-50" style="background: #f0fdfa;">
+                <div>
+                    <span class="badge bg-info text-white rounded-pill px-2 py-1 small mb-2">آمار زنده</span>
+                    <h5 class="fw-bold" style="color: #0d9488;"><i class="fas fa-chart-simple me-1"></i> نمودار هوشمند مصرف</h5>
+                    <p class="small text-muted mb-3">نمایش تفکیک ساعتی ۲۴ ساعته، میانگین روزانه، ساعات اوج مصرف و ریزمصرف هفتگی و ماهانه.</p>
+                </div>
+                <a href="/portal?palette={{ active_palette }}" target="_blank" class="btn text-white rounded-pill w-100 fw-bold" style="background: #0d9488;">
+                    مشاهده نمودار هوشمند
+                </a>
+            </div>
+        </div>
+
+        <!-- کارت شبیه‌ساز پرداخت آنلاین و کارت به کارت -->
+        <div class="col-md-4">
+            <div class="feature-card border-primary border-opacity-25" style="background: #f0f7ff;">
+                <div>
+                    <span class="badge bg-primary text-white rounded-pill px-2 py-1 small mb-2">سیستم پرداخت</span>
+                    <h5 class="fw-bold text-primary"><i class="fas fa-credit-card me-1"></i> تست پرداخت و تایید SMS</h5>
+                    <p class="small text-muted mb-3">تست فاکتور کارت به کارت هوشمند با تایید خودکار پیامک بانک و درگاه آنلاین شتاب با هر دو نتیجه موفق و ناموفق.</p>
+                </div>
+                <a href="/portal?invoice_mode=c2c&palette={{ active_palette }}" target="_blank" class="btn btn-primary rounded-pill w-100 fw-bold">
+                    تست کارت به کارت خودکار
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- راهنمای ادیت استایل -->
+    <div class="alert alert-light border rounded-4 p-3 d-flex align-items-center gap-3 shadow-sm">
+        <div class="fs-2 text-primary"><i class="fas fa-code"></i></div>
+        <div class="small">
+            <strong>نکته مهم برای طراح:</strong> برای اعمال استایل‌ها و کلاس‌های CSS دلخواه، فایل 
+            <code class="bg-white px-2 py-1 rounded border">static/designer-custom.css</code> را ویرایش کنید. تغییرات بلافاصله با رفرش صفحه در دسترس خواهند بود.
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function setupPills(containerId, inputId, callback) {
+        const container = document.getElementById(containerId);
+        const input = document.getElementById(inputId);
+        if (!container || !input) return;
+
+        container.querySelectorAll('.step-pill, .palette-chip').forEach(el => {
+            el.addEventListener('click', function() {
+                container.querySelectorAll('.step-pill, .palette-chip').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                input.value = this.getAttribute('data-val');
+                updatePreviewUrl();
+                if (callback) callback(this.getAttribute('data-val'));
+            });
+        });
+    }
+
+    function updatePreviewUrl() {
+        const layout = document.getElementById('inputLayout').value;
+        const style = document.getElementById('inputPlanStyle').value;
+        const palette = document.getElementById('inputPalette').value;
+        const subMode = document.getElementById('inputSubMode').value;
+        const subId = document.getElementById('inputSubId').value;
+
+        const url = `/portal?layout=${layout}&plan_style=${style}&palette=${palette}&sub_mode=${subMode}&sub_id=${subId}`;
+        const previewEl = document.getElementById('previewUrlText');
+        if (previewEl) previewEl.textContent = url;
+    }
+
+    setupPills('layoutPills', 'inputLayout');
+    setupPills('stylePills', 'inputPlanStyle');
+    setupPills('palettePills', 'inputPalette');
+    setupPills('subModePills', 'inputSubMode');
+    setupPills('devicePills', 'inputSubId');
+
+    updatePreviewUrl();
+});
+</script>
+
+</body>
+</html>

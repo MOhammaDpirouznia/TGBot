@@ -2378,11 +2378,62 @@ class Database:
             
             conn.commit()
             conn.close()
+            self.sync_configs_from_settings()
             logger.info(f"Full restore completed successfully: {restored_stats}")
             return {"restored": True, "stats": restored_stats, "source": str(found_file)}
         except Exception as e:
             logger.error(f"Error in auto_restore_full: {e}")
             return {"restored": False, "error": str(e)}
+
+    def sync_configs_from_settings(self):
+        """همگام‌سازی خودکار پلن‌ها و کارت‌ها از دیتابیس به فایل‌های محلی پس از هر بازیابی بک‌آپ"""
+        try:
+            from cache_manager import cache
+            cache.invalidate_plans()
+            cache.delete("setting:plans_config")
+            cache.delete("setting:cards_config")
+            cache.delete("plans_all")
+        except Exception:
+            pass
+
+        # ۱. همگام‌سازی پلن‌ها به فایل plans.json
+        try:
+            from admin_manager import save_plans, normalize_plan_permissions
+            p_val = self.get_setting("plans_config")
+            if p_val:
+                pdict = json.loads(p_val) if isinstance(p_val, str) else p_val
+                if pdict and isinstance(pdict, dict) and len(pdict) > 0:
+                    for p in pdict.values():
+                        normalize_plan_permissions(p)
+                    save_plans(pdict)
+                    logger.info(f"Auto-synced {len(pdict)} plans from restored DB to plans.json")
+        except Exception as e_p:
+            logger.warning(f"Could not sync plans from restored DB: {e_p}")
+
+        # ۲. همگام‌سازی کارت‌ها به فایل cards.json
+        try:
+            from admin_manager import save_cards
+            c_val = self.get_setting("cards_config")
+            if c_val:
+                cdict = json.loads(c_val) if isinstance(c_val, str) else c_val
+                if cdict and isinstance(cdict, dict):
+                    save_cards(cdict)
+            else:
+                db_cards = self.get_all_bank_cards()
+                if db_cards:
+                    res = {}
+                    for c in db_cards:
+                        cid = f"card_{c['id']}"
+                        res[cid] = {
+                            "card_number": c["card_number"],
+                            "card_holder": c["card_holder"],
+                            "bank_name": c["bank_name"],
+                            "is_active": bool(c.get("is_active", True)),
+                            "created_at": c.get("created_at") or get_now_iso(),
+                        }
+                    save_cards(res)
+        except Exception as e_c:
+            logger.warning(f"Could not sync cards from restored DB: {e_c}")
 
     def restore_from_file(self, file_path: Union[str, Path]) -> dict:
         """بازیابی جامع دیتابیس از فایل بارگذاری شده (.json یا .db / .sqlite)"""
@@ -2421,6 +2472,7 @@ class Database:
                 conn.close()
                 self.migrate_add_columns()
                 self.save_setting("setup_completed", "1")
+                self.sync_configs_from_settings()
                 return {"success": True, "type": "json", "stats": restored_stats}
 
             elif suffix in [".db", ".sqlite", ".sqlite3"]:
@@ -2434,6 +2486,7 @@ class Database:
                 shutil.copy2(path, self.db_path)
                 self.migrate_add_columns()
                 self.save_setting("setup_completed", "1")
+                self.sync_configs_from_settings()
                 return {"success": True, "type": "sqlite", "file": str(self.db_path)}
             else:
                 return {"success": False, "error": "فرمت فایل نامعتبر است. فقط .json یا .db پشتیبانی می‌شود."}
@@ -2485,6 +2538,7 @@ class Database:
             # کپی پشتیبان به مسیر دیتابیس فعلی
             import shutil
             shutil.copy2(latest_backup, self.db_path)
+            self.sync_configs_from_settings()
             
             # بررسی نتیجه
             conn = self.get_connection()

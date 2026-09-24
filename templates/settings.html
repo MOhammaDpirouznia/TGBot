@@ -197,6 +197,42 @@
                     <input type="text" name="custom_domain" class="form-control font-monospace" value="{{ infrastructure_config.custom_domain or '' }}" placeholder="مثال: vpn.example.com">
                 </div>
 
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-ethernet text-primary me-1"></i> پورت وب‌پنل مدیریت و پورتال‌ها (PANEL_PORT):
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-hashtag text-muted"></i></span>
+                        <input type="number" name="panel_port" min="1" max="65535" class="form-control font-monospace" value="{{ infrastructure_config.panel_port or 5000 }}" placeholder="5000">
+                    </div>
+                    <div class="form-text small text-muted">
+                        پورت اجرای پنل وب و پورتال‌های مشتریان (پیش‌فرض: <code>5000</code>). جهت نصب در کنار <b>هیدیفای (Hiddify)</b>، لایسنس‌هاب، یا اجرای همزمان چند بات در یک سرور، پورتی مانند <code>5001</code>، <code>5050</code> یا <code>8085</code> وارد کنید.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-network-wired text-secondary me-1"></i> آدرس شنود شبکه (Bind Host):
+                    </label>
+                    <select name="panel_host" class="form-select font-monospace">
+                        <option value="0.0.0.0" {% if infrastructure_config.panel_host == '0.0.0.0' or not infrastructure_config.panel_host %}selected{% endif %}>0.0.0.0 (عمومی - دسترسی مستقیم با آی‌پی سرور و پورت)</option>
+                        <option value="127.0.0.1" {% if infrastructure_config.panel_host == '127.0.0.1' %}selected{% endif %}>127.0.0.1 (محلی امن - فقط از طریق Reverse Proxy مانند Nginx/هیدیفای)</option>
+                    </select>
+                    <div class="form-text small text-muted">
+                        در صورت استقرار پشت Nginx یا دامنه هیدیفای، با انتخاب <code>127.0.0.1</code> پورت از اینترنت بسته شده و امنیت سرور افزایش می‌یابد.
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <div class="alert alert-info bg-info-subtle border-info-subtle py-2 px-3 small rounded-3 d-flex align-items-center gap-2 mb-0">
+                        <i class="fas fa-circle-info text-info fs-5"></i>
+                        <div>
+                            <strong>راهنمای هم‌زیستی چند پروژه در یک سرور:</strong>
+                            با ذخیره پورت جدید، مقدار در دیتابیس و فایل <code>.env</code> ذخیره می‌شود. جهت اعمال کامل پورت در سیستم، پس از ذخیره دستور <code>systemctl restart tgbot</code> را در ترمینال سرور اجرا فرمایید.
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ═══ تفکیک سرور تست هیدیفای ═══ -->
                 <div class="col-12 mt-4">
                     <div class="p-3 rounded-3 bg-light border border-info-subtle shadow-sm">

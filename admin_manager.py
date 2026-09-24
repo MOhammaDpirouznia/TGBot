@@ -287,6 +287,8 @@ def load_plans() -> dict:
     except Exception:
         pass
 
+    DEFAULT_SEED_KEYS = {"basic", "standard", "premium", "gem"}
+    file_data = None
     candidate_files = [
         PLANS_FILE,
         Path("data/plans.json"),
@@ -299,44 +301,36 @@ def load_plans() -> dict:
                 with open(pfile, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if data and isinstance(data, dict):
-                        for p in data.values():
-                            normalize_plan_permissions(p)
-                        try:
-                            from cache_manager import cache
-                            cache.set("plans_all", data, ttl=300)
-                        except Exception:
-                            pass
-                        return data
+                        file_data = data
+                        break
             except Exception:
                 pass
 
-    # بررسی دیتابیس
+    # بررسی دیتابیس (اگر پلن‌های دیتابیس غنی‌تر یا سفارشی‌تر از پلن‌های اولیه فایل هستند)
     try:
         from database import db
         setting_plans = db.get_setting("plans_config")
-        if setting_plans and isinstance(setting_plans, dict):
-            for p in setting_plans.values():
-                normalize_plan_permissions(p)
-            save_plans(setting_plans)
-            return setting_plans
-
-        # بررسی فایل پشتیبان جامع backup_full_latest.json
-        for backup_path in [Path("data/backup_full_latest.json"), Path("/data/backup_full_latest.json"), Path("backup_full_latest.json")]:
-            if backup_path.exists():
-                with open(backup_path, "r", encoding="utf-8") as f:
-                    bdata = json.load(f)
-                    settings_rows = bdata.get("tables", {}).get("settings", [])
-                    for s in settings_rows:
-                        if s.get("key") == "plans_config":
-                            val = s.get("value")
-                            pdict = json.loads(val) if isinstance(val, str) else val
-                            if pdict and isinstance(pdict, dict):
-                                for p in pdict.values():
-                                    normalize_plan_permissions(p)
-                                save_plans(pdict)
-                                return pdict
+        if setting_plans:
+            pdict = json.loads(setting_plans) if isinstance(setting_plans, str) else setting_plans
+            if pdict and isinstance(pdict, dict) and len(pdict) > 0:
+                is_file_only_defaults = (file_data is not None and set(file_data.keys()).issubset(DEFAULT_SEED_KEYS))
+                if file_data is None or is_file_only_defaults or len(pdict) > len(file_data):
+                    for p in pdict.values():
+                        normalize_plan_permissions(p)
+                    save_plans(pdict)
+                    return pdict
     except Exception:
         pass
+
+    if file_data and isinstance(file_data, dict):
+        for p in file_data.values():
+            normalize_plan_permissions(p)
+        try:
+            from cache_manager import cache
+            cache.set("plans_all", file_data, ttl=300)
+        except Exception:
+            pass
+        return file_data
 
     # پلن‌های پیش‌فرض
     default_plans = {
