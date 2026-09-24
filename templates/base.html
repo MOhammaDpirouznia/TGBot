@@ -329,6 +329,91 @@
             border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06));
         }
 
+        /* ─── استایل سراسری جدول گزارش بدهی مشتری (هماهنگ با تم تیره و روشن) ─── */
+        .debt-report-table {
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+        }
+        .debt-report-table thead th {
+            font-weight: 700;
+            font-size: 0.8rem;
+            padding: 9px 10px;
+            border-bottom-width: 1px;
+        }
+        .debt-report-table tbody td {
+            padding: 8px 10px;
+            vertical-align: middle;
+        }
+        [data-bs-theme="dark"] .debt-report-table,
+        .dark-mode .debt-report-table {
+            --bs-table-bg: transparent;
+            --bs-table-color: #e2e8f0;
+            --bs-table-border-color: rgba(255, 255, 255, 0.08);
+            color: #e2e8f0 !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table thead th,
+        .dark-mode .debt-report-table thead th {
+            background-color: rgba(15, 23, 42, 0.85) !important;
+            color: #94a3b8 !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-settled,
+        .dark-mode .debt-report-table tr.debt-row-settled {
+            background-color: rgba(255, 255, 255, 0.015) !important;
+            color: #94a3b8 !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-settled td,
+        .dark-mode .debt-report-table tr.debt-row-settled td {
+            background-color: transparent !important;
+            color: #cbd5e1 !important;
+            border-color: rgba(255, 255, 255, 0.07) !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-settled .text-muted,
+        .dark-mode .debt-report-table tr.debt-row-settled .text-muted {
+            color: #94a3b8 !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid,
+        .dark-mode .debt-report-table tr.debt-row-unpaid {
+            background-color: rgba(239, 68, 68, 0.12) !important;
+            color: #f8fafc !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid td,
+        .dark-mode .debt-report-table tr.debt-row-unpaid td {
+            background-color: rgba(239, 68, 68, 0.09) !important;
+            color: #f8fafc !important;
+            border-color: rgba(239, 68, 68, 0.25) !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr:hover td,
+        .dark-mode .debt-report-table tr:hover td {
+            background-color: rgba(255, 255, 255, 0.04) !important;
+        }
+        [data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid:hover td,
+        .dark-mode .debt-report-table tr.debt-row-unpaid:hover td {
+            background-color: rgba(239, 68, 68, 0.16) !important;
+        }
+        [data-bs-theme="light"] .debt-report-table {
+            --bs-table-bg: #ffffff;
+            --bs-table-color: #1e293b;
+            --bs-table-border-color: #e2e8f0;
+        }
+        [data-bs-theme="light"] .debt-report-table thead th {
+            background-color: #f8fafc !important;
+            color: #475569 !important;
+            border-color: #e2e8f0 !important;
+        }
+        [data-bs-theme="light"] .debt-report-table tr.debt-row-settled td {
+            background-color: #ffffff !important;
+            color: #334155;
+            border-color: #f1f5f9;
+        }
+        [data-bs-theme="light"] .debt-report-table tr.debt-row-unpaid td {
+            background-color: #fef2f2 !important;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+
         /* ─── نشان مشتری ویژه VIP (فوق‌العاده خوانا، شارپ و پرکنتراست در تم تیره و روشن) ─── */
         .badge-vip {
             background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;

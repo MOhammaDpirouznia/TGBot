@@ -1746,6 +1746,62 @@
                         </div>
                     </div>
 
+                    <!-- مدیریت ابطال فیش پرداختی مشتری و کسر از کارت بانکی نماینده -->
+                    {% set cr = ref.get('customer_receipt') %}
+                    {% if cr and cr.get('has_receipt') %}
+                    <div class="p-3 bg-white rounded-3 border mb-3 shadow-sm border-start border-4 {% if cr.get('is_within_24h') %}border-info{% else %}border-secondary{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold small text-dark">
+                                <i class="fas fa-receipt text-primary me-1"></i> آخرین فیش پرداختی مشتری:
+                            </span>
+                            <span class="badge {% if cr.get('is_within_24h') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %}">
+                                سفارش {{ cr.get('order_id') or ('#' ~ cr.get('tx_id')) }}
+                            </span>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center small mb-1">
+                            <span class="text-muted">مبلغ دریافتی از مشتری:</span>
+                            <strong class="text-dark font-monospace">{{ "{:,}".format(cr.get('amount', 0)) }} تومان</strong>
+                        </div>
+                        
+                        {% if cr.get('card_title') %}
+                        <div class="d-flex justify-content-between align-items-center small mb-1">
+                            <span class="text-muted">حساب/کارت مقصد واریز:</span>
+                            <span class="badge bg-light text-dark border">{{ cr.get('card_title') }}</span>
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between align-items-center small mb-2">
+                            <span class="text-muted">میزان مصرف حجم:</span>
+                            <span>
+                                <strong>{{ cr.get('data_used_gb', 0) }}</strong> از <strong>{{ cr.get('data_limit_gb', 0) }}</strong> گیگابایت
+                                <span class="badge {% if cr.get('usage_percent', 0) >= 50 %}bg-danger-subtle text-danger{% elif cr.get('usage_percent', 0) >= 10 %}bg-warning-subtle text-dark{% else %}bg-success-subtle text-success{% endif %} ms-1">
+                                    {{ cr.get('usage_percent', 0) }}%
+                                </span>
+                            </span>
+                        </div>
+
+                        <div class="form-check form-switch p-2 bg-light rounded border mt-2">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" 
+                                   id="voidReceiptSwitch{{ sub['id'] }}" name="void_customer_receipt" value="1"
+                                   {% if cr.get('auto_check_recommended') %}checked{% endif %} style="cursor: pointer;">
+                            <label class="form-check-label small fw-bold text-dark user-select-none" for="voidReceiptSwitch{{ sub['id'] }}" style="cursor: pointer;">
+                                <i class="fas fa-ban text-danger me-1"></i> ابطال این فیش و کسر {{ "{:,}".format(cr.get('amount', 0)) }} تومان از کارت بانکی
+                            </label>
+                        </div>
+
+                        {% if cr.get('usage_warning') %}
+                        <div class="text-warning-emphasis small mt-2" style="font-size: 0.75rem; line-height: 1.4;">
+                            <i class="fas fa-exclamation-triangle text-warning me-1"></i> {{ cr.get('usage_warning') }}
+                        </div>
+                        {% else %}
+                        <div class="text-muted small mt-1" style="font-size: 0.72rem;">
+                            <i class="fas fa-info-circle text-info me-1"></i> با فعال بودن این گزینه، فیش مشتری باطل شده و مبلغ پرداختی از مانده کارت بانکی شما کسر می‌شود (بدون تاثیر بر اعتبار خرید عمده).
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
                     <!-- راهنمای قوانین استرداد -->
                     <div class="alert alert-warning py-2 small mb-3">
                         <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه خرید و تمدیدها:</div>
@@ -2668,6 +2724,93 @@
 </div>
 
 <style>
+/* ─── استایل ریسپانسیو و تم تیره/روشن برای جدول گزارش بدهی مشتری ─── */
+.debt-report-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+.debt-report-table thead th {
+    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 9px 10px;
+    border-bottom-width: 1px;
+}
+.debt-report-table tbody td {
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+/* تم تیره */
+[data-bs-theme="dark"] .debt-report-table,
+.dark-mode .debt-report-table {
+    --bs-table-bg: transparent;
+    --bs-table-color: #e2e8f0;
+    --bs-table-border-color: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+[data-bs-theme="dark"] .debt-report-table thead th,
+.dark-mode .debt-report-table thead th {
+    background-color: rgba(15, 23, 42, 0.85) !important;
+    color: #94a3b8 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-settled,
+.dark-mode .debt-report-table tr.debt-row-settled {
+    background-color: rgba(255, 255, 255, 0.015) !important;
+    color: #94a3b8 !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-settled td,
+.dark-mode .debt-report-table tr.debt-row-settled td {
+    background-color: transparent !important;
+    color: #cbd5e1 !important;
+    border-color: rgba(255, 255, 255, 0.07) !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-settled .text-muted,
+.dark-mode .debt-report-table tr.debt-row-settled .text-muted {
+    color: #94a3b8 !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid,
+.dark-mode .debt-report-table tr.debt-row-unpaid {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+    color: #f8fafc !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid td,
+.dark-mode .debt-report-table tr.debt-row-unpaid td {
+    background-color: rgba(239, 68, 68, 0.09) !important;
+    color: #f8fafc !important;
+    border-color: rgba(239, 68, 68, 0.25) !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr:hover td,
+.dark-mode .debt-report-table tr:hover td {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+[data-bs-theme="dark"] .debt-report-table tr.debt-row-unpaid:hover td,
+.dark-mode .debt-report-table tr.debt-row-unpaid:hover td {
+    background-color: rgba(239, 68, 68, 0.16) !important;
+}
+/* تم روشن */
+[data-bs-theme="light"] .debt-report-table {
+    --bs-table-bg: #ffffff;
+    --bs-table-color: #1e293b;
+    --bs-table-border-color: #e2e8f0;
+}
+[data-bs-theme="light"] .debt-report-table thead th {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    border-color: #e2e8f0 !important;
+}
+[data-bs-theme="light"] .debt-report-table tr.debt-row-settled td {
+    background-color: #ffffff !important;
+    color: #334155;
+    border-color: #f1f5f9;
+}
+[data-bs-theme="light"] .debt-report-table tr.debt-row-unpaid td {
+    background-color: #fef2f2 !important;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
 .admin-traffic-tooltip {
     position: absolute;
     background: rgba(15, 23, 42, 0.95);
@@ -3338,7 +3481,7 @@ function loadCustomerDebtReportData(subId, accountName) {
             }
 
             html += `
-                <h6 class="fw-bold text-dark mb-2"><i class="fas fa-receipt text-danger me-2"></i>رسیدها و صورت‌حساب‌های بدهی:</h6>
+                <h6 class="fw-bold mb-2"><i class="fas fa-receipt text-danger me-2"></i>رسیدها و صورت‌حساب‌های بدهی:</h6>
             `;
 
             if (records.length === 0) {
@@ -3351,12 +3494,12 @@ function loadCustomerDebtReportData(subId, accountName) {
                 `;
             } else {
                 html += `
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0" style="font-size: 0.82rem;">
-                            <thead class="table-light">
+                    <div class="table-responsive rounded-3 border border-secondary border-opacity-25 shadow-sm">
+                        <table class="table table-sm align-middle mb-0 debt-report-table" style="font-size: 0.82rem;">
+                            <thead>
                                 <tr>
                                     <th class="text-center" style="width: 50px;">رسید</th>
-                                    <th>تاریخ و زمان</th>
+                                    <th style="min-width: 105px;">تاریخ و زمان</th>
                                     <th>عملیات</th>
                                     <th>بسته</th>
                                     <th>مبلغ این دوره</th>
@@ -3371,27 +3514,57 @@ function loadCustomerDebtReportData(subId, accountName) {
 
                 records.forEach(r => {
                     const isPaid = (r.status === 'paid');
-                    const actName = (r.action_type === 'create') ? 'ساخت اولیه' : ((r.action_type === 'renew') ? 'تمدید اشتراک' : 'متفرقه');
-                    const actBadge = (r.action_type === 'create') ? 'bg-primary' : 'bg-info text-dark';
-                    const statusBadge = isPaid ? '<span class="badge bg-success">تسویه شده</span>' : '<span class="badge bg-danger">پرداخت‌نشده</span>';
-                    
+                    const actName = (r.action_type === 'create') ? 'ساخت اولیه' : ((r.action_type === 'renew') ? 'تمدید اشتراک' : ((r.action_type === 'initial') ? 'بدهی آغازین' : 'متفرقه'));
+                    const actBadge = (r.action_type === 'create') ? 'bg-primary text-white' : ((r.action_type === 'renew') ? 'bg-info bg-opacity-75 text-white' : 'bg-secondary text-white');
+                    const statusBadge = isPaid 
+                        ? '<span class="badge bg-success bg-opacity-75"><i class="fas fa-check-circle me-1"></i>تسویه شده</span>' 
+                        : '<span class="badge bg-danger"><i class="fas fa-clock me-1"></i>پرداخت‌نشده</span>';
+                    const rowClass = isPaid ? 'debt-row-settled' : 'debt-row-unpaid';
+
+                    let shamsiDate = r.jalali_date || '';
+                    let timePart = r.jalali_time || '';
+
+                    if (!shamsiDate && r.created_at_shamsi) {
+                        const parts = r.created_at_shamsi.split(' ');
+                        shamsiDate = parts[0] || '';
+                        timePart = parts[1] || timePart;
+                    }
+
+                    if (!shamsiDate && r.created_at) {
+                        try {
+                            const s = String(r.created_at).replace('T', ' ');
+                            const dp = s.substring(0, 10).split('-');
+                            if (dp.length === 3 && typeof DebtDuePicker !== 'undefined' && DebtDuePicker.toJalaali) {
+                                const j = DebtDuePicker.toJalaali(parseInt(dp[0], 10), parseInt(dp[1], 10), parseInt(dp[2], 10));
+                                shamsiDate = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+                            }
+                            if (s.length >= 16) timePart = s.substring(11, 16);
+                        } catch(e) {}
+                    }
+
+                    if (!shamsiDate) shamsiDate = (r.created_at || '').substring(0, 10);
+                    if (!timePart && r.created_at && r.created_at.length >= 16) timePart = r.created_at.substring(11, 16);
+
                     html += `
-                        <tr class="${isPaid ? 'table-light text-muted' : 'table-danger-subtle'}">
+                        <tr class="debt-row ${rowClass}">
                             <td class="text-center font-monospace fw-bold">#${r.id}</td>
-                            <td class="font-monospace small">${(r.created_at || '').substring(0, 16).replace('T', ' ')}</td>
+                            <td class="font-monospace small text-nowrap" dir="ltr">
+                                <div class="fw-bold">${shamsiDate}</div>
+                                ${timePart ? `<div class="text-muted" style="font-size: 0.72rem;"><i class="far fa-clock me-1"></i>${timePart}</div>` : ''}
+                            </td>
                             <td><span class="badge ${actBadge}">${actName}</span></td>
                             <td class="fw-bold">${r.plan_name || '-'}</td>
-                            <td class="font-monospace fw-bold text-danger">${(r.amount || 0).toLocaleString('fa-IR')} ت</td>
+                            <td class="font-monospace fw-bold ${isPaid ? 'text-secondary' : 'text-danger'}">${(r.amount || 0).toLocaleString('fa-IR')} ت</td>
                             <td class="font-monospace text-muted">${(r.total_debt || 0).toLocaleString('fa-IR')} ت</td>
                             <td>${statusBadge}</td>
                             <td class="small text-muted">${r.notes || '-'}</td>
                             <td class="text-center">
                                 ${!isPaid ? `
-                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="openSettleDebtModal(${subId}, '${accountName}', ${r.amount || 0}, 'record', ${r.id})" title="تسویه اختصاصی این فاکتور">
+                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold shadow-sm" onclick="openSettleDebtModal(${subId}, '${accountName}', ${r.amount || 0}, 'record', ${r.id})" title="تسویه اختصاصی این فاکتور">
                                         <i class="fas fa-check me-1"></i> تسویه
                                     </button>
                                 ` : `
-                                    <small class="text-success"><i class="fas fa-check-double"></i></small>
+                                    <span class="text-success fs-6" title="تسویه شده"><i class="fas fa-check-circle"></i></span>
                                 `}
                             </td>
                         </tr>

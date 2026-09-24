@@ -11623,6 +11623,37 @@ class Database:
             if records:
                 current_debt = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "unpaid" and r.get("action_type") != "settle")
 
+            # تبدیل تاریخ‌ها به شمسی برای نمایش در گزارش بدهی
+            for r in records:
+                c_at = str(r.get("created_at") or "").strip()
+                if c_at:
+                    try:
+                        from utils import gregorian_to_shamsi
+                        if len(c_at) > 10:
+                            r["created_at_shamsi"] = gregorian_to_shamsi(c_at, fmt="%Y/%m/%d %H:%M")
+                            r["jalali_time"] = gregorian_to_shamsi(c_at, fmt="%H:%M")
+                        else:
+                            r["created_at_shamsi"] = gregorian_to_shamsi(c_at, fmt="%Y/%m/%d")
+                            r["jalali_time"] = ""
+                        r["jalali_date"] = gregorian_to_shamsi(c_at, fmt="%Y/%m/%d")
+                    except Exception:
+                        r["created_at_shamsi"] = c_at[:16].replace("T", " ")
+                        r["jalali_date"] = c_at[:10]
+                        r["jalali_time"] = c_at[11:16] if len(c_at) >= 16 else ""
+                else:
+                    r["created_at_shamsi"] = "-"
+                    r["jalali_date"] = "-"
+                    r["jalali_time"] = ""
+
+            debt_c_at = str(sub.get("debt_created_at") or "").strip()
+            debt_c_at_shamsi = ""
+            if debt_c_at:
+                try:
+                    from utils import gregorian_to_shamsi
+                    debt_c_at_shamsi = gregorian_to_shamsi(debt_c_at, fmt="%Y/%m/%d %H:%M")
+                except Exception:
+                    debt_c_at_shamsi = debt_c_at[:16].replace("T", " ")
+
             return {
                 "success": True,
                 "subscription_id": subscription_id,
@@ -11634,6 +11665,7 @@ class Database:
                 "payment_status": sub.get("payment_status") or ("unpaid" if current_debt > 0 else "paid"),
                 "debt_notes": sub.get("debt_notes") or "",
                 "debt_created_at": sub.get("debt_created_at") or "",
+                "debt_created_at_shamsi": debt_c_at_shamsi,
                 "total_debts_sum": total_debts_sum,
                 "total_debt_accumulated": total_debts_sum,
                 "total_settled_sum": total_settled_sum,
@@ -16686,6 +16718,81 @@ class Database:
         else:
             final_payment_source = "wallet"
 
+        # استعلام آخرین فیش واریزی تایید شده مشتری جهت نمایش در مودال حذف و امکان ابطال هوشمند
+        customer_receipt = None
+        c_conn = self.get_connection()
+        try:
+            c_cursor = c_conn.cursor()
+            c_cursor.execute("""
+                SELECT t.id, t.order_id, t.amount, t.gateway, t.card_number, t.created_at, t.status,
+                       rc.bank_name, rc.card_number as rc_card_number, rc.card_holder
+                FROM transactions t
+                LEFT JOIN card_transactions ct ON (
+                    ct.owner_type = 'reseller' AND ct.reseller_id = ?
+                    AND ((ct.ref_type = 'transaction' AND ct.ref_id = CAST(t.id AS TEXT))
+                      OR (ct.ref_type = 'subscription' AND ct.ref_id = CAST(t.subscription_id AS TEXT)))
+                    AND ct.type = 'deposit'
+                )
+                LEFT JOIN reseller_cards rc ON (ct.card_id = rc.id)
+                WHERE t.reseller_id = ?
+                  AND (t.subscription_id = ? OR t.renew_sub_id = ? OR (t.account_name IS NOT NULL AND t.account_name = ?))
+                  AND t.status IN ('approved', 'completed')
+                ORDER BY t.id DESC LIMIT 1
+            """, (reseller_id, reseller_id, sub_id, sub_id, account_name))
+            tx_row = c_cursor.fetchone()
+            if tx_row:
+                tx_d = dict(tx_row)
+                tx_created = tx_d.get("created_at") or get_now_iso()
+                tx_elapsed = _calc_elapsed(tx_created)
+                tx_time_str = _format_time_passed(tx_elapsed)
+
+                # مشخصات کارت یا حساب مقصد
+                card_lbl = None
+                if tx_d.get("bank_name"):
+                    c_num = str(tx_d.get("rc_card_number") or tx_d.get("card_number") or "")
+                    suffix = f" (...{c_num[-4:]})" if len(c_num) >= 4 else ""
+                    card_lbl = f"{tx_d['bank_name']}{suffix}"
+                elif tx_d.get("card_number"):
+                    c_num = str(tx_d["card_number"])
+                    card_lbl = f"کارت بانکی (...{c_num[-4:]})" if len(c_num) >= 4 else "کارت بانکی"
+                else:
+                    card_lbl = "حساب پیش‌فرض / نقدی"
+
+                d_used = float(sub_dict.get("data_used") or 0)
+                d_limit = float(sub_dict.get("data_limit") or 0)
+                u_pct = round((d_used / d_limit * 100), 1) if d_limit > 0 else 0.0
+
+                is_within_24h = tx_elapsed <= 24.0
+                auto_check = is_within_24h and (u_pct < 10.0 or d_used < 0.5)
+
+                warning_msg = None
+                if u_pct >= 50.0:
+                    warning_msg = "بیش از ۵۰٪ از حجم این بسته مصرف شده است؛ در صورتی که مشتری حجم را تمام کرده و قصد بازگرداندن وجه را ندارید، این تیک را بردارید."
+                elif not is_within_24h:
+                    warning_msg = "بیش از ۲۴ ساعت از ثبت این فیش گذشته است."
+
+                customer_receipt = {
+                    "has_receipt": True,
+                    "tx_id": tx_d["id"],
+                    "order_id": tx_d.get("order_id"),
+                    "amount": int(tx_d.get("amount") or 0),
+                    "gateway": tx_d.get("gateway"),
+                    "card_title": card_lbl,
+                    "created_at": tx_created,
+                    "time_passed_text": tx_time_str,
+                    "elapsed_hours": round(tx_elapsed, 1),
+                    "is_within_24h": is_within_24h,
+                    "data_used_gb": round(d_used, 2),
+                    "data_limit_gb": round(d_limit, 2),
+                    "usage_percent": u_pct,
+                    "auto_check_recommended": auto_check,
+                    "usage_warning": warning_msg
+                }
+        except Exception as e_cr:
+            logger.error(f"Error querying customer receipt in calculate_reseller_refund: {e_cr}")
+        finally:
+            c_conn.close()
+
         return {
             "sub_id": sub_id,
             "account_name": account_name,
@@ -16703,11 +16810,12 @@ class Database:
             "actions_count": len(items),
             "payment_source": final_payment_source,
             "is_disallowed": is_disallowed,
-            "calc_from_creation": calc_from_creation
+            "calc_from_creation": calc_from_creation,
+            "customer_receipt": customer_receipt
         }
 
-    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None):
-        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (تفکیک کیف پول و اعتبار) و لغو صف تمدید"""
+    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None, void_customer_receipt: bool = False):
+        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (تفکیک کیف پول و اعتبار)، لغو صف تمدید و امکان ابطال رسید پرداخت مشتری"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
             return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
@@ -16772,6 +16880,83 @@ class Database:
                 SET is_deleted = 1, deleted_at = ?, delete_reason = ?, deleted_by = ?, status = 'deleted', updated_at = ?
                 WHERE id = ? AND reseller_id = ?
             """, (now, reason, by_user, now, sub_id, reseller_id))
+
+            # ۴.۵. در صورت درخواست نماینده، ابطال آخرین رسید پرداخت مشتری و رول‌بک موجودی کارت بانکی (بدون تاثیر بر اعتبار عمده)
+            voided_receipt = None
+            if void_customer_receipt:
+                try:
+                    tx_row = cursor.execute("""
+                        SELECT * FROM transactions
+                        WHERE reseller_id = ?
+                          AND (subscription_id = ? OR renew_sub_id = ? OR (account_name IS NOT NULL AND account_name = ?))
+                          AND status IN ('approved', 'completed')
+                        ORDER BY id DESC LIMIT 1
+                    """, (reseller_id, sub_id, sub_id, account_name)).fetchone()
+
+                    if tx_row:
+                        tx = dict(tx_row)
+                        tx_id = tx["id"]
+                        tx_amount = int(tx.get("amount") or 0)
+                        order_id = tx.get("order_id") or ""
+                        by_user_str = f"{by_user} (حذف اشتراک)"
+                        revoke_msg = f"ابطال خودکار همزمان با انتقال اشتراک به سطل زباله - علت: {reason}"
+
+                        # الف) به‌روزرسانی وضعیت فیش مشتری به باطل‌شده (revoked)
+                        cursor.execute("""
+                            UPDATE transactions
+                            SET status='revoked', revoked_at=?, revoked_by=?, revoke_reason=?, updated_at=?
+                            WHERE id=?
+                        """, (now, by_user_str, revoke_msg, now, tx_id))
+
+                        # ب) ثبت در لاگ حسابرسی فیش‌ها
+                        cursor.execute("""
+                            INSERT INTO transaction_audit_logs 
+                            (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                            VALUES (?, ?, ?, 'revoke', 'status', 'approved', 'revoked', ?, ?)
+                        """, (tx_id, reseller_id, by_user_str, reason, now))
+
+                        # ج) کسر از کارت بانکی نماینده
+                        c_tx = cursor.execute("""
+                            SELECT id, card_id, amount FROM card_transactions
+                            WHERE owner_type='reseller' AND reseller_id=?
+                              AND ((ref_type='transaction' AND ref_id=?) OR (ref_type='subscription' AND ref_id=?))
+                              AND type='deposit' AND (is_revoked=0 OR is_revoked IS NULL)
+                            ORDER BY id DESC LIMIT 1
+                        """, (reseller_id, str(tx_id), str(sub_id))).fetchone()
+
+                        card_deducted = False
+                        if c_tx:
+                            c_tx_dict = dict(c_tx)
+                            c_card_id = c_tx_dict["card_id"]
+                            c_amt = int(c_tx_dict.get("amount") or 0)
+                            cursor.execute("""
+                                UPDATE card_transactions
+                                SET is_revoked=1, revoked_at=?, revoked_by=?, revoke_reason=?
+                                WHERE id=?
+                            """, (now, by_user_str, f"ابطال رسید پرداخت #{tx_id} بابت حذف اشتراک", c_tx_dict["id"]))
+                            cursor.execute("""
+                                UPDATE reseller_cards
+                                SET balance = balance - ?
+                                WHERE id=?
+                            """, (c_amt, c_card_id))
+                            card_deducted = True
+
+                        # د) ابطال فاکتور هوشمند در صورت وجود
+                        if order_id:
+                            try:
+                                cursor.execute("UPDATE smart_invoices SET status='revoked' WHERE order_id=?", (order_id,))
+                            except Exception:
+                                pass
+
+                        voided_receipt = {
+                            "tx_id": tx_id,
+                            "order_id": order_id,
+                            "amount": tx_amount,
+                            "card_deducted": card_deducted
+                        }
+                except Exception as e_vr:
+                    logger.error(f"Error voiding customer receipt on reseller sub delete: {e_vr}")
+
             conn.commit()
 
             # ۵. ثبت لاگ سیستم
@@ -16802,7 +16987,8 @@ class Database:
                         "wallet_refund": wallet_refund,
                         "credit_refund": credit_refund,
                         "refund_percent": refund_percent,
-                        "payment_source": payment_source
+                        "payment_source": payment_source,
+                        "voided_receipt": voided_receipt
                     },
                     level="warning"
                 )
@@ -16820,7 +17006,8 @@ class Database:
                 "time_passed_text": refund_info["time_passed_text"],
                 "actions_count": actions_count,
                 "items": refund_info.get("items", []),
-                "payment_source": payment_source
+                "payment_source": payment_source,
+                "voided_receipt": voided_receipt
             }
         except Exception as e:
             return {"success": False, "error": str(e)}

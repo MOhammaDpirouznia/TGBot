@@ -11353,6 +11353,13 @@ def api_customer_debt_report(sub_id: int):
         return jsonify({"success": False, "error": "دسترسی غیرمجاز به این اشتراک"}), 403
 
     report = db.get_customer_debt_report(sub_id)
+    if report and isinstance(report, dict) and "records" in report:
+        for r in report["records"]:
+            if not r.get("created_at_shamsi") and r.get("created_at"):
+                c_str = str(r["created_at"]).strip()
+                r["created_at_shamsi"] = filter_shamsi_date(c_str)
+                r["jalali_date"] = filter_shamsi_date(c_str, "%Y/%m/%d")
+                r["jalali_time"] = filter_shamsi_date(c_str, "%H:%M") if len(c_str) > 10 else ""
     return jsonify({
         "success": True,
         "subscription": {
@@ -16332,14 +16339,18 @@ def reseller_delete_user(sub_id: int):
         except Exception as e:
             logger.warning(f"Error disabling user {sub['hidify_uuid']} in Hiddify on soft-delete: {e}")
 
-    # ۲. اجرای حذف نرم در دیتابیس با محاسبه استرداد وجه
-    del_res = db.delete_reseller_subscription(reseller_id, sub_id, reason=final_reason)
+    # ۲. اجرای حذف نرم در دیتابیس با محاسبه استرداد وجه و ابطال احتمالی فیش مشتری
+    void_receipt = request.form.get("void_customer_receipt") in ("1", "on", "true")
+    reseller_creator = session.get("name") or session.get("username") or f"reseller_{reseller_id}"
+    del_res = db.delete_reseller_subscription(reseller_id, sub_id, reason=final_reason, deleted_by=reseller_creator, void_customer_receipt=void_receipt)
     if del_res.get("success"):
         refund_amount = del_res.get("refund_amount", 0)
         wallet_ref = del_res.get("wallet_refund", 0)
         credit_ref = del_res.get("credit_refund", 0)
         time_passed = del_res.get("time_passed_text", "")
+        vr = del_res.get("voided_receipt")
 
+        msg_parts = []
         if refund_amount > 0:
             refund_parts = []
             if wallet_ref > 0:
@@ -16347,9 +16358,16 @@ def reseller_delete_user(sub_id: int):
             if credit_ref > 0:
                 refund_parts.append(f"{credit_ref:,} تومان به اعتبار خرید (کاهش بدهی)")
             parts_str = " و ".join(refund_parts)
-            flash(f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد و مبلغ {parts_str} بازگردانده شد. (مدت زمان گذشته: {time_passed} - علت: {final_reason})", "success")
+            msg_parts.append(f"مبلغ {parts_str} به حساب عمده بازگردانده شد (مدت زمان گذشته: {time_passed} - علت: {final_reason}).")
         else:
-            flash(f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد. (علت: {final_reason} - بدون استرداد وجه به دلیل گذشت بیش از ۲۴ ساعت)", "warning")
+            msg_parts.append(f"(علت: {final_reason} - بدون استرداد عمده به دلیل گذشت بیش از ۲۴ ساعت).")
+
+        if vr:
+            card_info = " و از مانده کارت بانکی کسر گردید" if vr.get("card_deducted") else ""
+            msg_parts.append(f"همچنین فیش پرداخت مشتری (#{vr['tx_id']} به مبلغ {vr['amount']:,} تومان) باطل شد{card_info}.")
+
+        full_msg = f"اشتراک «{sub['account_name']}» به سطل زباله منتقل شد. " + " ".join(msg_parts)
+        flash(full_msg, "success" if (refund_amount > 0 or vr) else "warning")
 
         r_after = db.get_reseller(reseller_id)
         if r_after:
