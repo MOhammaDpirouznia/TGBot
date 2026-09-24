@@ -1506,6 +1506,24 @@
             border-radius: 999px !important;
             transition: width 0.4s ease;
         }
+
+        /* استایل اعلان‌های صف تمدید و پیام‌های اطلاع‌رسانی با رنگ آبی هماهنگ و زیبا */
+        .alert-queue-blue {
+            background-color: #ebf5ff !important;
+            color: #1e40af !important;
+            border: 1px solid #bfdbfe !important;
+        }
+        .alert-queue-blue i {
+            color: #2563eb !important;
+        }
+        [data-bs-theme="dark"] .alert-queue-blue {
+            background-color: rgba(30, 64, 175, 0.22) !important;
+            color: #93c5fd !important;
+            border: 1px solid rgba(59, 130, 246, 0.35) !important;
+        }
+        [data-bs-theme="dark"] .alert-queue-blue i {
+            color: #60a5fa !important;
+        }
     </style>
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
@@ -1613,9 +1631,15 @@
                 </a>
                 {% endif %}
 
+                {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
+                    <i class="fas fa-wallet text-success"></i> کیف پول
+                </a>
+                {% endif %}
+
                 <!-- منوی کشویی فروش و بازاریابی -->
                 {% if not sub_role or sub_role in ['partner', 'manager2'] %}
-                {% set is_marketing_active = request.endpoint in ['reseller_broadcast', 'reseller_discounts', 'reseller_plans', 'reseller_vip_settings', 'reseller_social_tasks_page', 'reseller_lucky_wheel_page', 'reseller_ai_studio'] %}
+                {% set is_marketing_active = request.endpoint in ['reseller_broadcast', 'reseller_discounts', 'reseller_plans', 'reseller_vip_settings', 'reseller_social_tasks_page', 'reseller_lucky_wheel_page', 'reseller_ai_studio', 'reseller_affiliates', 'reseller_delinquent_settings'] %}
                 <button class="sidebar-dropdown-toggle {% if is_marketing_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1639,29 +1663,25 @@
                         <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
                             <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها
                         </a>
-                        <a class="submenu-item {% if request.endpoint == 'reseller_vip_settings' %}active{% endif %}" href="{{ url_for('reseller_vip_settings') }}">
+                        <a class="submenu-item {% if request.endpoint in ['reseller_vip_settings', 'reseller_social_tasks_page', 'reseller_lucky_wheel_page'] %}active{% endif %}" href="{{ url_for('reseller_vip_settings') }}">
                             <i class="fas fa-crown text-warning"></i> باشگاه مشتریان
                         </a>
-                        <a class="submenu-item {% if request.endpoint == 'reseller_social_tasks_page' %}active{% endif %}" href="{{ url_for('reseller_social_tasks_page') }}">
-                            <i class="fas fa-tasks text-success"></i> ماموریت‌ها و پاداش‌ها
-                        </a>
-                        <a class="submenu-item {% if request.endpoint == 'reseller_lucky_wheel_page' %}active{% endif %}" href="{{ url_for('reseller_lucky_wheel_page') }}">
-                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
+                        <a class="submenu-item {% if request.endpoint == 'reseller_delinquent_settings' %}active{% endif %}" href="{{ url_for('reseller_delinquent_settings') }}">
+                            <i class="fas fa-user-clock text-danger"></i> تنظیمات مشتریان بدحساب
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_ai_studio' %}active{% endif %}" href="{{ url_for('reseller_ai_studio') }}">
                             <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
+                            <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
                         </a>
                     </div>
                 </div>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
-                <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
-                    <i class="fas fa-wallet text-success"></i> کیف پول
-                </a>
-
                 <!-- منوی کشویی امور مالی و گزارشات -->
-                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments', 'reseller_affiliates'] %}
+                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments'] %}
                 <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1681,9 +1701,6 @@
                         </a>
                         <a class="submenu-item {% if request.endpoint in ['reseller_reports', 'reseller_payments'] %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                             <i class="fas fa-chart-line text-success"></i> گزارشات و سوابق مالی
-                        </a>
-                        <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
-                            <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
                         </a>
                     </div>
                 </div>
@@ -1810,7 +1827,7 @@
 
                 <!-- دسته‌بندی ۲: فروش و بازاریابی -->
                 {% if has_permission('plans') or has_permission('discounts') or has_permission('broadcast') or has_permission('users_view') %}
-                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'admin_social_tasks_page', 'broadcast', 'admin_ai_studio', 'admin_lucky_wheel_page'] %}
+                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'admin_social_tasks_page', 'broadcast', 'admin_ai_studio', 'admin_lucky_wheel_page', 'admin_delinquent_settings'] %}
                 <button class="sidebar-dropdown-toggle {% if is_marketing_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1836,11 +1853,11 @@
                         </a>
                         {% endif %}
                         {% if has_permission('users_view') %}
-                        <a class="submenu-item {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
+                        <a class="submenu-item {% if request.endpoint in ['vip_settings', 'admin_social_tasks_page', 'admin_lucky_wheel_page'] %}active{% endif %}" href="{{ url_for('vip_settings') }}">
                             <i class="fas fa-crown text-warning"></i> باشگاه مشتریان و سطوح VIP
                         </a>
-                        <a class="submenu-item {% if request.endpoint == 'admin_social_tasks_page' %}active{% endif %}" href="{{ url_for('admin_social_tasks_page') }}">
-                            <i class="fas fa-tasks text-success"></i> ماموریت‌ها و پاداش‌ها
+                        <a class="submenu-item {% if request.endpoint == 'admin_delinquent_settings' %}active{% endif %}" href="{{ url_for('admin_delinquent_settings') }}">
+                            <i class="fas fa-user-clock text-danger"></i> تنظیمات مشتریان بدحساب
                         </a>
                         {% endif %}
                         {% if has_permission('broadcast') %}
@@ -1850,9 +1867,6 @@
                         {% endif %}
                         <a class="submenu-item {% if request.endpoint == 'admin_ai_studio' %}active{% endif %}" href="{{ url_for('admin_ai_studio') }}">
                             <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی و مارکتینگ
-                        </a>
-                        <a class="submenu-item {% if request.endpoint == 'admin_lucky_wheel_page' %}active{% endif %}" href="{{ url_for('admin_lucky_wheel_page') }}">
-                            <i class="fas fa-dharmachakra text-warning"></i> گردونه خوش‌شانسی و جوایز
                         </a>
                     </div>
                 </div>
@@ -2061,11 +2075,36 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ 'success' if category == 'success' else ('warning' if category == 'warning' else 'danger') }} alert-dismissible fade show shadow-sm" role="alert">
-                        <i class="fas fa-{{ 'check-circle' if category == 'success' else ('exclamation-triangle' if category == 'warning' else 'times-circle') }} me-2"></i>
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
+                    {% set cat = category|lower %}
+                    {% set is_queue_or_blue = (cat in ['info', 'queue', 'primary'] or 'صف' in message) and cat not in ['danger', 'error', 'warning'] %}
+                    {% set is_success = (cat in ['success', 'ok']) and not is_queue_or_blue %}
+                    {% set is_warning = cat in ['warning'] %}
+                    
+                    {% if is_queue_or_blue %}
+                        <div class="alert alert-info alert-queue-blue alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="fas fa-circle-check me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% elif is_success %}
+                        <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="fas fa-circle-check me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% elif is_warning %}
+                        <div class="alert alert-warning alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="fas fa-triangle-exclamation me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="fas fa-circle-xmark me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endif %}
                 {% endfor %}
             {% endif %}
         {% endwith %}
@@ -2171,6 +2210,209 @@
     </script>
 
     <script>
+        // ─── ابزار مدیریت مهلت تسویه بدهی و قطع خودکار سرویس (Debt Due Deadline Picker) ───
+        const DebtDuePicker = {
+            months: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'],
+            weekdays: ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'],
+
+            toJalaali: function(gy, gm, gd) {
+                const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+                let jy = (gy <= 1600) ? 0 : 979;
+                gy -= (gy <= 1600) ? 621 : 1600;
+                const gy2 = (gm > 2) ? (gy + 1) : gy;
+                let days = (365 * gy) + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) - 80 + gd + g_d_m[gm - 1];
+                jy += 33 * Math.floor(days / 12053);
+                days %= 12053;
+                jy += 4 * Math.floor(days / 1461);
+                days %= 1461;
+                jy += Math.floor((days - 1) / 365);
+                if (days > 0) days = (days - 1) % 365;
+                const jm = (days < 186) ? 1 + Math.floor(days / 31) : 7 + Math.floor((days - 186) / 30);
+                const jd = 1 + ((days < 186) ? (days % 31) : ((days - 186) % 30));
+                return { jy, jm, jd };
+            },
+
+            toGregorian: function(jy, jm, jd) {
+                let gy = (jy <= 979) ? 621 : 1600;
+                jy -= (jy <= 979) ? 0 : 979;
+                let days = (365 * jy) + (Math.floor(jy / 33) * 8) + Math.floor(((jy % 33) + 3) / 4) + 78 + jd + ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+                gy += 400 * Math.floor(days / 146097);
+                days %= 146097;
+                if (days > 36524) {
+                    gy += 100 * Math.floor(--days / 36524);
+                    days %= 36524;
+                    if (days >= 365) days++;
+                }
+                gy += 4 * Math.floor(days / 1461);
+                days %= 1461;
+                gy += Math.floor((days - 1) / 365);
+                if (days > 0) days = (days - 1) % 365;
+                let gd = days + 1;
+                const sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+                let gm;
+                for (gm = 0; gm < 13; gm++) {
+                    const v = sal_a[gm];
+                    if (gd <= v) break;
+                    gd -= v;
+                }
+                return { gy, gm, gd };
+            },
+
+            formatTime: function(d) {
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                return hh + ':' + mm;
+            },
+
+            init: function(uid, defaultDays) {
+                defaultDays = parseInt(defaultDays) || 3;
+                const daysInput = document.getElementById('debtDueDaysInput_' + uid);
+                if (daysInput && (!daysInput.value || parseInt(daysInput.value) <= 0)) {
+                    daysInput.value = defaultDays;
+                }
+                const ySel = document.getElementById('debtDueYear_' + uid);
+                const mSel = document.getElementById('debtDueMonth_' + uid);
+                const dSel = document.getElementById('debtDueDay_' + uid);
+
+                if (ySel && ySel.options.length === 0) {
+                    const now = new Date();
+                    const curJ = this.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+                    for (let y = curJ.jy; y <= curJ.jy + 2; y++) {
+                        const opt = new Option(y + ' هـ.ش', y);
+                        ySel.add(opt);
+                    }
+                }
+                if (mSel && mSel.options.length === 0) {
+                    this.months.forEach((m, idx) => {
+                        const opt = new Option((idx + 1) + ' - ' + m, idx + 1);
+                        mSel.add(opt);
+                    });
+                }
+                if (dSel && dSel.options.length === 0) {
+                    for (let d = 1; d <= 31; d++) {
+                        const opt = new Option(String(d), d);
+                        dSel.add(opt);
+                    }
+                }
+
+                this.updateFromDays(uid);
+            },
+
+            updateFromDays: function(uid) {
+                const daysInput = document.getElementById('debtDueDaysInput_' + uid);
+                let days = parseInt(daysInput ? daysInput.value : 3);
+                if (isNaN(days) || days < 1) days = 1;
+
+                const now = new Date();
+                const target = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+                const j = this.toJalaali(target.getFullYear(), target.getMonth() + 1, target.getDate());
+
+                // به‌روزرسانی انتخاب‌گرهای تقویم
+                const ySel = document.getElementById('debtDueYear_' + uid);
+                const mSel = document.getElementById('debtDueMonth_' + uid);
+                const dSel = document.getElementById('debtDueDay_' + uid);
+                if (ySel) ySel.value = j.jy;
+                if (mSel) mSel.value = j.jm;
+                if (dSel) dSel.value = j.jd;
+
+                const dateStr = j.jy + '/' + String(j.jm).padStart(2, '0') + '/' + String(j.jd).padStart(2, '0');
+                const shamsiInput = document.getElementById('debtDueDateShamsi_' + uid);
+                if (shamsiInput) shamsiInput.value = dateStr;
+
+                this.renderPreview(uid, target, j);
+            },
+
+            updateFromCalendar: function(uid) {
+                const ySel = document.getElementById('debtDueYear_' + uid);
+                const mSel = document.getElementById('debtDueMonth_' + uid);
+                const dSel = document.getElementById('debtDueDay_' + uid);
+                if (!ySel || !mSel || !dSel) return;
+
+                const jy = parseInt(ySel.value);
+                const jm = parseInt(mSel.value);
+                let jd = parseInt(dSel.value);
+
+                const maxDays = (jm <= 6) ? 31 : (jm <= 11 ? 30 : 29);
+                if (jd > maxDays) {
+                    jd = maxDays;
+                    dSel.value = jd;
+                }
+
+                const g = this.toGregorian(jy, jm, jd);
+                const now = new Date();
+                const target = new Date(g.gy, g.gm - 1, g.gd, now.getHours(), now.getMinutes(), now.getSeconds());
+
+                const diffTime = target.getTime() - now.getTime();
+                const diffDays = Math.max(1, Math.round(diffTime / (24 * 60 * 60 * 1000)));
+                const daysInput = document.getElementById('debtDueDaysInput_' + uid);
+                if (daysInput) daysInput.value = diffDays;
+
+                const dateStr = jy + '/' + String(jm).padStart(2, '0') + '/' + String(jd).padStart(2, '0');
+                const shamsiInput = document.getElementById('debtDueDateShamsi_' + uid);
+                if (shamsiInput) shamsiInput.value = dateStr;
+
+                this.renderPreview(uid, target, { jy, jm, jd });
+            },
+
+            renderPreview: function(uid, targetGregorian, j) {
+                const timeStr = this.formatTime(new Date());
+                const timeBadge = document.getElementById('debtDueTimeBadge_' + uid);
+                if (timeBadge) timeBadge.textContent = 'ساعت ' + timeStr;
+
+                const weekday = this.weekdays[targetGregorian.getDay()];
+                const monthName = this.months[j.jm - 1];
+                const previewText = document.getElementById('debtDuePreviewText_' + uid);
+                if (previewText) {
+                    previewText.innerHTML = weekday + ' ' + j.jd + ' ' + monthName + ' ' + j.jy + ' — <span class="text-danger fw-bold">ساعت ' + timeStr + '</span>';
+                }
+            },
+
+            toggleCalendar: function(uid) {
+                const sw = document.getElementById('debtDueCalendarSwitch_' + uid);
+                const isCal = sw && sw.checked;
+                const daysBox = document.getElementById('debtDueDaysBox_' + uid);
+                const calBox = document.getElementById('debtDueCalendarBox_' + uid);
+                const modeInput = document.getElementById('debtDueMode_' + uid);
+
+                if (daysBox) daysBox.style.display = isCal ? 'none' : 'block';
+                if (calBox) calBox.style.display = isCal ? 'block' : 'none';
+                if (modeInput) modeInput.value = isCal ? 'calendar' : 'days';
+
+                if (isCal) {
+                    this.updateFromCalendar(uid);
+                } else {
+                    this.updateFromDays(uid);
+                }
+            },
+
+            setQuickDays: function(uid, days) {
+                const daysInput = document.getElementById('debtDueDaysInput_' + uid);
+                if (daysInput) {
+                    daysInput.value = days;
+                    this.updateFromDays(uid);
+                }
+                const container = document.getElementById('debtDueDaysBox_' + uid);
+                if (container) {
+                    container.querySelectorAll('button[data-days]').forEach(btn => {
+                        const bDays = parseInt(btn.getAttribute('data-days'));
+                        if (bDays === days) {
+                            btn.classList.add('btn-outline-danger', 'active', 'fw-bold');
+                            btn.classList.remove('btn-outline-secondary');
+                        } else {
+                            btn.classList.remove('btn-outline-danger', 'active', 'fw-bold');
+                            btn.classList.add('btn-outline-secondary');
+                        }
+                    });
+                }
+            }
+        };
+
+        function initDebtDuePicker(uid, defaultDays) { DebtDuePicker.init(uid, defaultDays); }
+        function toggleDebtDueCalendar(uid) { DebtDuePicker.toggleCalendar(uid); }
+        function updateDebtDuePreview(uid) { DebtDuePicker.updateFromDays(uid); }
+        function syncDebtDueCalendar(uid) { DebtDuePicker.updateFromCalendar(uid); }
+        function setDebtDueQuickDays(uid, days) { DebtDuePicker.setQuickDays(uid, days); }
+
         // ─── تابع عمومی نمایش بارکد QR و لینک ───
         let currentQrCodeInstance = null;
         function showQrModal(url, title, type) {
@@ -3203,6 +3445,14 @@
 
         function openQuickSubNote(subId, subName, btn) {
             currentSubNoteTriggerBtn = btn || null;
+            // بستن مودال جزئیات در صورت باز بودن تا دو مودال تداخل نکنند
+            if (subId) {
+                const detailModalEl = document.getElementById('customerDetailModal' + subId);
+                if (detailModalEl) {
+                    const dm = bootstrap.Modal.getInstance(detailModalEl);
+                    if (dm) dm.hide();
+                }
+            }
             const modalEl = document.getElementById('quickSubNoteModal');
             if (!modalEl) return;
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);

@@ -2262,7 +2262,7 @@
                 </span>
             </div>
             <div class="portal-subs-scroll">
-                {% for usub in user_subscriptions %}
+                {% for usub in user_subscriptions if not usub.get('is_deleted') and usub.get('status') != 'deleted' %}
                     {% set usub_token = usub.get('hidify_uuid') or usub.get('id') %}
                     {% set is_active_selected = (token and (token == usub.get('hidify_uuid') or token|string == usub.get('id')|string)) or (loop.first and not token) %}
                     <a href="{% if is_webapp %}{{ url_for('telegram_webapp', tg_id=telegram_id, r=reseller_id, token=usub_token) }}{% else %}{{ url_for('customer_portal', token=usub_token) }}{% endif %}" 
@@ -3621,24 +3621,39 @@
                                 </span>
                             </div>
 
-                            <!-- مینی چارت بصری بنتو ۱ -->
+                            <!-- مینی چارت بصری بنتو ۱ بر پایه آمار واقعی مصرف هفتگی -->
+                            {% set wc = traffic_analytics.get('weekly_chart') or {} %}
+                            {% set b1 = wc.get('bento1') or {} %}
                             <div class="py-2">
-                                <svg viewBox="0 0 200 60" class="w-100" style="height: 58px; overflow: visible;">
+                                <svg viewBox="0 0 200 60" class="w-100" style="height: 58px; overflow: visible;" id="bento1SparkSvg">
                                     <defs>
                                         <linearGradient id="bento1SparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                             <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.4"/>
                                             <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0.0"/>
                                         </linearGradient>
                                     </defs>
-                                    <path d="M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16 L 200,60 L 0,60 Z" fill="url(#bento1SparkGrad)" />
-                                    <path d="M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
-                                    <circle cx="150" cy="10" r="3.5" fill="#ffffff" />
-                                    <circle cx="150" cy="10" r="7" fill="#38bdf8" opacity="0.3" />
+                                    <path id="bento1SparkArea" d="{{ b1.get('area') or 'M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16 L 200,60 L 0,60 Z' }}" fill="url(#bento1SparkGrad)" />
+                                    <path id="bento1SparkLine" d="{{ b1.get('path') or 'M 0,48 Q 30,44 55,24 T 105,28 T 150,10 T 180,32 T 200,16' }}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" style="filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));"/>
+                                    
+                                    <!-- نقطه اوج مصرف و هاله نئونی -->
+                                    <circle id="bento1PeakDot" cx="{{ b1.get('peak_x', 150) }}" cy="{{ b1.get('peak_y', 10) }}" r="3.5" fill="#ffffff">
+                                        <title>{{ wc.get('peak_usage_str') or 'اوج مصرف' }}</title>
+                                    </circle>
+                                    <circle id="bento1PeakGlow" cx="{{ b1.get('peak_x', 150) }}" cy="{{ b1.get('peak_y', 10) }}" r="7" fill="#38bdf8" opacity="0.3" class="animate-pulse" />
+                                    
+                                    <!-- نقاط ظریف روزانه با تولتیپ مصرف واقعی -->
+                                    {% for pt in b1.get('points', []) %}
+                                        {% if not pt.is_peak %}
+                                        <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="2" fill="#ffffff" opacity="{{ '0.45' if pt.usage_mb > 0 else '0.18' }}">
+                                            <title>{{ pt.label }} ({{ pt.date }}): {{ pt.usage_str }}</title>
+                                        </circle>
+                                        {% endif %}
+                                    {% endfor %}
                                 </svg>
                                 <div class="d-flex justify-content-between text-secondary font-monospace px-1" style="font-size: 0.68rem;">
-                                    <span>۰۰:۰۰</span>
-                                    <span>اوج مصرف (شبانه)</span>
-                                    <span>۲۴:۰۰</span>
+                                    <span>شروع دوره</span>
+                                    <span class="text-info font-monospace" id="bento1PeakLabel">{{ wc.get('peak_text_formatted') or 'اوج مصرف' }}</span>
+                                    <span>امروز</span>
                                 </div>
                             </div>
                         </div>
@@ -4069,24 +4084,38 @@
                                 </span>
                             </div>
 
-                            <!-- نمودار موجی نئونی بنتو ۳ -->
+                            <!-- نمودار موجی نئونی بنتو ۳ بر پایه آمار واقعی مصرف هفتگی -->
+                            {% set wc = traffic_analytics.get('weekly_chart') or {} %}
+                            {% set b3 = wc.get('bento3') or {} %}
                             <div class="py-3">
-                                <svg viewBox="0 0 200 70" class="w-100" style="height: 75px; overflow: visible;">
+                                <svg viewBox="0 0 200 70" class="w-100" style="height: 75px; overflow: visible;" id="bento3WaveSvg">
                                     <defs>
                                         <linearGradient id="bento3WaveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                             <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.38"/>
                                             <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
                                         </linearGradient>
                                     </defs>
-                                    <path d="M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18 L 200,70 L 0,70 Z" fill="url(#bento3WaveGrad)" />
-                                    <path d="M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18" fill="none" stroke="#38bdf8" stroke-width="2.8" stroke-linecap="round" style="filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7));"/>
-                                    <circle cx="100" cy="32" r="3" fill="#ffffff" />
-                                    <circle cx="145" cy="10" r="4" fill="#ffffff" />
-                                    <circle cx="145" cy="10" r="8" fill="#38bdf8" opacity="0.35" class="animate-pulse" />
+                                    <path id="bento3WaveArea" d="{{ b3.get('area') or 'M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18 L 200,70 L 0,70 Z' }}" fill="url(#bento3WaveGrad)" />
+                                    <path id="bento3WaveLine" d="{{ b3.get('path') or 'M 0,55 Q 35,48 55,28 T 100,32 T 145,10 T 180,36 T 200,18' }}" fill="none" stroke="#38bdf8" stroke-width="2.8" stroke-linecap="round" style="filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7));"/>
+                                    
+                                    <!-- نقطه اوج مصرف و هاله نئونی تپنده -->
+                                    <circle id="bento3PeakDot" cx="{{ b3.get('peak_x', 145) }}" cy="{{ b3.get('peak_y', 10) }}" r="4" fill="#ffffff">
+                                        <title>{{ wc.get('peak_usage_str') or 'اوج مصرف' }}</title>
+                                    </circle>
+                                    <circle id="bento3PeakGlow" cx="{{ b3.get('peak_x', 145) }}" cy="{{ b3.get('peak_y', 10) }}" r="8" fill="#38bdf8" opacity="0.35" class="animate-pulse" />
+                                    
+                                    <!-- نقاط ظریف روزانه با تولتیپ مصرف واقعی -->
+                                    {% for pt in b3.get('points', []) %}
+                                        {% if not pt.is_peak %}
+                                        <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="2.5" fill="#ffffff" opacity="{{ '0.5' if pt.usage_mb > 0 else '0.2' }}">
+                                            <title>{{ pt.label }} ({{ pt.date }}): {{ pt.usage_str }}</title>
+                                        </circle>
+                                        {% endif %}
+                                    {% endfor %}
                                 </svg>
                                 <div class="d-flex justify-content-between text-secondary font-monospace px-1 mt-1" style="font-size: 0.68rem;">
                                     <span>شروع دوره</span>
-                                    <span>اوج مصرف</span>
+                                    <span class="text-info font-monospace" id="bento3PeakLabel">{{ wc.get('peak_text_formatted') or 'اوج مصرف' }}</span>
                                     <span>امروز</span>
                                 </div>
                             </div>
@@ -8573,6 +8602,59 @@ window.tgHaptic = function(type = 'light') {
 // ─── مدیریت و رندر تعاملی نمودار و آمار مصرف ترافیک (Traffic Analytics Engine) ───
 (function initTrafficAnalytics() {
     const trafficData = {{ (traffic_analytics or {}) | tojson | safe }};
+
+    // به‌روزرسانی و همگام‌سازی چارت‌های درون‌کارت بنتو ۱ و بنتو ۳
+    window.updateBentoWeeklySparklines = function(data) {
+        if (!data || !data.weekly_chart) return;
+        const wc = data.weekly_chart;
+        
+        // به‌روزرسانی بنتو ۱
+        const b1 = wc.bento1;
+        if (b1) {
+            const b1Area = document.getElementById('bento1SparkArea');
+            const b1Line = document.getElementById('bento1SparkLine');
+            const b1Dot = document.getElementById('bento1PeakDot');
+            const b1Glow = document.getElementById('bento1PeakGlow');
+            const b1Label = document.getElementById('bento1PeakLabel');
+            if (b1Area && b1.area) b1Area.setAttribute('d', b1.area);
+            if (b1Line && b1.path) b1Line.setAttribute('d', b1.path);
+            if (b1Dot && b1.peak_x !== undefined) {
+                b1Dot.setAttribute('cx', b1.peak_x);
+                b1Dot.setAttribute('cy', b1.peak_y);
+            }
+            if (b1Glow && b1.peak_x !== undefined) {
+                b1Glow.setAttribute('cx', b1.peak_x);
+                b1Glow.setAttribute('cy', b1.peak_y);
+            }
+            if (b1Label && wc.peak_text_formatted) b1Label.textContent = wc.peak_text_formatted;
+        }
+
+        // به‌روزرسانی بنتو ۳
+        const b3 = wc.bento3;
+        if (b3) {
+            const b3Area = document.getElementById('bento3WaveArea');
+            const b3Line = document.getElementById('bento3WaveLine');
+            const b3Dot = document.getElementById('bento3PeakDot');
+            const b3Glow = document.getElementById('bento3PeakGlow');
+            const b3Label = document.getElementById('bento3PeakLabel');
+            if (b3Area && b3.area) b3Area.setAttribute('d', b3.area);
+            if (b3Line && b3.path) b3Line.setAttribute('d', b3.path);
+            if (b3Dot && b3.peak_x !== undefined) {
+                b3Dot.setAttribute('cx', b3.peak_x);
+                b3Dot.setAttribute('cy', b3.peak_y);
+            }
+            if (b3Glow && b3.peak_x !== undefined) {
+                b3Glow.setAttribute('cx', b3.peak_x);
+                b3Glow.setAttribute('cy', b3.peak_y);
+            }
+            if (b3Label && wc.peak_text_formatted) b3Label.textContent = wc.peak_text_formatted;
+        }
+    };
+
+    try {
+        window.updateBentoWeeklySparklines(trafficData);
+    } catch(e) {}
+
     const barsContainer = document.getElementById('trafficBarsContainer');
     const tooltip = document.getElementById('trafficChartTooltip');
     const tableBody = document.getElementById('trafficTableBody');

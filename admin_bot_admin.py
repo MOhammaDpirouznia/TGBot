@@ -171,6 +171,9 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                     InlineKeyboardButton("⚙️ وضعیت حساب‌ها و درگاه‌ها", callback_data="adm_adv_settings"),
                 ],
                 [
+                    InlineKeyboardButton("💾 تهیه فوری بکاپ (اصلی + هیدیفای)", callback_data="adm_instant_backup"),
+                ],
+                [
                     InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
                 ]
             ]
@@ -237,6 +240,9 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                 [
                     InlineKeyboardButton("🤖 استودیو هوش مصنوعی و محتوا", callback_data="adm_ai_menu"),
                     InlineKeyboardButton("🌐 پایش سلامت نودها و سرورها", callback_data="adm_adv_nodes"),
+                ],
+                [
+                    InlineKeyboardButton("💾 تهیه فوری بکاپ (اصلی + هیدیفای)", callback_data="adm_instant_backup"),
                 ],
                 [
                     InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)

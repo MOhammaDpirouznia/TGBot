@@ -586,6 +586,88 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
 
+    if data == "adm_instant_backup":
+        await query.answer("⏳ در حال تهیه پشتیبان از هر دو پنل...", show_alert=False)
+        try:
+            await query.edit_message_text(
+                "⏳ **در حال ایجاد فایل پشتیبان کامل...**\n\n"
+                "• 📦 دیتابیس پنل اصلی و نمایندگان\n"
+                "• ⚡ کاربران و تنظیمات پنل هیدیفای\n\n"
+                "لطفاً چند لحظه شکیبا باشید...",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+        from backup import backup_manager, format_file_size
+        from utils import get_now_shamsi
+        now_sh = get_now_shamsi()
+        u_id = update.effective_user.id
+
+        main_res = await asyncio.to_thread(backup_manager.create_database_backup, True)
+        main_sent = False
+        main_err = None
+        if main_res.get("success"):
+            try:
+                m_path = main_res["file"]
+                m_name = main_res["filename"]
+                m_size = main_res["size"]
+                metrics = main_res.get("metrics", {})
+                m_cap = (
+                    "🛡️ <b>پشتیبان کامل پنل اصلی و نمایندگان</b>\n"
+                    "━━━━━━━━━━━━━━━━━\n"
+                    f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+                    f"📁 <b>نام فایل:</b> <code>{m_name}</code>\n"
+                    f"📊 <b>حجم فایل:</b> {format_file_size(m_size)}\n\n"
+                    "📈 <b>شاخص‌های آماری لحظه‌ای سامانه:</b>\n"
+                    f"👥 <b>تعداد کل مشتریان:</b> {metrics.get('total_subscriptions', 0):,}\n"
+                    f"🟢 <b>اشتراک‌های فعال:</b> {metrics.get('active_subscriptions', 0):,}\n"
+                    f"👔 <b>نمایندگان فعال:</b> {metrics.get('active_resellers', 0):,}\n"
+                    f"👤 <b>کل کاربران:</b> {metrics.get('total_users', 0):,}\n"
+                    f"💳 <b>کارت‌های بانکی:</b> {metrics.get('active_cards', 0):,}\n"
+                    "━━━━━━━━━━━━━━━━━\n"
+                    "🔒 سامانه مدیریت یکپارچه سرویس"
+                )
+                with open(m_path, "rb") as f_m:
+                    await context.bot.send_document(chat_id=u_id, document=f_m, filename=m_name, caption=m_cap, parse_mode="HTML")
+                main_sent = True
+            except Exception as e:
+                main_err = str(e)
+        else:
+            main_err = main_res.get("error", "خطا در ایجاد بکاپ")
+
+        hiddify_res = await backup_manager.create_hiddify_backup()
+        hiddify_sent = False
+        hiddify_err = None
+        if hiddify_res.get("success"):
+            try:
+                h_path = hiddify_res["file"]
+                h_name = hiddify_res["filename"]
+                h_size = hiddify_res["size"]
+                details = hiddify_res.get("details", {})
+                h_cap = (
+                    "⚡ <b>پشتیبان کامل پنل هیدیفای (Hiddify)</b>\n"
+                    "━━━━━━━━━━━━━━━━━\n"
+                    f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+                    f"📁 <b>نام فایل:</b> <code>{h_name}</code>\n"
+                    f"📊 <b>حجم فایل:</b> {format_file_size(h_size)}\n\n"
+                    f"👥 <b>تعداد کاربران ثبت‌شده در هیدیفای:</b> {details.get('users_count', 0):,}\n"
+                    "━━━━━━━━━━━━━━━━━\n"
+                    "🔒 سامانه مدیریت یکپارچه سرویس"
+                )
+                with open(h_path, "rb") as f_h:
+                    await context.bot.send_document(chat_id=u_id, document=f_h, filename=h_name, caption=h_cap, parse_mode="HTML")
+                hiddify_sent = True
+            except Exception as e:
+                hiddify_err = str(e)
+        else:
+            hiddify_err = hiddify_res.get("error", "خطا در دریافت بکاپ هیدیفای")
+
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="bsb_admin_menu")]])
+        res_txt = "✅ **پشتیبان‌گیری فوری با موفقیت انجام شد!**\n\nفایل‌های پشتیبان ارسال شدند." if (main_sent and hiddify_sent) else "⚠️ عملیات پشتیبان‌گیری با برخی خطاها پایان یافت."
+        await context.bot.send_message(chat_id=u_id, text=res_txt, reply_markup=kb, parse_mode="Markdown")
+        return
+
     # ─── تایید یا رد فیش‌های بسته نماینده توسط مدیر ───
     if data.startswith("adm_b_app_"):
         tx_id = int(data.replace("adm_b_app_", ""))

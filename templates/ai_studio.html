@@ -387,10 +387,19 @@
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white py-3 border-bottom">
                         <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
-                            <i class="fas fa-sliders text-success"></i>
-                            تنظیمات هوش مصنوعی و کانال‌های انتشار
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="fw-bold mb-0 text-white">
+                                        <i class="fas fa-sliders text-success"></i>
+                                        تنظیمات استودیو هوش مصنوعی و کانال‌ها
+                                    </h5>
+                                    <p class="text-muted small mb-0 mt-1">اتصال به انواع APIهای هوش مصنوعی (Google Gemini, OpenAI, DeepSeek) - کاملاً ایزوله و اختصاصی</p>
+                                </div>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                                    <i class="fas fa-shield-halved me-1"></i> تنظیمات کاملاً ایزوله و مستقل
+                                </span>
+                            </div>
                         </h5>
-                        <p class="text-muted small mb-0 mt-1">اتصال به انواع APIهای هوش مصنوعی (Google Gemini, OpenAI, DeepSeek, یا مدل‌های شخصی/محلی) و تنظیم مقصد کانال‌ها</p>
                     </div>
                     <div class="card-body p-4">
                         <form id="aiSettingsForm" onsubmit="handleSettingsSubmit(event)">
@@ -407,8 +416,18 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label fw-bold">نام مدل (Model Name)</label>
-                                    <input type="text" class="form-control" id="settingsModel" value="{{ settings.get('model_name', 'gemini-1.5-flash') }}" placeholder="gemini-1.5-flash / gpt-4o-mini">
-                                    <div class="form-text small" id="modelHelpText">پیش‌فرض جِمینای: gemini-1.5-flash یا gemini-1.5-pro</div>
+                                    <select class="form-select font-monospace mb-1" id="settingsModelSelect" onchange="onStudioModelSelectChange(this)">
+                                        <option value="gemini-2.0-flash">gemini-2.0-flash (سریع و بهینه - پیشنهادی)</option>
+                                        <option value="gemini-2.5-flash">gemini-2.5-flash (جدید و فوق‌سریع)</option>
+                                        <option value="gemini-1.5-flash">gemini-1.5-flash (رایگان و سبک)</option>
+                                        <option value="gemini-1.5-pro">gemini-1.5-pro (استدلال پیشرفته)</option>
+                                        <option value="gpt-4o-mini">gpt-4o-mini (اقتصادی OpenAI)</option>
+                                        <option value="gpt-4o">gpt-4o (پرچمدار OpenAI)</option>
+                                        <option value="deepseek-chat">deepseek-chat (DeepSeek V3)</option>
+                                        <option value="custom">سایر (تایپ دستی مدل)...</option>
+                                    </select>
+                                    <input type="text" class="form-control font-monospace" id="settingsModel" value="{{ settings.get('model_name', 'gemini-2.0-flash') }}" placeholder="gemini-2.0-flash" style="display: none;">
+                                    <div class="form-text small" id="modelHelpText">پیش‌فرض: gemini-2.0-flash یا gemini-2.5-flash یا gemini-1.5-pro</div>
                                 </div>
                             </div>
 
@@ -427,6 +446,18 @@
                                 <label class="form-label fw-bold">آدرس سرور API اختصاصی (Custom Base URL)</label>
                                 <input type="text" class="form-control" id="settingsCustomUrl" value="{{ settings.get('custom_base_url', '') }}" placeholder="http://localhost:11434/v1 یا https://openrouter.ai/api/v1">
                                 <div class="form-text small">آدرس باید با سازگاری استانداردهای OpenAI Chat Completions باشد.</div>
+                            </div>
+
+                            <!-- بخش اختصاصی تست زنده اتصال به هوش مصنوعی -->
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 bg-dark-subtle rounded-3 border mb-4" id="studioTestConnectionSection">
+                                <div>
+                                    <div class="fw-bold small text-white"><i class="fas fa-plug-circle-check text-primary me-1"></i> چکاپ و تست زنده اتصال به هوش مصنوعی</div>
+                                    <div class="text-muted small" style="font-size: 0.75rem;">بررسی سلامت کلید API، در دسترس بودن مدل و سنجش سرعت پاسخگویی قبل از استفاده</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="btnTestStudioAi" onclick="testStudioAiConnection()">
+                                    <i class="fas fa-bolt me-1"></i> تست اتصال به هوش مصنوعی
+                                </button>
+                                <div class="w-100 mt-2" id="studioAiTestResult" style="display: none;"></div>
                             </div>
 
                             <hr class="my-4">
@@ -955,6 +986,181 @@ function updatePendingBadges(delta) {
     }
 }
 
+function updateProviderFields() {
+    const providerElem = document.getElementById("settingsProvider");
+    if (!providerElem) return;
+    const provider = providerElem.value;
+    const apiKeyContainer = document.getElementById("apiKeyContainer");
+    const customUrlContainer = document.getElementById("customUrlContainer");
+    const testConnectionSection = document.getElementById("studioTestConnectionSection");
+    const modelHelpText = document.getElementById("modelHelpText");
+    const modelSelect = document.getElementById("settingsModelSelect");
+    const modelInput = document.getElementById("settingsModel");
+
+    if (provider === "offline") {
+        if (apiKeyContainer) apiKeyContainer.style.display = "none";
+        if (customUrlContainer) customUrlContainer.style.display = "none";
+        if (testConnectionSection) testConnectionSection.style.display = "none";
+        if (modelHelpText) modelHelpText.innerText = "حالت آفلاین از موتور تحلیل داخلی سیستم استفاده می‌کند.";
+    } else {
+        if (apiKeyContainer) apiKeyContainer.style.display = "block";
+        if (testConnectionSection) testConnectionSection.style.display = "flex";
+
+        if (provider === "custom") {
+            if (customUrlContainer) customUrlContainer.style.display = "block";
+            if (modelHelpText) modelHelpText.innerText = "نام مدل محلی یا ارائه‌دهنده سازگار با OpenAI (مانند llama3, mistral, qwen)";
+        } else {
+            if (customUrlContainer) customUrlContainer.style.display = "none";
+            if (provider === "gemini") {
+                if (modelHelpText) modelHelpText.innerText = "پیش‌فرض: gemini-2.0-flash یا gemini-2.5-flash یا gemini-1.5-pro";
+            } else if (provider === "openai") {
+                if (modelHelpText) modelHelpText.innerText = "پیش‌فرض: gpt-4o-mini یا gpt-4o";
+            } else if (provider === "deepseek") {
+                if (modelHelpText) modelHelpText.innerText = "پیش‌فرض: deepseek-chat";
+            }
+        }
+    }
+}
+
+function onStudioModelSelectChange(selectElem) {
+    const modelInput = document.getElementById("settingsModel");
+    if (!modelInput) return;
+    if (selectElem.value === 'custom') {
+        modelInput.style.display = 'block';
+        modelInput.focus();
+    } else {
+        modelInput.style.display = 'none';
+        modelInput.value = selectElem.value;
+    }
+}
+
+function initStudioModelSelect() {
+    const selectElem = document.getElementById("settingsModelSelect");
+    const modelInput = document.getElementById("settingsModel");
+    if (!selectElem || !modelInput) return;
+    const currentVal = (modelInput.value || '').trim();
+    let found = false;
+    for (let i = 0; i < selectElem.options.length; i++) {
+        if (selectElem.options[i].value === currentVal) {
+            selectElem.selectedIndex = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found && currentVal) {
+        selectElem.value = 'custom';
+        modelInput.style.display = 'block';
+    } else if (found) {
+        modelInput.style.display = 'none';
+    }
+    updateProviderFields();
+}
+
+async function testStudioAiConnection() {
+    const btn = document.getElementById("btnTestStudioAi");
+    const resultBox = document.getElementById("studioAiTestResult");
+    const keyInput = document.getElementById("settingsApiKey");
+    const modelInput = document.getElementById("settingsModel");
+    const modelSelect = document.getElementById("settingsModelSelect");
+    const providerSelect = document.getElementById("settingsProvider");
+    const customUrlInput = document.getElementById("settingsCustomUrl");
+
+    const provider = providerSelect ? providerSelect.value : 'gemini';
+    const apiKey = keyInput ? keyInput.value.trim() : '';
+    let model = modelInput ? modelInput.value.trim() : '';
+    if (modelSelect && modelSelect.value !== 'custom') {
+        model = modelSelect.value;
+        if (modelInput) modelInput.value = model;
+    }
+    const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+
+    if (!apiKey && provider !== 'offline') {
+        resultBox.style.display = "block";
+        resultBox.innerHTML = `
+            <div class="alert alert-warning py-2 px-3 small border mb-0">
+                <i class="fas fa-triangle-exclamation me-1"></i>
+                <strong>کلید دسترسی خالی است:</strong> لطفاً ابتدا کلید API Key اختصاصی خود را وارد نمایید.
+            </div>
+        `;
+        if (keyInput) keyInput.focus();
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال بررسی و تست اتصال...';
+    resultBox.style.display = "block";
+    resultBox.innerHTML = `
+        <div class="alert alert-info py-2 px-3 small border mb-0 d-flex align-items-center gap-2">
+            <span class="spinner-border spinner-border-sm text-primary"></span>
+            <span>در حال ارسال پیام آزمایشی به مدل <code>${escapeHtml(model || 'پیش‌فرض')}</code>... لطفاً چند لحظه صبر نمایید.</span>
+        </div>
+    `;
+
+    try {
+        const resp = await fetch("/api/ai-studio/settings/test-connection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                provider: provider,
+                api_key: apiKey,
+                model_name: model,
+                custom_base_url: customUrl
+            })
+        });
+        const data = await resp.json();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt me-1"></i> تست اتصال به هوش مصنوعی';
+
+        if (data.success) {
+            resultBox.innerHTML = `
+                <div class="alert alert-success py-2 px-3 small border mb-0">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong class="text-success"><i class="fas fa-circle-check me-1"></i> اتصال با موفقیت برقرار شد! ✅</strong>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            ⏱️ زمان پاسخ: ${data.latency_ms || 0} ms
+                        </span>
+                    </div>
+                    <div class="mb-1"><strong>مدل پاسخ‌دهنده:</strong> <code class="text-dark">${escapeHtml(data.model || model)}</code></div>
+                    <div class="p-2 bg-white rounded border mt-1 text-dark" style="line-height: 1.6;">
+                        <i class="fas fa-comment-dots text-primary me-1"></i>
+                        <em>${escapeHtml(data.reply || '')}</em>
+                    </div>
+                </div>
+            `;
+        } else {
+            let errorDetails = '';
+            if (data.raw) {
+                try {
+                    const rawPretty = typeof data.raw === 'object' ? JSON.stringify(data.raw, null, 2) : data.raw;
+                    errorDetails = `<pre class="mb-0 mt-2 p-2 bg-dark text-white rounded font-monospace small" style="max-height: 140px; overflow-y: auto; font-size: 0.72rem; direction: ltr;">${escapeHtml(rawPretty)}</pre>`;
+                } catch(e) {}
+            }
+            resultBox.innerHTML = `
+                <div class="alert alert-danger py-2 px-3 small border mb-0">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong class="text-danger"><i class="fas fa-circle-xmark me-1"></i> خطا در برقراری ارتباط با هوش مصنوعی ❌</strong>
+                        ${data.status_code ? `<span class="badge bg-danger">HTTP ${data.status_code}</span>` : ''}
+                    </div>
+                    <div class="text-danger-emphasis mb-1"><strong>علت خطا:</strong> ${escapeHtml(data.error || 'خطای ناشناخته')}</div>
+                    <div class="text-muted small">
+                        💡 <em>راهنمایی:</em> صحت کلید API Key و فعال بودن آن را بررسی نمایید. در صورت استفاده از Google Gemini، از مدل‌های معتبر نظیر <code>gemini-2.0-flash</code> یا <code>gemini-2.5-flash</code> استفاده فرمایید.
+                    </div>
+                    ${errorDetails}
+                </div>
+            `;
+        }
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt me-1"></i> تست اتصال به هوش مصنوعی';
+        resultBox.innerHTML = `
+            <div class="alert alert-danger py-2 px-3 small border mb-0">
+                <i class="fas fa-circle-xmark me-1"></i>
+                <strong>خطا در فراخوانی سرور:</strong> ${escapeHtml(err.message || 'عدم دسترسی به سرور')}
+            </div>
+        `;
+    }
+}
+
 async function handleSettingsSubmit(e) {
     e.preventDefault();
     const btn = document.getElementById("saveSettingsBtn");
@@ -963,9 +1169,15 @@ async function handleSettingsSubmit(e) {
     const topics = [];
     document.querySelectorAll(".topic-check:checked").forEach(cb => topics.push(cb.value));
 
+    const modelSelect = document.getElementById("settingsModelSelect");
+    const modelInput = document.getElementById("settingsModel");
+    if (modelSelect && modelSelect.value !== 'custom') {
+        modelInput.value = modelSelect.value;
+    }
+
     const settingsData = {
         provider: document.getElementById("settingsProvider").value,
-        model_name: document.getElementById("settingsModel").value,
+        model_name: modelInput.value,
         api_key: document.getElementById("settingsApiKey").value,
         custom_base_url: document.getElementById("settingsCustomUrl").value,
         target_channel: document.getElementById("settingsTargetChannel").value,
@@ -999,5 +1211,7 @@ function escapeHtml(text) {
     const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return String(text || '').replace(/[&<>"']/g, function(m) { return map[m]; });
 }
+
+document.addEventListener('DOMContentLoaded', initStudioModelSelect);
 </script>
 {% endblock %}

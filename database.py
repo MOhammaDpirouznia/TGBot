@@ -1357,6 +1357,26 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE wallet_transactions ADD COLUMN reseller_id INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_reseller_wallets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    reseller_id INTEGER DEFAULT 0,
+                    balance INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    UNIQUE(telegram_id, reseller_id)
+                )
+            """)
+        except Exception:
+            pass
+
+        try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS admin_debts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1446,12 +1466,13 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های وضعیت پرداخت، مبلغ بدهی و یادداشت بدهی اشتراک‌ها
+        # ستون‌های وضعیت پرداخت، مبلغ بدهی، یادداشت بدهی و مهلت قطع خودکار اشتراک‌ها
         for col_def in [
             "payment_status TEXT DEFAULT 'paid'",
             "debt_amount INTEGER DEFAULT 0",
             "debt_notes TEXT",
-            "debt_created_at TEXT"
+            "debt_created_at TEXT",
+            "debt_auto_disable_at TEXT DEFAULT NULL"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def}")
@@ -1604,6 +1625,17 @@ class Database:
             "reminder_quiet_end": "9",
         }
         for k, v in default_reminder_settings.items():
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+
+        # مقداردهی اولیه تنظیمات پیش‌فرض سامانه جامع پشتیبان‌گیری خودکار
+        default_backup_settings = {
+            "backup_main_enabled": "1",
+            "backup_hiddify_enabled": "1",
+            "backup_schedule_type": "interval",
+            "backup_interval_hours": "6",
+            "backup_fixed_hours": "00,06,12,18",
+        }
+        for k, v in default_backup_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
         # ستون‌های حذف نرم اشتراک‌ها (Soft Delete & 7-Day Purge)
@@ -2984,14 +3016,14 @@ class Database:
                     SELECT COALESCE(SUM(amount), 0) as total_spent,
                            COALESCE(COUNT(id), 0) as total_orders
                     FROM transactions
-                    WHERE user_id = ? AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)
+                    WHERE user_id = ? AND status = 'approved' AND reseller_id = ?
                 """, (telegram_id, effective_r_id))
             else:
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0) as total_spent,
                            COALESCE(COUNT(id), 0) as total_orders
                     FROM transactions
-                    WHERE user_id = ? AND status = 'approved'
+                    WHERE user_id = ? AND status = 'approved' AND (reseller_id IS NULL OR reseller_id = 0)
                 """, (telegram_id,))
             row = cursor.fetchone()
             if row:
@@ -3002,13 +3034,13 @@ class Database:
                 cursor.execute("""
                     SELECT COALESCE(SUM(data_limit), 0) as total_gb
                     FROM subscriptions
-                    WHERE telegram_id = ? AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)
+                    WHERE telegram_id = ? AND reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
                 """, (telegram_id, effective_r_id))
             else:
                 cursor.execute("""
                     SELECT COALESCE(SUM(data_limit), 0) as total_gb
                     FROM subscriptions
-                    WHERE telegram_id = ?
+                    WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL)
                 """, (telegram_id,))
             row_gb = cursor.fetchone()
             if row_gb:
@@ -3112,9 +3144,9 @@ class Database:
             "last_anniversary_reward_year": user.get("last_anniversary_reward_year", 0) if user else 0
         }
 
-    def evaluate_and_update_user_vip_tier(self, telegram_id: int) -> dict:
+    def evaluate_and_update_user_vip_tier(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
         """بررسی مجدد مجموع خریدها و به‌روزرسانی خودکار سطح وفاداری کاربر در پایگاه داده"""
-        tier_info = self.get_user_loyalty_tier(telegram_id)
+        tier_info = self.get_user_loyalty_tier(telegram_id, reseller_id=reseller_id)
         tier = tier_info["tier"]
         val_is_vip = 1 if tier != "none" else 0
         conn = self.get_connection()
@@ -3188,9 +3220,9 @@ class Database:
             logger.warning(f"Telegram getChatMember error for user {user_id} in {chat_str}: {e}")
             return {"is_member": False, "status": "network_error", "error": str(e)}
 
-    def process_vip_anniversary_and_birthday_rewards(self, telegram_id: int = None) -> list:
+    def process_vip_anniversary_and_birthday_rewards(self, telegram_id: int = None, reseller_id: Optional[int] = None) -> list:
         """
-        بررسی روز تولد و سالگرد عضویت کاربران و شارژ خودکار هدیه وفاداری (حجم، کیف پول یا کد تخفیف)
+        بررسی روز تولد و سالگرد عضویت کاربران و شارژ خودکار هدیه وفاداری (حجم، کیف پول یا کد تخفیف) با تفکیک نماینده
         هر کاربر در هر سال فقط ۱ بار می‌تواند هر یک از هدایا را دریافت کند (قفل ضد جعل سالانه)
         """
         now = datetime.now()
@@ -3207,7 +3239,7 @@ class Database:
             j_cur_year = cur_year
             j_cur_mm_dd = cur_mm_dd
 
-        sets = self.get_vip_settings()
+        sets = self.get_vip_settings(reseller_id=reseller_id or 0)
         b_enabled = sets.get("birthday_reward_enabled", True)
         b_type = sets.get("birthday_reward_type", "traffic")
         b_val = sets.get("birthday_reward_val", "5")
@@ -3251,17 +3283,17 @@ class Database:
                 if is_birthday_today and last_b_year not in (cur_year, j_cur_year):
                     gift_note = ""
                     if b_type == "traffic":
-                        subs = [s for s in self.get_user_subscriptions(uid) if s.get("status") == "active"]
+                        subs = [s for s in self.get_user_subscriptions(uid, reseller_id=reseller_id if reseller_id else None, is_admin_bot=True if not reseller_id else False) if s.get("status") == "active"]
                         if subs:
                             self.add_traffic_to_subscription(subs[0]["id"], float(b_val))
                             gift_note = f"{b_val} گیگابایت حجم هدیه تولد به اشتراک «{subs[0].get('account_name', subs[0]['id'])}» اضافه شد."
                         else:
                             val_t = int(float(b_val) * 10000)
-                            self.add_wallet_balance(uid, val_t, "هدیه تبریک تولد به کیف پول")
+                            self.add_wallet_balance(uid, val_t, "هدیه تبریک تولد به کیف پول", reseller_id=reseller_id)
                             gift_note = f"{val_t:,} تومان شارژ هدیه تولد به کیف پول شما واریز شد."
                     elif b_type == "wallet":
                         w_val = int(b_val)
-                        self.add_wallet_balance(uid, w_val, "هدیه نقدی تبریک تولد", tx_type="birthday_gift")
+                        self.add_wallet_balance(uid, w_val, "هدیه نقدی تبریک تولد", tx_type="birthday_gift", reseller_id=reseller_id)
                         gift_note = f"{w_val:,} تومان هدیه نقدی تولد به کیف پول واریز شد."
                     elif b_type == "discount":
                         disc_code = f"BDAY{uid}{secrets.token_hex(2).upper()}"
@@ -3298,17 +3330,17 @@ class Database:
                     if is_anniv_today and last_a_year not in (cur_year, j_cur_year):
                         gift_note = ""
                         if a_type == "traffic":
-                            subs = [s for s in self.get_user_subscriptions(uid) if s.get("status") == "active"]
+                            subs = [s for s in self.get_user_subscriptions(uid, reseller_id=reseller_id if reseller_id else None, is_admin_bot=True if not reseller_id else False) if s.get("status") == "active"]
                             if subs:
                                 self.add_traffic_to_subscription(subs[0]["id"], float(a_val))
                                 gift_note = f"{a_val} گیگابایت حجم هدیه سالگرد عضویت افزوده شد."
                             else:
                                 val_t = int(float(a_val) * 10000)
-                                self.add_wallet_balance(uid, val_t, "هدیه سالگرد عضویت به کیف پول")
+                                self.add_wallet_balance(uid, val_t, "هدیه سالگرد عضویت به کیف پول", reseller_id=reseller_id)
                                 gift_note = f"{val_t:,} تومان هدیه سالگرد به کیف پول واریز شد."
                         elif a_type == "wallet":
                             w_val = int(a_val)
-                            self.add_wallet_balance(uid, w_val, "هدیه نقدی سالگرد عضویت", tx_type="anniversary_gift")
+                            self.add_wallet_balance(uid, w_val, "هدیه نقدی سالگرد عضویت", tx_type="anniversary_gift", reseller_id=reseller_id)
                             gift_note = f"{w_val:,} تومان هدیه نقدی سالگرد عضویت واریز شد."
                         elif a_type == "discount":
                             disc_code = f"ANNIV{uid}{secrets.token_hex(2).upper()}"
@@ -3332,7 +3364,7 @@ class Database:
 
         return rewards_granted
 
-    def get_user_vip_info(self, telegram_id: int) -> dict:
+    def get_user_vip_info(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
         """دریافت جامع اطلاعات، سطح وفاداری (Loyalty Tier)، درصد تخفیف همیشگی و مزایای VIP کاربر"""
         user = self.get_user(telegram_id)
         if not user:
@@ -3356,7 +3388,7 @@ class Database:
                 "birthday": None
             }
 
-        loyalty = self.get_user_loyalty_tier(telegram_id)
+        loyalty = self.get_user_loyalty_tier(telegram_id, reseller_id=reseller_id)
         return {
             "is_vip": loyalty["is_vip"],
             "vip_type": user.get("vip_type") or "manual",
@@ -3413,7 +3445,7 @@ class Database:
 
     def check_and_upgrade_user_vip(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
         """بررسی خودکار مجموع خریدهای کاربر و ارتقا به سطوح برنزی، نقره‌ای و طلایی VIP"""
-        tier_info = self.evaluate_and_update_user_vip_tier(telegram_id)
+        tier_info = self.evaluate_and_update_user_vip_tier(telegram_id, reseller_id=reseller_id)
         return {
             "upgraded": tier_info["tier"] != "none",
             "is_vip": tier_info["is_vip"],
@@ -3649,14 +3681,21 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # محاسبه تعداد کل ارجاعات معتبر کاربر جهت ماموریت‌های دعوت از دوستان
+        # محاسبه تعداد کل ارجاعات معتبر کاربر جهت ماموریت‌های دعوت از دوستان با تفکیک نماینده
         ref_count = 0
         try:
-            cursor.execute("""
-                SELECT COUNT(DISTINCT referred_id) as ref_count
-                FROM referrals
-                WHERE referrer_id = ? AND status != 'rejected'
-            """, (user_id,))
+            if reseller_id and int(reseller_id) > 0:
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT referred_id) as ref_count
+                    FROM referrals
+                    WHERE referrer_id = ? AND status != 'rejected' AND reseller_id = ?
+                """, (user_id, int(reseller_id)))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT referred_id) as ref_count
+                    FROM referrals
+                    WHERE referrer_id = ? AND status != 'rejected' AND (reseller_id = 0 OR reseller_id IS NULL)
+                """, (user_id,))
             row_ref = cursor.fetchone()
             if row_ref:
                 ref_count = int(row_ref["ref_count"] or 0)
@@ -3781,14 +3820,17 @@ class Database:
             # ۳. اهدای آنی پاداش بر اساس نوع هدیه
             r_type = task.get("reward_type", "traffic")
             r_val = task.get("reward_value", "1")
+            task_r_id = int(task.get("reseller_id") or 0)
             delivered_text = ""
 
             if r_type == "traffic":
                 sub_to_add = None
                 if chosen_sub_id:
-                    sub_to_add = self.get_subscription(chosen_sub_id)
+                    cand = self.get_subscription(chosen_sub_id)
+                    if cand and int(cand.get("reseller_id") or 0) == task_r_id:
+                        sub_to_add = cand
                 if not sub_to_add:
-                    active_subs = [s for s in self.get_user_subscriptions(user_id) if s.get("status") == "active"]
+                    active_subs = [s for s in self.get_user_subscriptions(user_id, reseller_id=task_r_id if task_r_id else None, is_admin_bot=True if not task_r_id else False) if s.get("status") == "active"]
                     sub_to_add = active_subs[0] if active_subs else None
 
                 if sub_to_add:
@@ -3799,12 +3841,12 @@ class Database:
                 else:
                     # اگر کاربر در لحظه دریافت هیچ اشتراک فعالی نداشت، معادل ریالی به کیف پول شارژ می‌شود
                     equiv_wallet = int(float(r_val) * 10000)
-                    self.add_wallet_balance(user_id, equiv_wallet, f"هدیه نقدی ماموریت {task['title']} (معادل حجم هدیه)")
+                    self.add_wallet_balance(user_id, equiv_wallet, f"هدیه نقدی ماموریت {task['title']} (معادل حجم هدیه)", reseller_id=task_r_id)
                     delivered_text = f"مبلغ {equiv_wallet:,} تومان به عنوان پاداش به کیف پول شما واریز گردید."
 
             elif r_type == "wallet":
                 w_amount = int(float(r_val))
-                self.add_wallet_balance(user_id, w_amount, f"پاداش ماموریت: {task['title']}", tx_type="quest_reward")
+                self.add_wallet_balance(user_id, w_amount, f"پاداش ماموریت: {task['title']}", tx_type="quest_reward", reseller_id=task_r_id)
                 delivered_text = f"مبلغ {w_amount:,} تومان به موجودی کیف پول شما واریز شد."
 
             elif r_type == "discount":
@@ -3875,10 +3917,10 @@ class Database:
                     SELECT u.*,
                            COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as total_spent,
                            COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as total_orders,
-                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active' AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as active_subs
+                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL) AND (reseller_id = ? OR reseller_id IS NULL OR reseller_id = 0)), 0) as active_subs
                     FROM users u
                     WHERE (u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold'))
-                      AND (u.reseller_id = ? OR u.telegram_id IN (SELECT telegram_id FROM subscriptions WHERE reseller_id = ?))
+                      AND (u.reseller_id = ? OR u.telegram_id IN (SELECT telegram_id FROM subscriptions WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)))
                     ORDER BY total_spent DESC, u.id DESC
                 """, (r_id, r_id, r_id, r_id, r_id))
             else:
@@ -3886,7 +3928,7 @@ class Database:
                     SELECT u.*,
                            COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_spent,
                            COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_orders,
-                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active'), 0) as active_subs
+                           COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)), 0) as active_subs
                     FROM users u
                     WHERE u.is_vip = 1 OR u.vip_tier IN ('bronze', 'silver', 'gold')
                     ORDER BY total_spent DESC, u.id DESC
@@ -3986,40 +4028,89 @@ class Database:
     # مدیریت کیف پول کاربر (User In-App Wallet)
     # ═══════════════════════════════════════════════════════════════
 
-    def get_user_wallet_balance(self, telegram_id: int) -> int:
-        """دریافت موجودی کیف پول کاربر (به تومان)"""
-        user = self.get_user(telegram_id)
-        if not user:
+    def get_user_wallet_balance(self, telegram_id: int, reseller_id: Optional[int] = None) -> int:
+        """دریافت موجودی کیف پول کاربر (به تومان) با تفکیک کامل نماینده و مدیریت"""
+        if not telegram_id:
             return 0
-        return int(user.get("wallet_balance") or 0)
+        effective_r_id = int(reseller_id) if reseller_id is not None else None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if effective_r_id is not None:
+                cursor.execute("SELECT balance FROM user_reseller_wallets WHERE telegram_id = ? AND reseller_id = ?", (telegram_id, effective_r_id))
+                row = cursor.fetchone()
+                if row:
+                    return int(row["balance"] or 0)
+                # در صورت عدم وجود رکورد اختصاصی، بررسی سازگاری رو به عقب از جدول users
+                cursor.execute("SELECT wallet_balance, reseller_id FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
+                u_row = cursor.fetchone()
+                if u_row and (int(u_row["reseller_id"] or 0) == effective_r_id):
+                    return int(u_row["wallet_balance"] or 0)
+                return 0
+            else:
+                cursor.execute("SELECT wallet_balance, reseller_id FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
+                u_row = cursor.fetchone()
+                if not u_row:
+                    return 0
+                u_rid = int(u_row["reseller_id"] or 0)
+                cursor.execute("SELECT balance FROM user_reseller_wallets WHERE telegram_id = ? AND reseller_id = ?", (telegram_id, u_rid))
+                row = cursor.fetchone()
+                if row:
+                    return int(row["balance"] or 0)
+                return int(u_row["wallet_balance"] or 0)
+        except Exception as e:
+            logger.error(f"Error getting wallet balance for {telegram_id}: {e}")
+            return 0
+        finally:
+            conn.close()
 
-    def add_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None, tx_type: str = "deposit") -> dict:
-        """افزایش موجودی کیف پول کاربر و ثبت تراکنش"""
+    def add_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None, tx_type: str = "deposit", reseller_id: Optional[int] = None) -> dict:
+        """افزایش موجودی کیف پول کاربر و ثبت تراکنش با تفکیک و ایزولاسیون کامل نماینده و مدیریت"""
         if amount <= 0:
             return {"success": False, "error": "مبلغ باید بیشتر از صفر باشد."}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT id, telegram_id, wallet_balance FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
-            row = cursor.fetchone()
-            if not row:
-                cursor.execute("""
-                    INSERT INTO users (telegram_id, username, wallet_balance, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (telegram_id, f"user_{telegram_id}", amount, now, now))
-                new_balance = amount
-                actual_tg_id = telegram_id
+            cursor.execute("SELECT id, telegram_id, wallet_balance, reseller_id FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
+            u_row = cursor.fetchone()
+            actual_tg_id = u_row["telegram_id"] if u_row else telegram_id
+
+            if reseller_id is not None:
+                effective_r_id = int(reseller_id)
+            elif u_row and u_row["reseller_id"] is not None:
+                effective_r_id = int(u_row["reseller_id"] or 0)
             else:
-                actual_tg_id = row["telegram_id"]
-                current_bal = int(row["wallet_balance"] or 0)
+                effective_r_id = 0
+
+            # بررسی یا ثبت در user_reseller_wallets
+            cursor.execute("SELECT id, balance FROM user_reseller_wallets WHERE telegram_id = ? AND reseller_id = ?", (actual_tg_id, effective_r_id))
+            w_row = cursor.fetchone()
+            if w_row:
+                current_bal = int(w_row["balance"] or 0)
                 new_balance = current_bal + amount
-                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, row["id"]))
+                cursor.execute("UPDATE user_reseller_wallets SET balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, w_row["id"]))
+            else:
+                legacy_bal = int(u_row["wallet_balance"] or 0) if (u_row and int(u_row["reseller_id"] or 0) == effective_r_id) else 0
+                new_balance = legacy_bal + amount
+                cursor.execute("""
+                    INSERT INTO user_reseller_wallets (telegram_id, reseller_id, balance, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (actual_tg_id, effective_r_id, new_balance, now, now))
+
+            # همگام‌سازی سازگاری در users در صورت تطابق مالک
+            if not u_row:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, wallet_balance, reseller_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (actual_tg_id, f"user_{actual_tg_id}", new_balance, effective_r_id, now, now))
+            elif int(u_row["reseller_id"] or 0) == effective_r_id:
+                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, u_row["id"]))
 
             cursor.execute("""
-                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (actual_tg_id, amount, tx_type, new_balance, description, ref_id, now))
+                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, reseller_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (actual_tg_id, amount, tx_type, new_balance, description, ref_id, effective_r_id, now))
 
             conn.commit()
             return {"success": True, "new_balance": new_balance}
@@ -4029,31 +4120,53 @@ class Database:
         finally:
             conn.close()
 
-    def deduct_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None) -> dict:
-        """کسر از موجودی کیف پول کاربر جهت خرید یا تمدید پلن"""
+    def deduct_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None, reseller_id: Optional[int] = None) -> dict:
+        """کسر از موجودی کیف پول کاربر جهت خرید یا تمدید پلن با ایزولاسیون نماینده و مدیریت"""
         if amount <= 0:
             return {"success": False, "error": "مبلغ نامعتبر است."}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT id, telegram_id, wallet_balance FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
-            row = cursor.fetchone()
-            if not row:
-                return {"success": False, "error": "کاربر یافت نشد."}
+            cursor.execute("SELECT id, telegram_id, wallet_balance, reseller_id FROM users WHERE telegram_id = ? OR id = ?", (telegram_id, telegram_id))
+            u_row = cursor.fetchone()
+            actual_tg_id = u_row["telegram_id"] if u_row else telegram_id
 
-            actual_tg_id = row["telegram_id"]
-            current_bal = int(row["wallet_balance"] or 0)
+            if reseller_id is not None:
+                effective_r_id = int(reseller_id)
+            elif u_row and u_row["reseller_id"] is not None:
+                effective_r_id = int(u_row["reseller_id"] or 0)
+            else:
+                effective_r_id = 0
+
+            cursor.execute("SELECT id, balance FROM user_reseller_wallets WHERE telegram_id = ? AND reseller_id = ?", (actual_tg_id, effective_r_id))
+            w_row = cursor.fetchone()
+            if w_row:
+                current_bal = int(w_row["balance"] or 0)
+                wallet_row_id = w_row["id"]
+            else:
+                current_bal = int(u_row["wallet_balance"] or 0) if (u_row and int(u_row["reseller_id"] or 0) == effective_r_id) else 0
+                wallet_row_id = None
+
             if current_bal < amount:
                 return {"success": False, "error": "موجودی کیف پول شما کافی نیست.", "balance": current_bal, "required": amount}
 
             new_balance = current_bal - amount
-            cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, row["id"]))
+            if wallet_row_id:
+                cursor.execute("UPDATE user_reseller_wallets SET balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, wallet_row_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO user_reseller_wallets (telegram_id, reseller_id, balance, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (actual_tg_id, effective_r_id, new_balance, now, now))
+
+            if u_row and int(u_row["reseller_id"] or 0) == effective_r_id:
+                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now, u_row["id"]))
 
             cursor.execute("""
-                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
-                VALUES (?, ?, 'purchase', ?, ?, ?, ?)
-            """, (actual_tg_id, -amount, new_balance, description, ref_id, now))
+                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, reseller_id, created_at)
+                VALUES (?, ?, 'purchase', ?, ?, ?, ?, ?)
+            """, (actual_tg_id, -amount, new_balance, description, ref_id, effective_r_id, now))
 
             conn.commit()
             return {"success": True, "new_balance": new_balance}
@@ -4063,17 +4176,34 @@ class Database:
         finally:
             conn.close()
 
-    def get_wallet_transactions(self, telegram_id: int, limit: int = 20) -> list:
-        """دریافت لیست تاریخچه تراکنش‌های کیف پول کاربر"""
+    def get_wallet_transactions(self, telegram_id: int, limit: int = 20, reseller_id: Optional[int] = None) -> list:
+        """دریافت لیست تاریخچه تراکنش‌های کیف پول کاربر با فیلتر نماینده و مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
-                SELECT * FROM wallet_transactions 
-                WHERE telegram_id = ? 
-                ORDER BY created_at DESC 
-                LIMIT ?
-            """, (telegram_id, limit))
+            if reseller_id is not None:
+                r_id = int(reseller_id)
+                if r_id > 0:
+                    cursor.execute("""
+                        SELECT * FROM wallet_transactions 
+                        WHERE telegram_id = ? AND reseller_id = ?
+                        ORDER BY created_at DESC 
+                        LIMIT ?
+                    """, (telegram_id, r_id, limit))
+                else:
+                    cursor.execute("""
+                        SELECT * FROM wallet_transactions 
+                        WHERE telegram_id = ? AND (reseller_id = 0 OR reseller_id IS NULL)
+                        ORDER BY created_at DESC 
+                        LIMIT ?
+                    """, (telegram_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT * FROM wallet_transactions 
+                    WHERE telegram_id = ? 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                """, (telegram_id, limit))
             rows = cursor.fetchall()
             return [dict(r) for r in rows]
         except Exception as e:
@@ -4202,14 +4332,17 @@ class Database:
         finally:
             conn.close()
 
-    def get_user_subscriptions(self, telegram_id, status=None, reseller_id=None, is_admin_bot=False):
-        """دریافت اشتراک‌های کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
+    def get_user_subscriptions(self, telegram_id, status=None, reseller_id=None, is_admin_bot=False, include_deleted=False):
+        """دریافت اشتراک‌های کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت و فیلتر خودکار اشتراک‌های حذف شده"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
             query = "SELECT * FROM subscriptions WHERE telegram_id = ?"
             params = [telegram_id]
+
+            if not include_deleted:
+                query += " AND (is_deleted = 0 OR is_deleted IS NULL) AND (status != 'deleted' OR status IS NULL)"
 
             if reseller_id is not None:
                 query += " AND reseller_id = ?"
@@ -4232,12 +4365,12 @@ class Database:
             conn.close()
 
     def get_active_subscription(self, telegram_id, reseller_id=None, is_admin_bot=False):
-        """دریافت اشتراک فعال کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
+        """دریافت اشتراک فعال کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت و عدم برگشت اشتراک‌های حذف شده"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            query = "SELECT * FROM subscriptions WHERE telegram_id = ? AND status = 'active'"
+            query = "SELECT * FROM subscriptions WHERE telegram_id = ? AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)"
             params = [telegram_id]
 
             if reseller_id is not None:
@@ -4402,16 +4535,29 @@ class Database:
         finally:
             conn.close()
 
-    def get_user_transactions(self, user_id):
-        """دریافت تراکنش‌های کاربر"""
+    def get_user_transactions(self, user_id, reseller_id: Optional[int] = None):
+        """دریافت تراکنش‌های کاربر با تفکیک دقیق نماینده یا مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
-                SELECT * FROM transactions WHERE user_id = ?
-                ORDER BY created_at DESC
-            """, (user_id,))
+            if reseller_id is not None:
+                r_id = int(reseller_id)
+                if r_id > 0:
+                    cursor.execute("""
+                        SELECT * FROM transactions WHERE user_id = ? AND reseller_id = ?
+                        ORDER BY created_at DESC
+                    """, (user_id, r_id))
+                else:
+                    cursor.execute("""
+                        SELECT * FROM transactions WHERE user_id = ? AND (reseller_id IS NULL OR reseller_id = 0)
+                        ORDER BY created_at DESC
+                    """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT * FROM transactions WHERE user_id = ?
+                    ORDER BY created_at DESC
+                """, (user_id,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
@@ -6426,6 +6572,29 @@ class Database:
             return default
         finally:
             conn.close()
+
+    def is_setting_enabled(self, key, default=True):
+        """
+        بررسی فعال/غیرفعال بودن یک تنظیم سیستم به صورت کاملاً ایمن و منعطف.
+        پشتیبانی از انواع int, str, bool و رفع باگ عدم تطابق نوع داده (Type Coercion) ناشی از json.loads.
+        """
+        try:
+            val = self.get_setting(key, default=None)
+            if val is None:
+                return default
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, (int, float)):
+                return val != 0
+            s = str(val).strip().lower()
+            if s in ("1", "true", "yes", "on", "enable", "enabled"):
+                return True
+            if s in ("0", "false", "no", "off", "disable", "disabled"):
+                return False
+            return default
+        except Exception as e:
+            logger.error(f"Error checking if setting {key} is enabled: {e}")
+            return default
 
     def get_all_settings(self):
         """دریافت تمام تنظیمات با پشتیبانی از کش"""
@@ -8932,7 +9101,7 @@ class Database:
             "chat_ai_mode": self.get_setting("chat_ai_mode", "smart_local"),
             "chat_ai_api_key": self.get_setting("chat_ai_api_key", ""),
             "chat_ai_api_url": self.get_setting("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
-            "chat_ai_model": self.get_setting("chat_ai_model", "gemini-1.5-pro"),
+            "chat_ai_model": self.get_setting("chat_ai_model", "gemini-2.0-flash"),
             "chat_sound_enabled": str(self.get_setting("chat_sound_enabled", "1")).lower() in ("1", "true"),
             "chat_ai_rate_limit_hourly": int(self.get_setting("chat_ai_rate_limit_hourly", 15) or 15),
             "chat_ai_cooldown_seconds": int(self.get_setting("chat_ai_cooldown_seconds", 5) or 5),
@@ -9016,20 +9185,51 @@ class Database:
             try:
                 from ai_marketing_manager import ai_marketing
                 api_url = self.get_setting("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
-                model = self.get_setting("chat_ai_model", "gemini-1.5-pro")
+                model = self.get_setting("chat_ai_model", "gemini-2.0-flash")
                 max_tokens = int(self.get_setting("chat_ai_max_tokens", 400) or 400)
+
+                # استخراج اطلاعات اشتراک جهت پاسخگویی دقیق و شخصی‌سازی شده
+                sub_details = ""
+                if sub_info:
+                    try:
+                        tot_gb = float(sub_info.get("traffic_total_gb", 0) or 0)
+                        used_gb = float(sub_info.get("traffic_used_gb", 0) or 0)
+                        rem_gb = round(max(0.0, tot_gb - used_gb), 2)
+                        sub_details = (
+                            f"\nاطلاعات اشتراک کاربر:\n"
+                            f"- نام اکانت: {sub_info.get('account_name', 'مشتری')}\n"
+                            f"- حجم باقیمانده: {rem_gb} گیگابایت از {tot_gb} گیگ\n"
+                            f"- وضعیت سرویس: {sub_info.get('status', 'active')}\n"
+                        )
+                    except Exception:
+                        pass
 
                 sys_prompt = (
                     "You are an expert, polite, and helpful Persian AI support assistant for a VPN customer portal. "
                     "Respond concisely, practically, and politely in Persian. "
                     "Help the user solve connection, ping, software, or subscription issues. "
                     "If a human agent is needed, assure them that support has received their ticket."
+                    f"{sub_details}"
                 )
 
-                messages = [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": text}
-                ]
+                # بارگذاری تاریخچه آخرین پیام‌های تبادل‌شده در این تیکت جهت درک کامل کانتکست
+                chat_context = []
+                try:
+                    ticket_msgs = self.get_ticket_messages(ticket_id) or []
+                    for tm in ticket_msgs[-6:]:
+                        m_content = (tm.get("message") or "").strip()
+                        if not m_content:
+                            continue
+                        sender_type = tm.get("sender_type", "user")
+                        role = "assistant" if sender_type in ("ai", "admin", "agent") else "user"
+                        chat_context.append({"role": role, "content": m_content})
+                except Exception as e_hist:
+                    logger.debug(f"Could not load ticket chat history: {e_hist}")
+
+                if not chat_context or chat_context[-1]["content"] != text:
+                    chat_context.append({"role": "user", "content": text})
+
+                messages = [{"role": "system", "content": sys_prompt}] + chat_context
 
                 url_lower = (api_url or "").lower()
                 model_lower = (model or "").lower()
@@ -9129,7 +9329,7 @@ class Database:
                        r.username as reseller_username,
                        r.balance as reseller_balance,
                        r.telegram_id as reseller_telegram_id,
-                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count,
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)) as active_subs_count,
                        (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = t.id) as messages_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.telegram_id = u.telegram_id
@@ -9203,7 +9403,7 @@ class Database:
                        r.username as reseller_username,
                        r.balance as reseller_balance,
                        r.telegram_id as reseller_telegram_id,
-                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)) as active_subs_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.telegram_id = u.telegram_id
                 LEFT JOIN resellers r ON t.reseller_id = r.id
@@ -9622,26 +9822,17 @@ class Database:
                 WHERE id = ?
             """, (final_reward, order_amount, now, ref_id))
 
-            # همچنین برای سازگاری کامل جدول قدیمی wallet را هم آپدیت می‌کنیم
-            try:
-                cursor.execute("""
-                    INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
-                """, (referrer_id, final_reward, now, now, final_reward, now))
-            except Exception:
-                pass
-
             conn.commit()
 
-            # ۵. واریز پاداش به موجودی کیف پول کاربر معرف
+            # ۵. واریز پاداش به موجودی کیف پول کاربر معرف با ایزولاسیون کامل نماینده/ادمین
             desc = f"پاداش دعوت از دوست ({order_amount:,} تومان خرید بسته)" if order_amount > 0 else "پاداش دعوت از دوست"
             wallet_res = self.add_wallet_balance(
                 telegram_id=referrer_id,
                 amount=final_reward,
                 description=desc,
                 ref_id=str(referred_id),
-                tx_type="referral_reward"
+                tx_type="referral_reward",
+                reseller_id=reseller_id
             )
 
             logger.info(f"Customer referral #{ref_id} completed: Referrer={referrer_id}, Referred={referred_id}, Reseller={reseller_id}, Reward={final_reward}")
@@ -10832,6 +11023,7 @@ class Database:
                 return {"success": False, "error": "اشتراک یافت نشد"}
 
             sub_dict = dict(sub_row)
+            effective_r_id = int(reseller_id) if reseller_id is not None else int(sub_dict.get("reseller_id") or 0)
             tg_id = sub_dict.get("telegram_id")
             phone = sub_dict.get("phone_number")
             acc_name = sub_dict.get("account_name") or ""
@@ -10908,15 +11100,9 @@ class Database:
                 p_score += 10
             user_dict["profile_completion_pct"] = min(100, p_score)
 
-            # دریافت موجودی کیف پول کاربر در صورت داشتن آیدی تلگرام
+            # دریافت موجودی کیف پول کاربر با تفکیک نماینده
             if user_dict.get("telegram_id") and user_dict["telegram_id"] > 0:
-                try:
-                    cursor.execute("SELECT balance FROM wallet WHERE telegram_id=?", (user_dict["telegram_id"],))
-                    w_row = cursor.fetchone()
-                    if w_row:
-                        user_dict["wallet_balance"] = w_row[0]
-                except Exception:
-                    pass
+                user_dict["wallet_balance"] = self.get_user_wallet_balance(user_dict["telegram_id"], reseller_id=effective_r_id)
 
             # تاریخ عضویت شمسی
             if user_dict.get("created_at"):
@@ -10924,19 +11110,19 @@ class Database:
             else:
                 user_dict["created_at_shamsi"] = "-"
 
-            # ۲. دریافت تمام اشتراک‌های متصل به این مشتری
+            # ۲. دریافت تمام اشتراک‌های متصل به این مشتری با تفکیک کامل نماینده و مدیریت
             user_subs = []
             if tg_id and int(tg_id) > 0:
-                if reseller_id:
-                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id, reseller_id))
+                if effective_r_id > 0:
+                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id, effective_r_id))
                 else:
-                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id,))
+                    cursor.execute("SELECT * FROM subscriptions WHERE telegram_id=? AND (reseller_id IS NULL OR reseller_id=0) AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (tg_id,))
                 user_subs = [dict(r) for r in cursor.fetchall()]
             elif phone:
-                if reseller_id:
-                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone, reseller_id))
+                if effective_r_id > 0:
+                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone, effective_r_id))
                 else:
-                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone,))
+                    cursor.execute("SELECT * FROM subscriptions WHERE phone_number=? AND (reseller_id IS NULL OR reseller_id=0) AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC", (phone,))
                 user_subs = [dict(r) for r in cursor.fetchall()]
             else:
                 user_subs = [sub_dict]
@@ -10951,7 +11137,7 @@ class Database:
                 else:
                     us["expire_date_shamsi"] = "-"
 
-            # ۳. دریافت تراکنش‌ها و سوابق پرداخت مشتری (بخش حیاتی و اجباری)
+            # ۳. دریافت تراکنش‌ها و سوابق پرداخت مشتری با تفکیک و ایزولاسیون کامل نماینده و مدیریت
             # جستجو بر اساس: subscription_id, renew_sub_id, user_id (اگر tg_id دارد) یا username
             tx_where_clauses = ["(subscription_id=? OR renew_sub_id=?)"]
             tx_params = [sub_id, sub_id]
@@ -10962,9 +11148,16 @@ class Database:
                 tx_where_clauses.append("(username IS NOT NULL AND username!='' AND username=?)")
                 tx_params.append(acc_name)
 
+            if effective_r_id > 0:
+                r_clause = "AND reseller_id = ?"
+                tx_params.append(effective_r_id)
+            else:
+                r_clause = "AND (reseller_id IS NULL OR reseller_id = 0)"
+
             tx_query = f"""
                 SELECT * FROM transactions
                 WHERE ({" OR ".join(tx_where_clauses)})
+                  {r_clause}
                   AND (is_deleted=0 OR is_deleted IS NULL)
                   AND (gateway!='bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
                 ORDER BY created_at DESC LIMIT 50
@@ -11108,14 +11301,18 @@ class Database:
         finally:
             conn.close()
 
-    def set_subscription_debt(self, sub_id: int, payment_status: str, debt_amount: int, debt_notes: str = None, reseller_id: int = None):
-        """تنظیم یا بروزرسانی وضعیت بدهی مشتری"""
+    def set_subscription_debt(self, sub_id: int, payment_status: str, debt_amount: int, debt_notes: str = None, reseller_id: int = None, debt_auto_disable_at: str = None):
+        """تنظیم یا بروزرسانی وضعیت بدهی مشتری و مهلت قطع خودکار"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            query = "UPDATE subscriptions SET payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = COALESCE(debt_created_at, ?), updated_at = ? WHERE id = ?"
-            params = [payment_status, int(debt_amount or 0), debt_notes, now if payment_status in ('unpaid', 'debtor') else None, now, sub_id]
+            if payment_status in ('unpaid', 'debtor'):
+                query = "UPDATE subscriptions SET payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = COALESCE(debt_created_at, ?), debt_auto_disable_at = COALESCE(?, debt_auto_disable_at), updated_at = ? WHERE id = ?"
+                params = [payment_status, int(debt_amount or 0), debt_notes, now, debt_auto_disable_at, now, sub_id]
+            else:
+                query = "UPDATE subscriptions SET payment_status = ?, debt_amount = ?, debt_notes = ?, debt_auto_disable_at = NULL, updated_at = ? WHERE id = ?"
+                params = [payment_status, int(debt_amount or 0), debt_notes, now, sub_id]
             if reseller_id:
                 query += " AND reseller_id = ?"
                 params.append(reseller_id)
@@ -11623,10 +11820,12 @@ class Database:
                     payment_status = 'paid',
                     debt_amount = 0,
                     debt_notes = NULL,
+                    debt_auto_disable_at = NULL,
                     in_debt_restriction = 0,
                     debt_restricted_until = NULL,
                     debt_restriction_session_start = NULL,
-                    status = CASE WHEN status = 'disabled' AND debt_restricted_until IS NOT NULL THEN 'active' ELSE status END,
+                    status = CASE WHEN status = 'disabled' AND (debt_restricted_until IS NOT NULL OR disable_reason LIKE '%بدهی%') THEN 'active' ELSE status END,
+                    disable_reason = CASE WHEN disable_reason LIKE '%بدهی%' THEN NULL ELSE disable_reason END,
                     updated_at = ?
                 WHERE id = ?
             """
@@ -11868,6 +12067,154 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting debtor count: {e}")
             return 0
+        finally:
+            conn.close()
+
+    def get_delinquent_count(self, reseller_id: int = None) -> int:
+        """تعداد مشتریان علامت‌گذاری شده به عنوان بدحساب"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM subscriptions 
+                    WHERE reseller_id = ? AND in_debt_restriction = 1 AND (is_deleted = 0 OR is_deleted IS NULL)
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM subscriptions 
+                    WHERE in_debt_restriction = 1 AND (is_deleted = 0 OR is_deleted IS NULL)
+                """)
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"Error getting delinquent count: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def get_debt_restriction_settings(self, reseller_id: int = None) -> dict:
+        """دریافت تنظیمات جامع محدودیت مشتریان بدحساب برای ادمین یا نماینده"""
+        from services.debt_restriction_service import DEFAULT_DEBT_RESTRICTION_SETTINGS
+        key = f"debt_restriction_settings_reseller_{reseller_id}" if reseller_id else "debt_restriction_settings_admin"
+        raw = self.get_setting(key)
+        defaults = dict(DEFAULT_DEBT_RESTRICTION_SETTINGS)
+        if not raw:
+            return defaults
+        try:
+            val = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(val, dict):
+                defaults.update(val)
+            return defaults
+        except Exception:
+            return defaults
+
+    def save_debt_restriction_settings(self, settings: dict, reseller_id: int = None) -> bool:
+        """ذخیره تنظیمات جامع محدودیت مشتریان بدحساب برای ادمین یا نماینده"""
+        key = f"debt_restriction_settings_reseller_{reseller_id}" if reseller_id else "debt_restriction_settings_admin"
+        res = self.set_setting(key, json.dumps(settings, ensure_ascii=False))
+        if isinstance(res, dict):
+            return bool(res.get("success", False))
+        return bool(res)
+
+    def toggle_subscription_delinquent(self, sub_id: int, reseller_id: int = None, hidify_update_func=None) -> dict:
+        """تغییر وضعیت یک مشتری به بدحساب یا لغو آن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND reseller_id = ?", (sub_id, reseller_id))
+            else:
+                cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,))
+            sub = cursor.fetchone()
+            if not sub:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد یا دسترسی مجاز نیست"}
+            
+            sub_dict = dict(sub)
+            current_status = int(sub_dict.get("in_debt_restriction") or 0)
+            new_status = 0 if current_status == 1 else 1
+
+            if new_status == 0:
+                # لغو بدحسابی و بازگرداندن اتصال در صورت توقف موقت
+                cursor.execute("""
+                    UPDATE subscriptions SET
+                        in_debt_restriction = 0,
+                        debt_restricted_until = NULL,
+                        debt_restriction_session_start = NULL,
+                        status = CASE WHEN status = 'disabled' AND debt_restricted_until IS NOT NULL THEN 'active' ELSE status END,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (now, sub_id))
+                conn.commit()
+                if hidify_update_func and sub_dict.get("hidify_uuid") and sub_dict.get("debt_restricted_until"):
+                    try:
+                        hidify_update_func(uuid=sub_dict["hidify_uuid"], enable=True, is_active=True, reseller_id=sub_dict.get("reseller_id"))
+                    except Exception as eh:
+                        logger.warning(f"Error re-enabling sub {sub_id} on Hiddify during unmark: {eh}")
+            else:
+                # فعال‌سازی وضعیت بدحسابی
+                cursor.execute("""
+                    UPDATE subscriptions SET
+                        in_debt_restriction = 1,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (now, sub_id))
+                conn.commit()
+
+            return {"success": True, "is_delinquent": (new_status == 1), "sub_id": sub_id}
+        except Exception as e:
+            logger.error(f"Error toggling delinquent for sub {sub_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def set_subscriptions_delinquent_bulk(self, sub_ids: list, is_delinquent: bool, reseller_id: int = None, hidify_update_func=None) -> int:
+        """اعمال گروهی وضعیت بدحسابی برای مجموعه‌ای از شناسه‌ها"""
+        if not sub_ids:
+            return 0
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        updated_count = 0
+        try:
+            val = 1 if is_delinquent else 0
+            for sid in sub_ids:
+                try:
+                    sid_int = int(sid)
+                except (ValueError, TypeError):
+                    continue
+                if reseller_id:
+                    cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND reseller_id = ?", (sid_int, reseller_id))
+                else:
+                    cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sid_int,))
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                sub_dict = dict(row)
+                if not is_delinquent:
+                    cursor.execute("""
+                        UPDATE subscriptions SET
+                            in_debt_restriction = 0,
+                            debt_restricted_until = NULL,
+                            debt_restriction_session_start = NULL,
+                            status = CASE WHEN status = 'disabled' AND debt_restricted_until IS NOT NULL THEN 'active' ELSE status END,
+                            updated_at = ?
+                        WHERE id = ?
+                    """, (now, sid_int))
+                    if hidify_update_func and sub_dict.get("hidify_uuid") and sub_dict.get("debt_restricted_until"):
+                        try:
+                            hidify_update_func(uuid=sub_dict["hidify_uuid"], enable=True, is_active=True, reseller_id=sub_dict.get("reseller_id"))
+                        except Exception:
+                            pass
+                else:
+                    cursor.execute("UPDATE subscriptions SET in_debt_restriction = 1, updated_at = ? WHERE id = ?", (now, sid_int))
+                updated_count += 1
+            conn.commit()
+            return updated_count
+        except Exception as e:
+            logger.error(f"Error in set_subscriptions_delinquent_bulk: {e}")
+            return updated_count
         finally:
             conn.close()
 
@@ -16627,6 +16974,7 @@ class Database:
             "refund_amount": total_refund,
             "items": items,
             "actions_count": len(items),
+            "reseller_id": dict(sub).get("reseller_id"),
             "hidify_uuid": sub["hidify_uuid"]
         }
 
@@ -16646,6 +16994,7 @@ class Database:
             user_id = refund_info["user_id"]
             hidify_uuid = refund_info["hidify_uuid"]
             actions_count = refund_info.get("actions_count", 1)
+            sub_reseller_id = refund_info.get("reseller_id")
 
             # ۱. در صورت تایید استرداد و وجود مبلغ، کیف پول کاربر شارژ می‌شود
             refund_done = False
@@ -16656,7 +17005,8 @@ class Database:
                         user_id,
                         refund_amount,
                         desc_text,
-                        tx_type="refund"
+                        tx_type="refund",
+                        reseller_id=sub_reseller_id
                     )
                     refund_done = True
                 except Exception as ex:
@@ -17482,7 +17832,7 @@ class Database:
         try:
             cursor.execute("""
                 SELECT u.*, 
-                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = u.telegram_id AND reseller_id = ?) as sub_count
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = u.telegram_id AND reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)) as sub_count
                 FROM users u
                 WHERE u.reseller_id = ?
                 ORDER BY u.created_at DESC
@@ -22635,6 +22985,145 @@ class Database:
             logger.error(f"Error seeding traffic history for sub {sub_id}: {e}")
             return False
 
+    def _build_weekly_sparkline_chart(self, days_7: list) -> dict:
+        """
+        تولید هوشمند و بهینه مختصات برداری SVG برای نمودار موجی مصرف هفتگی
+        پشتیبانی اختصاصی از طراحی‌های Bento Grid 1 (ارتفاع 60) و Bento Grid 3 (ارتفاع 70)
+        با جهت‌گیری راست به چپ (RTL): شروع دوره در سمت راست و امروز در سمت چپ
+        """
+        if not days_7:
+            days_7 = []
+
+        # اطمینان از وجود دقیقاً ۷ روز
+        # days_7 به ترتیب زمانی از گذشته (۶ روز پیش) تا حال (امروز) است
+        # در چیدمان RTL صفحه پورتال:
+        # سمت راست کارت: شروع دوره (۶ روز پیش) -> x = 200
+        # سمت چپ کارت: امروز (۰ روز پیش) -> x = 0
+        # بنابراین برای حرکت در محور X از ۰ تا ۲۰۰، روزها را معکوس (از امروز تا ۶ روز پیش) می‌پیماییم:
+        rev_days = list(reversed(days_7))
+        while len(rev_days) < 7:
+            rev_days.append({"day_name": "—", "jalali_date": "—", "usage_mb": 0.0, "usage_gb": 0.0, "is_today": False})
+
+        max_mb = max((float(d.get("usage_mb") or 0.0) for d in rev_days), default=0.0)
+        has_usage = max_mb > 0.01
+
+        peak_idx = 0
+        if has_usage:
+            for idx, d in enumerate(rev_days):
+                if float(d.get("usage_mb") or 0.0) == max_mb:
+                    peak_idx = idx
+                    break
+        else:
+            peak_idx = 3  # در صورت عدم مصرف، نقطه آرام در وسط
+
+        peak_day_item = rev_days[peak_idx]
+        peak_mb = float(peak_day_item.get("usage_mb") or 0.0)
+        peak_gb = float(peak_day_item.get("usage_gb") or 0.0)
+        peak_day_name = peak_day_item.get("day_name") or ""
+        peak_date = peak_day_item.get("jalali_date") or ""
+
+        if has_usage:
+            if peak_mb >= 1024.0:
+                peak_usage_str = f"{peak_gb:.2f} گیگابایت"
+                peak_text = f"{peak_gb:.1f} GB"
+                peak_text_formatted = f"اوج: {peak_gb:.1f} GB"
+            else:
+                peak_usage_str = f"{round(peak_mb)} مگابایت"
+                peak_text = f"{round(peak_mb)} MB"
+                peak_text_formatted = f"اوج: {round(peak_mb)} MB"
+        else:
+            peak_usage_str = "بدون مصرف در هفته اخیر"
+            peak_text = "بدون مصرف"
+            peak_text_formatted = "بدون مصرف در هفته اخیر"
+
+        def _generate_paths_for_height(height: int):
+            min_y = 12.0
+            max_y = float(height - (10 if height <= 60 else 12))
+
+            pts = []
+            for idx, d in enumerate(rev_days):
+                x = round((idx / 6.0) * 200.0, 1)
+                mb = float(d.get("usage_mb") or 0.0)
+                if has_usage:
+                    y = round(max_y - (mb / max_mb) * (max_y - min_y), 1)
+                else:
+                    # موج بسیار ملایم و چشم‌نواز در صورت عدم مصرف برای جلوگیری از خط افقی زشت
+                    idle_offsets = [-2.0, -5.0, -3.0, -6.0, -4.0, -6.0, -2.0]
+                    y = round(max_y + idle_offsets[idx], 1)
+                pts.append((x, y))
+
+            # تبدیل نقاط به منحنی پیوسته و هموار بزیه (Catmull-Rom to Cubic Bezier)
+            n = len(pts)
+            cmds = [f"M {pts[0][0]},{pts[0][1]}"]
+            for i in range(n - 1):
+                p0 = pts[i - 1] if i > 0 else pts[i]
+                p1 = pts[i]
+                p2 = pts[i + 1]
+                p3 = pts[i + 2] if i + 2 < n else pts[i + 1]
+
+                d1 = (p2[1] - p0[1]) / 6.0
+                d2 = (p3[1] - p1[1]) / 6.0
+
+                # یکنواخت‌سازی در بخش‌های تراز
+                if p1[1] == p2[1]:
+                    if p0[1] == p1[1]:
+                        d1 = 0.0
+                    if p3[1] == p2[1]:
+                        d2 = 0.0
+
+                cp1_x = round(p1[0] + (p2[0] - p0[0]) / 6.0, 1)
+                cp1_y = round(max(min_y, min(max_y, p1[1] + d1)), 1)
+                cp2_x = round(p2[0] - (p3[0] - p1[0]) / 6.0, 1)
+                cp2_y = round(max(min_y, min(max_y, p2[1] - d2)), 1)
+
+                cmds.append(f"C {cp1_x},{cp1_y} {cp2_x},{cp2_y} {p2[0]},{p2[1]}")
+
+            line_path = " ".join(cmds)
+            area_path = f"{line_path} L 200.0,{height} L 0.0,{height} Z"
+            peak_x, peak_y = pts[peak_idx]
+
+            points_info = []
+            for idx, (p, d) in enumerate(zip(pts, rev_days)):
+                d_mb = float(d.get("usage_mb") or 0.0)
+                d_gb = float(d.get("usage_gb") or 0.0)
+                u_str = f"{d_gb:.2f} GB" if d_mb >= 1024 else f"{round(d_mb)} MB"
+                points_info.append({
+                    "x": p[0],
+                    "y": p[1],
+                    "label": d.get("day_name", ""),
+                    "date": d.get("jalali_date", ""),
+                    "usage_mb": d_mb,
+                    "usage_gb": d_gb,
+                    "usage_str": u_str,
+                    "is_today": bool(d.get("is_today")),
+                    "is_peak": bool(idx == peak_idx and has_usage)
+                })
+
+            return {
+                "path": line_path,
+                "area": area_path,
+                "peak_x": peak_x,
+                "peak_y": peak_y,
+                "points": points_info
+            }
+
+        bento1_data = _generate_paths_for_height(60)
+        bento3_data = _generate_paths_for_height(70)
+
+        return {
+            "has_usage": has_usage,
+            "peak_day_name": peak_day_name,
+            "peak_date": peak_date,
+            "peak_usage_gb": peak_gb,
+            "peak_usage_mb": peak_mb,
+            "peak_usage_str": peak_usage_str,
+            "peak_text": peak_text,
+            "peak_text_formatted": peak_text_formatted,
+            "bento1": bento1_data,
+            "bento3": bento3_data,
+            "days": rev_days
+        }
+
     def get_subscription_traffic_analytics(self, sub_id: int, range_days: int = 30) -> dict:
         """
         محاسبه آمار و شاخص‌های تحلیلی مصرف ساعتی، روزانه، ساعات اوج و تخمین اتمام حجم
@@ -22652,8 +23141,14 @@ class Database:
             data_limit = float(sub["data_limit"] or 0.0)
             remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
 
-            # آمارگیری زنده و واقعی بر اساس لاگ‌های دقیق ثبت‌شده
-            # (تولید داده‌های تخمینی گذشته غیرفعال شد تا فقط داده‌های ۱۰۰٪ واقعی نمایش داده شوند)
+            # مقداردهی اولیه هوشمند تاریخچه مصرف برای اشتراک‌هایی که مصرف دارند اما لاگ تاریخی کافی ندارند
+            if data_used > 0.05:
+                cnt_row = cursor.execute("SELECT COUNT(*) as c FROM subscription_traffic_logs WHERE sub_id = ?", (sub_id,)).fetchone()
+                if not cnt_row or cnt_row["c"] < 3:
+                    try:
+                        self.seed_subscription_traffic_history(sub_id)
+                    except Exception as e_seed:
+                        logger.warning(f"Failed to seed traffic history for sub {sub_id}: {e_seed}")
 
             now_utc = datetime.now(timezone.utc)
             now = now_utc
@@ -22859,6 +23354,10 @@ class Database:
             today_total_gb = today_item["usage_gb"] if today_item else (daily_7d[0]["usage_gb"] if daily_7d else 0.0)
             today_total_mb = today_item["usage_mb"] if today_item else (daily_7d[0]["usage_mb"] if daily_7d else 0.0)
 
+            # ۹. تولید مختصات و متغیرهای بصری چارت هفتگی بنتو ۱ و ۳ (Rolling 7-Day Bento Sparkline)
+            days_7 = daily_30d[-7:] if len(daily_30d) >= 7 else daily_30d
+            weekly_chart = self._build_weekly_sparkline_chart(days_7)
+
             return {
                 "sub_id": sub_id,
                 "account_name": sub["account_name"],
@@ -22874,7 +23373,8 @@ class Database:
                 "estimated_days_left": estimated_days_left,
                 "hourly_24h": hourly_24h,
                 "daily_7d": daily_7d,
-                "daily_30d": daily_30d
+                "daily_30d": daily_30d,
+                "weekly_chart": weekly_chart
             }
         except Exception as e:
             logger.error(f"Error calculating traffic analytics for sub {sub_id}: {e}")
@@ -25730,6 +26230,16 @@ class Database:
             if not row:
                 return {"success": False, "error": "رکورد چرخش یافت نشد."}
             spin = dict(row)
+
+            # بررسی تطابق مالکیت اشتراک با نماینده/مدیریت ثبت‌شده در چرخش
+            cursor.execute("SELECT reseller_id FROM subscriptions WHERE id = ?", (sub_id,))
+            target_sub_row = cursor.fetchone()
+            if not target_sub_row:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+            target_r_id = target_sub_row["reseller_id"] or 0
+            spin_r_id = spin.get("reseller_id") or 0
+            if target_r_id != spin_r_id:
+                return {"success": False, "error": "اشتراک انتخابی متعلق به این نماینده نیست."}
 
             if user_ident and str(spin.get("user_ident")) != str(user_ident):
                 return {"success": False, "error": "دسترسی نامعتبر است."}

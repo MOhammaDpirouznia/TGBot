@@ -38,7 +38,7 @@ from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
     format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ,
     get_now, get_now_tehran, parse_to_tehran_dt, is_tehran_hour, is_in_quiet_hours,
-    to_persian_digits, format_activity_time
+    to_persian_digits, format_activity_time, calculate_debt_auto_disable_at
 )
 from admin_manager import (
     get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
@@ -1274,9 +1274,14 @@ def api_webapp_user_data():
         return jsonify({"success": False, "error": "شناسه کاربر نامعتبر است."})
     
     telegram_id = int(tg_id)
+    r_id_raw = request.args.get("r_id") or request.args.get("reseller_id")
+    reseller_id = int(r_id_raw) if r_id_raw and str(r_id_raw).isdigit() else None
+    if reseller_id is None and g.get("custom_reseller") and g.custom_reseller.get("id"):
+        reseller_id = int(g.custom_reseller["id"])
+
     user = db.get_user(telegram_id)
-    subscriptions = db.get_user_subscriptions(telegram_id)
-    wallet_balance = db.get_user_wallet_balance(telegram_id)
+    subscriptions = db.get_user_subscriptions(telegram_id, reseller_id=reseller_id)
+    wallet_balance = db.get_user_wallet_balance(telegram_id, reseller_id=reseller_id)
     
     return jsonify({
         "success": True,
@@ -1956,8 +1961,14 @@ def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, a
         return {"error": str(e), "network_error": True}
 
 
-def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout_seconds: float = 2.5) -> dict:
+def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout_seconds: float = 2.5, reseller_id: int = None) -> dict:
     """درخواست همگام به API پنل هیدیفای با محافظت کامل در برابر گیر کردن، بن‌بست DNS و قطع سرور"""
+    if not api_key and reseller_id:
+        try:
+            api_key = db.get_reseller_hiddify_key(reseller_id)
+        except Exception:
+            pass
+
     panel_url = get_hiddify_url()
     host = ""
     if panel_url:
@@ -2337,7 +2348,7 @@ def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data
         return {"error": str(e)}
 
 
-def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True) -> dict:
+def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True, reseller_id: int = None, api_key: str = None) -> dict:
     """
     تمدید هوشمند کاربر در هیدیفای با ریست کامل حجم و تاریخ شروع در حالت فعال‌سازی فوری:
     حالت اول (force_instant یا منقضی): جایگزینی کامل حجم و روز + ریست حجم مصرفی (0) و ریست زمان شروع (None / آغاز مجدد)
@@ -2356,13 +2367,15 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
                 "enable": True,
                 "is_active": True
             }
-            res = hidify_sync_update_user(uuid, **payload)
+            res = hidify_sync_update_user(uuid, api_key=api_key, reseller_id=reseller_id, **payload)
             return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
 
-        user_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
+        user_info = hidify_sync_request("GET", f"/admin/user/{uuid}/", api_key=api_key, reseller_id=reseller_id)
         if not user_info or "error" in user_info or not isinstance(user_info, dict):
             res = hidify_sync_update_user(
                 uuid,
+                api_key=api_key,
+                reseller_id=reseller_id,
                 usage_limit_GB=new_limit_gb,
                 package_days=new_duration_days,
                 current_usage_GB=0,
@@ -2402,7 +2415,7 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
                 "enable": True,
                 "is_active": True
             }
-            res = hidify_sync_update_user(uuid, **payload)
+            res = hidify_sync_update_user(uuid, api_key=api_key, reseller_id=reseller_id, **payload)
             return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
         else:
             # حالت دوم: اضافه کردن حجم و روز به مقادیر قبلی
@@ -2415,7 +2428,7 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
                 "enable": True,
                 "is_active": True
             }
-            res = hidify_sync_update_user(uuid, **payload)
+            res = hidify_sync_update_user(uuid, api_key=api_key, reseller_id=reseller_id, **payload)
             return {"renewal_type": "appended", "new_limit": combined_limit, "new_days": combined_days, "res": res}
     except Exception as e:
         logger.error(f"Error in hidify_sync_renew_user for {uuid}: {e}")
@@ -2428,9 +2441,10 @@ _queue_process_lock = threading.Lock()
 def process_subscription_queue() -> dict:
     """
     بررسی هوشمند و خودکار صف تمدید و فعال‌سازی بلادرنگ بسته‌های رزرو:
-    شرایط فعال‌سازی:
-    ۱. مصرف ۹۹.۵٪ از سقف حجم بسته فعلی (data_used >= data_limit * 0.995)
-    ۲. رسیدن به ساعت ۲۳:۵۵ روز پایانی بسته فعلی
+    شرایط فعال‌سازی قطعی:
+    ۱. مصرف ۹۹٪ از سقف حجم بسته فعلی یا باقیمانده کمتر از ۱۰۰ مگابایت
+    ۲. انقضای زمانی و سررسید دوره اشتراک (سپری شدن تاریخ انقضا یا رسیدن به انتهای روز پایانی)
+    ۳. تغییر وضعیت اشتراک به منقضی/غیرفعال در دیتابیس یا سرور هیدیفای
     هنگام فعال‌سازی: ریست کامل حجم (0) و روزها در هیدیفای، بروزرسانی دیتابیس، ثبت سابقه در آرشیو و ارسال نوتیفیکیشن
     """
     if not _queue_process_lock.acquire(blocking=False):
@@ -2455,17 +2469,23 @@ def process_subscription_queue() -> dict:
             new_duration = int(item.get("duration") or 30)
             plan_name = item.get("plan_name") or f"{new_limit} گیگ"
             plan_id = item.get("plan_id") or "custom"
+            reseller_id = item.get("reseller_id")
 
             curr_used = float(item.get("curr_used") or 0)
             curr_limit = float(item.get("curr_limit") or 0)
             curr_duration = int(item.get("curr_duration") or 30)
             curr_start = item.get("curr_start_date")
             curr_expire = item.get("curr_expire_date")
+            sub_status = str(item.get("sub_status") or "").lower().strip()
 
-            # استعلام مصرف زنده کاربر در صورت وجود UUID
+            h_is_active = True
+            h_enable = True
+            h_status = "active"
+
+            # استعلام مصرف زنده و وضعیت آنلاین/انقضا از هیدیفای در صورت وجود UUID
             if uuid:
                 try:
-                    u_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
+                    u_info = hidify_sync_request("GET", f"/admin/user/{uuid}/", reseller_id=reseller_id)
                     if isinstance(u_info, dict) and "error" not in u_info:
                         curr_used = float(u_info.get("current_usage_GB") or 0)
                         h_limit = float(u_info.get("usage_limit_GB") or 0)
@@ -2475,41 +2495,80 @@ def process_subscription_queue() -> dict:
                             curr_start = u_info.get("start_date")
                         if u_info.get("package_days"):
                             curr_duration = int(u_info.get("package_days"))
+                        raw_h_exp = u_info.get("expiry_time") or u_info.get("expire_date") or u_info.get("expire")
+                        if raw_h_exp and str(raw_h_exp).strip() not in ["None", "null", ""]:
+                            curr_expire = str(raw_h_exp).strip()
+                        if "is_active" in u_info:
+                            h_is_active = bool(u_info["is_active"])
+                        if "enable" in u_info:
+                            h_enable = bool(u_info["enable"])
+                        if u_info.get("status"):
+                            h_status = str(u_info.get("status")).lower()
                 except Exception as ex:
                     logger.warning(f"Live queue check error for {uuid}: {ex}")
 
-            # ۱. شرط اول: رسیدن به ۹۹.۵٪ حجم
-            is_volume_99_5 = (curr_limit > 0 and curr_used >= (curr_limit * 0.995))
+            # ۱. شرط اول: پایان یا مصرف ۹۹٪ حجم (یا باقیمانده کمتر از ۱۰۰ مگابایت)
+            is_volume_finished = False
+            if curr_limit > 0:
+                if curr_used >= (curr_limit * 0.99) or (curr_limit - curr_used) <= 0.1:
+                    is_volume_finished = True
 
-            # ۲. شرط دوم: ساعت ۲۳:۵۵ روز پایانی بسته فعلی
-            is_last_day_2355 = False
+            # ۲. شرط دوم: انقضای زمانی و سررسید دوره اشتراک
+            is_time_expired = False
+            exp_dt = None
             exp_day = None
+
             if curr_expire:
                 try:
-                    exp_day = datetime.fromisoformat(str(curr_expire).replace("Z", "")[:10]).date()
+                    clean_exp = str(curr_expire).replace("Z", "").strip()
+                    if len(clean_exp) == 10:
+                        exp_dt = datetime.strptime(clean_exp, "%Y-%m-%d")
+                    else:
+                        exp_dt = datetime.fromisoformat(clean_exp)
+                    if exp_dt.tzinfo is not None:
+                        exp_dt = exp_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+                    exp_day = exp_dt.date()
                 except Exception:
                     pass
+
             if not exp_day and curr_start and curr_duration:
                 try:
-                    st_date = datetime.fromisoformat(str(curr_start)[:10]).date()
-                    exp_day = st_date + timedelta(days=curr_duration)
+                    clean_start = str(curr_start)[:10]
+                    s_dt = datetime.strptime(clean_start, "%Y-%m-%d")
+                    exp_dt = s_dt + timedelta(days=curr_duration)
+                    exp_day = exp_dt.date()
                 except Exception:
                     pass
 
-            if exp_day:
-                # ساعت ۲۳:۵۵ روز پایانی بسته
-                switch_dt = datetime(exp_day.year, exp_day.month, exp_day.day, 23, 55, 0)
-                if now >= switch_dt:
-                    is_last_day_2355 = True
+            # بررسی انقضا بر اساس وضعیت دیتابیس یا هیدیفای یا سپری شدن تاریخ
+            if sub_status in ("expired", "inactive"):
+                is_time_expired = True
+            elif not h_is_active or (h_status == "expired"):
+                is_time_expired = True
+            elif exp_dt and now >= exp_dt:
+                is_time_expired = True
+            elif exp_day:
+                if now.date() > exp_day:
+                    is_time_expired = True
+                elif now.date() == exp_day and now >= datetime(exp_day.year, exp_day.month, exp_day.day, 23, 55, 0):
+                    is_time_expired = True
 
-            if is_volume_99_5 or is_last_day_2355:
-                trigger_reason = "مصرف ۹۹.۵٪ حجم بسته" if is_volume_99_5 else "رسیدن به ساعت ۲۳:۵۵ روز پایانی بسته"
+            if is_volume_finished or is_time_expired:
+                if is_volume_finished and is_time_expired:
+                    trigger_reason = "پایان همزمان حجم و موعد انقضای زمانی"
+                elif is_volume_finished:
+                    trigger_reason = "مصرف ۹۹٪ سقف حجم بسته"
+                elif sub_status in ("expired", "inactive") or (not h_is_active or h_status == "expired"):
+                    trigger_reason = "اتمام دوره و انقضای اشتراک"
+                else:
+                    trigger_reason = "فرارسیدن موعد انقضای زمانی بسته"
+
                 logger.info(f"Auto-activating queued renewal for sub {sub_id} ({item.get('account_name')}): {trigger_reason}")
 
                 # الف. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
                 if uuid:
                     try:
-                        hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True)
+                        hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True, reseller_id=reseller_id)
                     except Exception as e:
                         logger.error(f"Hiddify auto-activation error for {uuid}: {e}")
 
@@ -2525,9 +2584,10 @@ def process_subscription_queue() -> dict:
                 cursor.execute("""
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                        start_date=?, expire_date=?, updated_at=?, payment_source=?, cost_paid=?
+                        start_date=?, expire_date=?, updated_at=?, payment_source=?, cost_paid=?,
+                        last_renewed_at=?, last_lifecycle_event_at=?
                     WHERE id=?
-                """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, q_source, q_cost, sub_id))
+                """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, q_source, q_cost, now_str, now_str, sub_id))
                 conn.commit()
                 conn.close()
 
@@ -2618,7 +2678,7 @@ def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت"
         # ۱. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
         if uuid:
             try:
-                hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True)
+                hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True, reseller_id=item.get("reseller_id") or sub.get("reseller_id"))
             except Exception as e:
                 logger.error(f"Hiddify manual queue activation error for {uuid}: {e}")
 
@@ -4737,71 +4797,18 @@ def vip_settings():
         }
         db.save_vip_settings(settings_data)
         flash("تنظیمات باشگاه مشتریان، سطوح وفاداری و پاداش‌ها با موفقیت ذخیره شد.", "success")
-        return redirect(url_for("vip_settings"))
+        return redirect(url_for("vip_settings", tab="loyalty"))
 
+    active_tab = request.args.get("tab", "loyalty")
+    if active_tab not in ("loyalty", "tasks", "wheel"):
+        active_tab = "loyalty"
+
+    # داده‌های تب ۱: سطوح وفاداری
     vip_sets = db.get_vip_settings()
     vip_stats = db.get_vip_dashboard_stats()
     vip_users = db.get_vip_users_list()
-    return render_template(
-        "vip_settings.html",
-        vip_settings=vip_sets,
-        vip_stats=vip_stats,
-        vip_users=vip_users
-    )
 
-
-@app.route("/admin/vip-user/add", methods=["POST"])
-@admin_required
-def admin_vip_user_add():
-    """افزودن مستقیم کاربر به لیست مشتریان پرمیوم (VIP)"""
-    user_input = request.form.get("user_identifier", "").strip()
-    days_str = request.form.get("vip_days", "").strip()
-    custom_cb_str = request.form.get("custom_cashback", "").strip()
-
-    if not user_input:
-        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
-        return redirect(url_for("vip_settings"))
-
-    # جستجوی کاربر
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    if user_input.isdigit():
-        cursor.execute("SELECT telegram_id, username FROM users WHERE telegram_id = ?", (int(user_input),))
-    else:
-        clean_uname = user_input.replace("@", "").strip()
-        cursor.execute("SELECT telegram_id, username FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
-    user_row = cursor.fetchone()
-    conn.close()
-
-    if not user_row:
-        if user_input.isdigit():
-            tg_id = int(user_input)
-        else:
-            flash(f"کاربری با شناسه «{user_input}» در سیستم یافت نشد.", "danger")
-            return redirect(url_for("vip_settings"))
-    else:
-        tg_id = user_row["telegram_id"]
-
-    expire_at = None
-    if days_str and days_str.isdigit() and int(days_str) > 0:
-        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
-
-    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
-
-    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
-    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
-    flash(f"کاربر {tg_id} با موفقیت به لیست مشتریان پرمیوم (VIP - سطح {vip_tier}) افزوده شد.", "success")
-    return redirect(url_for("vip_settings"))
-
-
-# ══════════════════════════════════════════════════════════════════
-# 🎯 مدیریت ماموریت‌های کسب حجم رایگان و پاداش اجتماعی (Social Tasks)
-# ══════════════════════════════════════════════════════════════════
-
-@app.route("/admin/social-tasks", methods=["GET"])
-@admin_required
-def admin_social_tasks_page():
-    """مدیریت جامع ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی"""
+    # داده‌های تب ۲: ماموریت‌ها
     tasks = db.get_social_tasks(reseller_id=0, active_only=False)
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -4816,16 +4823,131 @@ def admin_social_tasks_page():
         total_claims = 0
     finally:
         conn.close()
-
     plans_dict = get_plans_dict()
+
+    # داده‌های تب ۳: گردونه شانس
+    lucky_wheel_enabled = db.is_setting_enabled("lucky_wheel_enabled", default=True)
+    lucky_wheel_cooldown_hours = int(db.get_setting("lucky_wheel_cooldown_hours", "24") or 24)
+    lucky_wheel_notify_admin = db.is_setting_enabled("lucky_wheel_notify_admin", default=True)
+    lucky_wheel_title = db.get_setting("lucky_wheel_title", "گردونه خوش‌شانسی و جوایز روزانه")
+    lucky_wheel_desc = db.get_setting("lucky_wheel_desc", "هر ۲۴ ساعت شانس خود را امتحان کنید و حجم هدیه یا کد تخفیف برنده شوید!")
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=0, active_only=False)
+    lucky_wheel_history = db.get_lucky_wheel_history(limit=25)
+
+    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
+    for p in lucky_wheel_prizes:
+        if total_weight > 0 and p.get("is_active"):
+            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
+        else:
+            p["chance_percent"] = 0
+
     return render_template(
-        "social_tasks.html",
+        "vip_settings.html",
+        active_tab=active_tab,
+        # تب ۱: سطوح وفاداری
+        vip_settings=vip_sets,
+        vip_stats=vip_stats,
+        vip_users=vip_users,
+        # تب ۲: ماموریت‌ها
         tasks=tasks,
         total_tasks=len(tasks),
         total_active=total_active,
         total_claims=total_claims,
-        plans=plans_dict
+        plans=plans_dict,
+        # تب ۳: گردونه شانس
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
+        lucky_wheel_notify_admin=lucky_wheel_notify_admin,
+        lucky_wheel_title=lucky_wheel_title,
+        lucky_wheel_desc=lucky_wheel_desc,
+        lucky_wheel_prizes=lucky_wheel_prizes,
+        lucky_wheel_history=lucky_wheel_history,
     )
+
+
+@app.route("/admin/vip-user/add", methods=["POST"])
+@admin_required
+def admin_vip_user_add():
+    """افزودن مستقیم کاربر به لیست مشتریان پرمیوم (VIP)"""
+    user_input = request.form.get("user_identifier", "").strip()
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+
+    if not user_input:
+        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
+        return redirect(url_for("vip_settings", tab="loyalty"))
+
+    # جستجوی کاربر
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    if user_input.isdigit():
+        cursor.execute("SELECT telegram_id, username FROM users WHERE telegram_id = ?", (int(user_input),))
+    else:
+        clean_uname = user_input.replace("@", "").strip()
+        cursor.execute("SELECT telegram_id, username FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
+    user_row = cursor.fetchone()
+    conn.close()
+
+    if not user_row:
+        flash("کاربر مورد نظر در سیستم یافت نشد.", "danger")
+        return redirect(url_for("vip_settings", tab="loyalty"))
+
+    t_id = user_row["telegram_id"]
+    vip_tier = request.form.get("vip_tier", "gold")
+    vip_days = int(days_str) if days_str.isdigit() else 365
+    custom_cb = int(custom_cb_str) if custom_cb_str.isdigit() else None
+
+    res = db.set_user_vip_status(
+        telegram_id=t_id,
+        is_vip=True,
+        loyalty_tier=vip_tier,
+        vip_days=vip_days,
+        custom_cashback=custom_cb,
+        updated_by="admin_manual"
+    )
+    if res.get("success"):
+        flash(f"کاربر {user_row['username'] or t_id} با موفقیت به سطح VIP ارتقا یافت.", "success")
+    else:
+        flash(f"خطا در ارتقای کاربر: {res.get('error')}", "danger")
+    return redirect(url_for("vip_settings", tab="loyalty"))
+
+
+@app.route("/admin/vip-user/set/<int:telegram_id>", methods=["POST"])
+@admin_required
+def admin_vip_user_set(telegram_id: int):
+    """بروزرسانی یا حذف وضعیت VIP یک کاربر مشخص"""
+    action = request.form.get("action", "update")
+    if action == "remove":
+        res = db.set_user_vip_status(telegram_id=telegram_id, is_vip=False, updated_by="admin_remove")
+        flash("کاربر با موفقیت از باشگاه مشتریان VIP حذف گردید.", "info")
+    else:
+        vip_tier = request.form.get("vip_tier", "bronze")
+        days_str = request.form.get("vip_days", "").strip()
+        custom_cb_str = request.form.get("custom_cashback", "").strip()
+        vip_days = int(days_str) if days_str.isdigit() else None
+        custom_cb = int(custom_cb_str) if custom_cb_str.isdigit() else None
+
+        res = db.set_user_vip_status(
+            telegram_id=telegram_id,
+            is_vip=True,
+            loyalty_tier=vip_tier,
+            vip_days=vip_days,
+            custom_cashback=custom_cb,
+            updated_by="admin_edit"
+        )
+        flash("مشخصات VIP کاربر با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("vip_settings", tab="loyalty"))
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🎯 مدیریت ماموریت‌های کسب حجم رایگان و پاداش اجتماعی (Social Tasks)
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/admin/social-tasks", methods=["GET"])
+@admin_required
+def admin_social_tasks_page():
+    """هدایت یکپارچه به تب ماموریت‌ها در باشگاه مشتریان"""
+    return redirect(url_for("vip_settings", tab="tasks"))
 
 @app.route("/admin/social-tasks/add", methods=["POST"])
 @admin_required
@@ -4847,7 +4969,7 @@ def admin_social_task_add():
 
     if not title:
         flash("عنوان ماموریت الزامی است.", "danger")
-        return redirect(url_for("admin_social_tasks_page"))
+        return redirect(url_for("vip_settings", tab="tasks"))
 
     new_id = db.add_social_task(
         title=title, task_type=task_type, reward_type=reward_type, reward_value=reward_value,
@@ -4859,12 +4981,12 @@ def admin_social_task_add():
         flash(f"ماموریت «{title}» با موفقیت به سامانه افزوده شد.", "success")
     else:
         flash("خطا در ایجاد ماموریت.", "danger")
-    return redirect(url_for("admin_social_tasks_page"))
+    return redirect(url_for("vip_settings", tab="tasks"))
 
 @app.route("/admin/social-tasks/edit/<int:task_id>", methods=["POST"])
 @admin_required
 def admin_social_task_edit(task_id: int):
-    """ویرایش مشخصات ماموریت (تغییر تعداد هدف مثل ۵ به ۱۰، تغییر جایزه، لینک و ...)"""
+    """ویرایش مشخصات ماموریت"""
     update_data = {
         "title": request.form.get("title", "").strip(),
         "task_type": request.form.get("task_type", "custom").strip(),
@@ -4885,7 +5007,7 @@ def admin_social_task_edit(task_id: int):
         flash("ماموریت با موفقیت بروزرسانی شد.", "success")
     else:
         flash("خطا در ویرایش ماموریت.", "danger")
-    return redirect(url_for("admin_social_tasks_page"))
+    return redirect(url_for("vip_settings", tab="tasks"))
 
 @app.route("/admin/social-tasks/toggle/<int:task_id>", methods=["POST"])
 @admin_required
@@ -4893,7 +5015,7 @@ def admin_social_task_toggle(task_id: int):
     """تغییر وضعیت فعال/غیرفعال ماموریت"""
     db.toggle_social_task(task_id)
     flash("وضعیت فعال بودن ماموریت بروزرسانی شد.", "success")
-    return redirect(url_for("admin_social_tasks_page"))
+    return redirect(url_for("vip_settings", tab="tasks"))
 
 @app.route("/admin/social-tasks/delete/<int:task_id>", methods=["POST"])
 @admin_required
@@ -4901,7 +5023,7 @@ def admin_social_task_delete(task_id: int):
     """حذف کامل ماموریت"""
     db.delete_social_task(task_id)
     flash("ماموریت با موفقیت حذف گردید.", "info")
-    return redirect(url_for("admin_social_tasks_page"))
+    return redirect(url_for("vip_settings", tab="tasks"))
 
 
 @app.route("/admin/bot-menu", methods=["GET", "POST"])
@@ -5275,7 +5397,7 @@ def user_detail(telegram_id):
     subscriptions = [dict(r) for r in subs_rows]
     transactions = [dict(r) for r in tx_rows]
     tickets = [dict(r) for r in ticket_rows]
-    vip_info = db.get_user_vip_info(telegram_id)
+    vip_info = db.get_user_vip_info(telegram_id, reseller_id=user.get("reseller_id") if user else 0)
 
     single_link_template = get_single_link_template(db)
     return render_template(
@@ -6007,7 +6129,7 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     # پردازش و واریز کش‌بک کاربران VIP
     if user_id:
         try:
-            vip_info = db.get_user_vip_info(user_id)
+            vip_info = db.get_user_vip_info(user_id, reseller_id=int(r_id or 0))
             if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
                 paid_amount = int(amount or 0)
                 cb_rate = vip_info.get("cashback_percent", 10)
@@ -6018,7 +6140,8 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
                         cashback_val,
                         f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
                         ref_id=str(order_id or payment_id),
-                        tx_type="cashback"
+                        tx_type="cashback",
+                        reseller_id=int(r_id or 0)
                     )
                     new_w_bal = cb_res.get("new_balance", 0)
                     cb_msg = (
@@ -6476,7 +6599,7 @@ def approve_payment(payment_id):
 
         # پردازش و واریز کش‌بک کاربران VIP
         try:
-            vip_info = db.get_user_vip_info(user_id)
+            vip_info = db.get_user_vip_info(user_id, reseller_id=tx_reseller_id)
             if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
                 paid_amount = int(tx.get("amount") or 0)
                 cb_rate = vip_info.get("cashback_percent", 10)
@@ -6487,7 +6610,8 @@ def approve_payment(payment_id):
                         cashback_val,
                         f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
                         ref_id=str(tx.get("order_id") or payment_id),
-                        tx_type="cashback"
+                        tx_type="cashback",
+                        reseller_id=tx_reseller_id
                     )
                     new_w_bal = cb_res.get("new_balance", 0)
                     cb_msg = (
@@ -7229,6 +7353,8 @@ def subscriptions():
         base_conditions.append("is_vip = 1")
     elif status_filter == "debtors":
         base_conditions.append("(payment_status IN ('unpaid', 'debtor') OR debt_amount > 0 OR is_credit = 1)")
+    elif status_filter == "delinquent":
+        base_conditions.append("in_debt_restriction = 1")
     elif status_filter == "active":
         base_conditions.append("status = 'active'")
     elif status_filter == "expired":
@@ -7414,6 +7540,7 @@ def subscriptions():
     
     online_stats = db.get_online_users_stats()
     debtor_count = db.get_debtor_count()
+    delinquent_count = db.get_delinquent_count()
     plans = get_plans_dict()
     single_link_template = get_single_link_template(db)
 
@@ -7450,6 +7577,7 @@ def subscriptions():
         online_count=online_stats["online_count"],
         online_stats=online_stats,
         debtor_count=debtor_count,
+        delinquent_count=delinquent_count,
         deleted_count=deleted_count,
         queue_count=queue_count,
         all_pending_queue=all_pending_queue,
@@ -7545,10 +7673,19 @@ def admin_subscription_renew(sub_id: int):
         this_period_debt = int(debt_amount_raw) if debt_amount_raw.isdigit() else cost_paid
         debt_status = "unpaid"
         total_debt = old_debt + this_period_debt
+        debt_due_mode = request.form.get("debt_due_mode", "days").strip()
+        debt_due_days = request.form.get("debt_due_days", 3)
+        debt_due_date_shamsi = request.form.get("debt_due_date_shamsi", "").strip()
+        debt_auto_disable_at = calculate_debt_auto_disable_at(
+            days_val=debt_due_days if debt_due_mode == "days" else None,
+            shamsi_date_str=debt_due_date_shamsi if debt_due_mode == "calendar" else None,
+            base_dt=get_now_naive()
+        )
     else:
         this_period_debt = 0
         debt_status = "paid"
         total_debt = 0
+        debt_auto_disable_at = None
 
     instant_activate = bool(request.form.get("instant_activate"))
 
@@ -7583,11 +7720,12 @@ def admin_subscription_renew(sub_id: int):
                     start_date=?, expire_date=?, status='active', updated_at=?,
                     last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?,
                     payment_status=?, debt_amount=?, debt_notes=?,
+                    debt_auto_disable_at=?,
                     gift_traffic_gb=?, discount_amount=?,
                     debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
                 WHERE id=?
             """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, now, 0 if debt_status == "unpaid" else cost_paid,
-                  debt_status, total_debt, renewal_notes or None, gift_traffic, discount_amount, debt_status, debt_created, sub_id))
+                  debt_status, total_debt, renewal_notes or None, debt_auto_disable_at, gift_traffic, discount_amount, debt_status, debt_created, sub_id))
             conn.commit()
             conn.close()
 
@@ -7685,8 +7823,30 @@ def admin_subscription_renew(sub_id: int):
                     )
                 except Exception as ex_rec:
                     logger.error(f"Error recording debt record in queue renew: {ex_rec}")
+                try:
+                    now = get_now_iso()
+                    conn = db.get_connection()
+                    conn.execute("""
+                        UPDATE subscriptions SET
+                            payment_status = 'unpaid',
+                            debt_amount = ?,
+                            debt_notes = ?,
+                            debt_created_at = COALESCE(debt_created_at, ?),
+                            debt_auto_disable_at = ?,
+                            updated_at = ?
+                        WHERE id = ?
+                    """, (total_debt, renewal_notes or None, now, debt_auto_disable_at, now, sub_id))
+                    conn.commit()
+                    conn.close()
+                except Exception as ex_uq:
+                    logger.error(f"Error updating debt on sub in queue renew: {ex_uq}")
             else:
                 db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
+                try:
+                    from services.debt_restriction_service import re_enable_if_restricted
+                    re_enable_if_restricted(sub_id, db, hidify_sync_update_user)
+                except Exception:
+                    pass
                 if renewal_notes:
                     conn = db.get_connection()
                     conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=?", (renewal_notes, sub_id))
@@ -7708,6 +7868,10 @@ def admin_subscription_renew(sub_id: int):
                 free_tag = " (رایگان با مبلغ ۰ تومان)" if is_free else ""
                 debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else ""
                 flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}»{free_tag}{debt_tag} در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
+                try:
+                    process_subscription_queue()
+                except Exception as ex_q:
+                    logger.warning(f"Immediate queue check error on admin renew: {ex_q}")
             else:
                 flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
 
@@ -7979,7 +8143,8 @@ def admin_subscriptions_bulk_renew():
     conn.close()
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     free_mode_text = " (به صورت رایگان با مبلغ ۰ تومان)" if is_free else ""
-    flash(f"{success_count} اشتراک با موفقیت {mode_text}{free_mode_text}.", "success")
+    cat = "success" if instant_activate else "info"
+    flash(f"{success_count} اشتراک با موفقیت {mode_text}{free_mode_text}.", cat)
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -10655,10 +10820,157 @@ def api_ai_studio_settings_save():
     owner_id = int(reseller_id) if bot_type == "reseller" else 0
 
     data = request.get_json(force=True, silent=True) or {}
+    from ai_marketing_manager import ai_marketing
+    if "model_name" in data:
+        data["model_name"] = ai_marketing.normalize_model_name(data["model_name"], provider=data.get("provider", "gemini"))
     ok = db.save_ai_marketing_settings(data, bot_type=bot_type, owner_id=owner_id)
     is_ok = bool(ok.get("success") if isinstance(ok, dict) else ok)
     return jsonify({"success": is_ok})
 
+
+@app.route("/api/ai-studio/settings/test-connection", methods=["POST"])
+def api_ai_studio_settings_test_connection():
+    """تست اختصاصی و زنده اتصال هوش مصنوعی استودیو محتوا برای مدیر یا نماینده"""
+    role = session.get("role")
+    reseller_id = session.get("reseller_id", 0)
+    if not role and not reseller_id:
+        return jsonify({"success": False, "error": "احراز هویت نشده است"}), 401
+
+    bot_type = "reseller" if role == "reseller" or (reseller_id and int(reseller_id) > 0) else "admin"
+    owner_id = int(reseller_id) if bot_type == "reseller" else 0
+
+    data = request.get_json(force=True, silent=True) or {}
+    api_url = (data.get("api_url") or data.get("custom_base_url") or "").strip()
+    api_key = (data.get("api_key") or "").strip()
+    model = (data.get("model") or data.get("model_name") or "").strip()
+    provider = (data.get("provider") or "gemini").strip()
+
+    # در صورت خالی بودن مقادیر ارسالی، استفاده از تنظیمات ذخیره شده استودیو
+    if not api_key:
+        curr_settings = db.get_ai_marketing_settings(bot_type=bot_type, owner_id=owner_id)
+        api_key = curr_settings.get("api_key", "").strip()
+        if not api_url:
+            api_url = curr_settings.get("custom_base_url", "").strip()
+        if not model:
+            model = curr_settings.get("model_name", "").strip()
+        if not provider:
+            provider = curr_settings.get("provider", "gemini").strip()
+
+    if not api_key:
+        return jsonify({"success": False, "error": "کلید دسترسی (API Key) وارد نشده است. لطفاً ابتدا کلید API اختصاصی خود را در کادر مربوطه وارد نمایید."}), 400
+
+    from ai_marketing_manager import ai_marketing
+    model = ai_marketing.normalize_model_name(model, provider=provider)
+    res = ai_marketing.test_ai_connection(api_url=api_url, api_key=api_key, model=model, provider=provider)
+    return jsonify(res)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# بخش مدیریت مشتریان بدحساب و چرخه‌های محدودیت (Delinquent Management)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/delinquent-settings", methods=["GET", "POST"])
+@permission_required("settings")
+def admin_delinquent_settings():
+    """صفحه تنظیمات چرخه‌ها، محدودیت‌ها و قالب‌های پیام مشتریان بدحساب برای مدیر کل"""
+    if request.method == "POST":
+        data = {
+            "enabled": request.form.get("enabled") == "on",
+            "traffic_limit_mb": float(request.form.get("traffic_limit_mb") or 0),
+            "continuous_usage_minutes": float(request.form.get("continuous_usage_minutes") or 0),
+            "penalty_duration_minutes": int(request.form.get("penalty_duration_minutes") or 120),
+            "cooldown_minutes": int(request.form.get("cooldown_minutes") or 30),
+            "daily_restriction_limit": int(request.form.get("daily_restriction_limit") or 0),
+            "daily_traffic_limit_mb": float(request.form.get("daily_traffic_limit_mb") or 0),
+            "min_debt_threshold": float(request.form.get("min_debt_threshold") or 0),
+            "peak_hours_enabled": request.form.get("peak_hours_enabled") == "on",
+            "peak_start_hour": int(request.form.get("peak_start_hour") or 18),
+            "peak_end_hour": int(request.form.get("peak_end_hour") or 24),
+            "notify_telegram": request.form.get("notify_telegram") == "on",
+            "notify_sms": request.form.get("notify_sms") == "on",
+            "notify_on_start": request.form.get("notify_on_start") == "on",
+            "notify_on_end": request.form.get("notify_on_end") == "on",
+            "template_start_traffic": request.form.get("template_start_traffic", "").strip(),
+            "template_start_continuous": request.form.get("template_start_continuous", "").strip(),
+            "template_start_daily": request.form.get("template_start_daily", "").strip(),
+            "template_start_peak": request.form.get("template_start_peak", "").strip(),
+            "template_end": request.form.get("template_end", "").strip()
+        }
+        db.save_debt_restriction_settings(data, reseller_id=None)
+        flash("تنظیمات محدودیت مشتریان بدحساب با موفقیت ذخیره شد.", "success")
+        return redirect(url_for("admin_delinquent_settings"))
+
+    settings = db.get_debt_restriction_settings(reseller_id=None)
+    delinquent_count = db.get_delinquent_count(reseller_id=None)
+    debtor_count = db.get_debtor_count(reseller_id=None)
+    return render_template(
+        "delinquent_settings.html",
+        role="admin",
+        settings=settings,
+        delinquent_count=delinquent_count,
+        debtor_count=debtor_count
+    )
+
+
+@app.route("/reseller/delinquent-settings", methods=["GET", "POST"])
+@reseller_required
+def reseller_delinquent_settings():
+    """صفحه تنظیمات چرخه‌ها، محدودیت‌ها و قالب‌های پیام مشتریان بدحساب برای نماینده"""
+    reseller_id = session.get("reseller_id")
+    if request.method == "POST":
+        data = {
+            "enabled": request.form.get("enabled") == "on",
+            "traffic_limit_mb": float(request.form.get("traffic_limit_mb") or 0),
+            "continuous_usage_minutes": float(request.form.get("continuous_usage_minutes") or 0),
+            "penalty_duration_minutes": int(request.form.get("penalty_duration_minutes") or 120),
+            "cooldown_minutes": int(request.form.get("cooldown_minutes") or 30),
+            "daily_restriction_limit": int(request.form.get("daily_restriction_limit") or 0),
+            "daily_traffic_limit_mb": float(request.form.get("daily_traffic_limit_mb") or 0),
+            "min_debt_threshold": float(request.form.get("min_debt_threshold") or 0),
+            "peak_hours_enabled": request.form.get("peak_hours_enabled") == "on",
+            "peak_start_hour": int(request.form.get("peak_start_hour") or 18),
+            "peak_end_hour": int(request.form.get("peak_end_hour") or 24),
+            "notify_telegram": request.form.get("notify_telegram") == "on",
+            "notify_sms": request.form.get("notify_sms") == "on",
+            "notify_on_start": request.form.get("notify_on_start") == "on",
+            "notify_on_end": request.form.get("notify_on_end") == "on",
+            "template_start_traffic": request.form.get("template_start_traffic", "").strip(),
+            "template_start_continuous": request.form.get("template_start_continuous", "").strip(),
+            "template_start_daily": request.form.get("template_start_daily", "").strip(),
+            "template_start_peak": request.form.get("template_start_peak", "").strip(),
+            "template_end": request.form.get("template_end", "").strip()
+        }
+        db.save_debt_restriction_settings(data, reseller_id=reseller_id)
+        flash("تنظیمات محدودیت مشتریان بدحساب شما با موفقیت ذخیره شد.", "success")
+        return redirect(url_for("reseller_delinquent_settings"))
+
+    settings = db.get_debt_restriction_settings(reseller_id=reseller_id)
+    delinquent_count = db.get_delinquent_count(reseller_id=reseller_id)
+    debtor_count = db.get_debtor_count(reseller_id=reseller_id)
+    return render_template(
+        "delinquent_settings.html",
+        role="reseller",
+        settings=settings,
+        delinquent_count=delinquent_count,
+        debtor_count=debtor_count
+    )
+
+
+@app.route("/api/subscriptions/<int:sub_id>/toggle-delinquent", methods=["POST"])
+@permission_required("sub_manage")
+def api_admin_toggle_delinquent(sub_id: int):
+    """تغییر سریع وضعیت بدحسابی یک اشتراک توسط مدیر"""
+    res = db.toggle_subscription_delinquent(sub_id, hidify_update_func=hidify_sync_update_user)
+    return jsonify(res)
+
+
+@app.route("/api/reseller/subscriptions/<int:sub_id>/toggle-delinquent", methods=["POST"])
+@reseller_required
+def api_reseller_toggle_delinquent(sub_id: int):
+    """تغییر سریع وضعیت بدحسابی یک اشتراک توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    res = db.toggle_subscription_delinquent(sub_id, reseller_id=reseller_id, hidify_update_func=hidify_sync_update_user)
+    return jsonify(res)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -10903,6 +11215,12 @@ def admin_subscription_clear_debt(sub_id):
     target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
 
     res = db.clear_subscription_debt(sub_id, settled_by=settled_by, target_card_id=target_card_id)
+    if res.get("success"):
+        try:
+            from services.debt_restriction_service import re_enable_if_restricted
+            re_enable_if_restricted(sub_id, db, hidify_sync_update_user)
+        except Exception:
+            pass
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
             return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه و در حساب مقصد ثبت شد."})
@@ -10924,6 +11242,12 @@ def reseller_subscription_clear_debt(sub_id):
     target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
 
     res = db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by, target_card_id=target_card_id)
+    if res.get("success"):
+        try:
+            from services.debt_restriction_service import re_enable_if_restricted
+            re_enable_if_restricted(sub_id, db, hidify_sync_update_user)
+        except Exception:
+            pass
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
             return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه و در حساب ثبت شد."})
@@ -11515,6 +11839,14 @@ def admin_subscriptions_bulk():
             target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
             db.clear_subscription_debt(sub_id, settled_by=admin_name, target_card_id=target_card_id)
             success_count += 1
+        elif action == "mark_delinquent":
+            res = db.set_subscriptions_delinquent_bulk([sub_id], is_delinquent=True)
+            if res:
+                success_count += 1
+        elif action == "unmark_delinquent":
+            res = db.set_subscriptions_delinquent_bulk([sub_id], is_delinquent=False, hidify_update_func=hidify_sync_update_user)
+            if res:
+                success_count += 1
         elif action == "transfer_reseller":
             pass
 
@@ -11557,6 +11889,10 @@ def admin_subscriptions_bulk():
         flash(f"✅ تعداد {success_count} اشتراک با موفقیت به طور کامل حذف شدند.", "success")
     elif action == "clear_debt":
         flash(f"✅ بدهی {success_count} اشتراک با موفقیت تسویه گردید.", "success")
+    elif action == "mark_delinquent":
+        flash(f"✅ تعداد {success_count} اشتراک به عنوان بدحساب علامت‌گذاری شدند.", "warning")
+    elif action == "unmark_delinquent":
+        flash(f"✅ وضعیت بدحسابی {success_count} اشتراک با موفقیت لغو گردید.", "success")
     else:
         flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
 
@@ -13996,7 +14332,9 @@ def settings():
             chat_ai_mode = request.form.get("chat_ai_mode", "smart_local").strip()
             chat_ai_api_key = request.form.get("chat_ai_api_key", "").strip()
             chat_ai_api_url = request.form.get("chat_ai_api_url", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions").strip()
-            chat_ai_model = request.form.get("chat_ai_model", "gemini-1.5-pro").strip()
+            chat_ai_model = request.form.get("chat_ai_model", "gemini-2.0-flash").strip()
+            from ai_marketing_manager import ai_marketing
+            chat_ai_model = ai_marketing.normalize_model_name(chat_ai_model)
             chat_sound_enabled = "1" if request.form.get("chat_sound_enabled") else "0"
             chat_ai_rate_limit_hourly = int(request.form.get("chat_ai_rate_limit_hourly", 15) or 15)
             chat_ai_cooldown_seconds = int(request.form.get("chat_ai_cooldown_seconds", 5) or 5)
@@ -14373,6 +14711,7 @@ def api_admin_test_ai_connection():
         return jsonify({"success": False, "error": "کلید دسترسی (API Key) وارد نشده است. لطفاً ابتدا کلید معتبر خود را در کادر مربوطه وارد نمایید."}), 400
 
     from ai_marketing_manager import ai_marketing
+    model = ai_marketing.normalize_model_name(model)
     res = ai_marketing.test_ai_connection(api_url=api_url, api_key=api_key, model=model)
     return jsonify(res)
 
@@ -14445,8 +14784,8 @@ def upload_backup():
 @super_admin_required
 def admin_auto_backup():
     """صفحه اختصاصی مدیریت و پشتیبان‌گیری خودکار سیستم"""
-    backup_main_enabled = db.get_setting("backup_main_enabled", "1") == "1"
-    backup_hiddify_enabled = db.get_setting("backup_hiddify_enabled", "1") == "1"
+    backup_main_enabled = db.is_setting_enabled("backup_main_enabled", default=True)
+    backup_hiddify_enabled = db.is_setting_enabled("backup_hiddify_enabled", default=True)
     backup_telegram_target = db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")
     backup_schedule_type = db.get_setting("backup_schedule_type", "interval")
     backup_interval_hours = db.get_setting("backup_interval_hours", "6")
@@ -14677,8 +15016,17 @@ def reseller_create_user():
         customer_selling_price = max(0, original_price - discount_amount)
         if payment_status in ("unpaid", "debtor"):
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
+            debt_due_mode = request.form.get("debt_due_mode", "days").strip()
+            debt_due_days = request.form.get("debt_due_days", 3)
+            debt_due_date_shamsi = request.form.get("debt_due_date_shamsi", "").strip()
+            debt_auto_disable_at = calculate_debt_auto_disable_at(
+                days_val=debt_due_days if debt_due_mode == "days" else None,
+                shamsi_date_str=debt_due_date_shamsi if debt_due_mode == "calendar" else None,
+                base_dt=get_now_naive()
+            )
         else:
             debt_amount = 0
+            debt_auto_disable_at = None
 
         user_comment = f"Reseller #{reseller_id} ({session.get('name')})"
         if phone_number:
@@ -14785,15 +15133,15 @@ def reseller_create_user():
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by,
+             payment_status, debt_amount, debt_notes, debt_created_at, debt_auto_disable_at, is_credit, credit_debt_amount, payment_source, created_by,
              reseller_note, reseller_note_updated_at, reseller_note_updated_by,
              customer_note, customer_note_updated_at, customer_note_updated_by,
              gift_traffic_gb, discount_amount, created_at, updated_at, last_lifecycle_event_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             effective_limit_gb, duration_days, start_date, expire_date, reseller_id, user_limit, final_price,
-            payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
+            payment_status, debt_amount, debt_notes or None, debt_created, debt_auto_disable_at, is_credit_sub, credit_used_amount,
             actual_payment_source, reseller_creator,
             internal_note or None, (now if internal_note else None), (reseller_creator if internal_note else None),
             customer_note or None, (now if customer_note else None), (reseller_creator if customer_note else None),
@@ -15020,6 +15368,7 @@ def reseller_users():
     status_filter = request.args.get("status", "all")
     search_query = request.args.get("search", "").strip().lower()
     debtor_count = db.get_debtor_count(reseller_id)
+    delinquent_count = db.get_delinquent_count(reseller_id)
 
     # پارامترهای صفحه‌بندی (Pagination: 25, 50, 100, all)
     try:
@@ -15109,6 +15458,8 @@ def reseller_users():
                 continue
             elif status_filter == "debtors" and not (item.get("payment_status") in ("unpaid", "debtor") or (item.get("debt_amount") or 0) > 0):
                 continue
+            elif status_filter == "delinquent" and not item.get("in_debt_restriction"):
+                continue
             elif status_filter == "queue" and not item.get("has_queue"):
                 continue
 
@@ -15150,6 +15501,7 @@ def reseller_users():
         discount=discount,
         stats=stats,
         debtor_count=debtor_count,
+        delinquent_count=delinquent_count,
         queue_count=queue_count,
         all_pending_queue=all_pending_queue,
         balance=stats["balance"],
@@ -15500,7 +15852,7 @@ def reseller_renew_user(sub_id: int):
         renewal_res = {"renewal_type": "reset_and_replaced"}
         if instant_activate and sub.get("hidify_uuid"):
             try:
-                renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True)
+                renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True, reseller_id=reseller_id)
             except Exception as e:
                 logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
@@ -15518,9 +15870,18 @@ def reseller_renew_user(sub_id: int):
         if payment_status in ("unpaid", "debtor"):
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
             debt_status = "unpaid"
+            debt_due_mode = request.form.get("debt_due_mode", "days").strip()
+            debt_due_days = request.form.get("debt_due_days", 3)
+            debt_due_date_shamsi = request.form.get("debt_due_date_shamsi", "").strip()
+            debt_auto_disable_at = calculate_debt_auto_disable_at(
+                days_val=debt_due_days if debt_due_mode == "days" else None,
+                shamsi_date_str=debt_due_date_shamsi if debt_due_mode == "calendar" else None,
+                base_dt=get_now_naive()
+            )
         else:
             debt_amount = 0
             debt_status = "paid"
+            debt_auto_disable_at = None
 
         # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
         creator_user = session.get("username") or f"reseller_{reseller_id}"
@@ -15572,8 +15933,28 @@ def reseller_renew_user(sub_id: int):
                     )
                 except Exception as e_rec:
                     logger.error(f"Error logging customer debt record in reseller_renew_user: {e_rec}")
+                try:
+                    now_str = get_now_iso()
+                    conn_d = db.get_connection()
+                    conn_d.execute("""
+                        UPDATE subscriptions 
+                        SET payment_status = 'unpaid', debt_amount = ?, debt_notes = ?,
+                            debt_created_at = COALESCE(debt_created_at, ?),
+                            debt_auto_disable_at = ?,
+                            updated_at = ?
+                        WHERE id = ? AND reseller_id = ?
+                    """, (total_sub_debt, renewal_notes or None, now_str, debt_auto_disable_at, now_str, sub_id, reseller_id))
+                    conn_d.commit()
+                    conn_d.close()
+                except Exception as ex_d:
+                    logger.error(f"Error updating debt_auto_disable_at in reseller_renew_user: {ex_d}")
             else:
                 db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=creator_user)
+                try:
+                    from services.debt_restriction_service import re_enable_if_restricted
+                    re_enable_if_restricted(sub_id, db, hidify_sync_update_user)
+                except Exception:
+                    pass
                 if renewal_notes:
                     conn = db.get_connection()
                     conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=? AND reseller_id=?", (renewal_notes, sub_id, reseller_id))
@@ -15662,6 +16043,10 @@ def reseller_renew_user(sub_id: int):
                 flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.{debt_tag}", "success")
             else:
                 flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد.{debt_tag} پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+                try:
+                    process_subscription_queue()
+                except Exception as ex_q:
+                    logger.warning(f"Immediate queue check error on reseller renew: {ex_q}")
 
             r_after = db.get_reseller(reseller_id)
             if r_after:
@@ -15827,7 +16212,8 @@ def reseller_subscriptions_bulk_renew():
         session["total_purchasing_power"] = session["balance"] + session["available_credit"]
 
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
-    flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")
+    cat = "success" if instant_activate else "info"
+    flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", cat)
     return redirect(get_redirect_target("reseller_users"))
 
 
@@ -16307,6 +16693,15 @@ def reseller_subscriptions_bulk():
                 except Exception:
                     pass
 
+        elif action == "mark_delinquent":
+            res = db.set_subscriptions_delinquent_bulk([sub_id], is_delinquent=True, reseller_id=reseller_id)
+            if res:
+                success_count += 1
+        elif action == "unmark_delinquent":
+            res = db.set_subscriptions_delinquent_bulk([sub_id], is_delinquent=False, reseller_id=reseller_id, hidify_update_func=hidify_sync_update_user)
+            if res:
+                success_count += 1
+
     if action == "delete":
         if total_refund > 0:
             refund_parts = []
@@ -16329,6 +16724,10 @@ def reseller_subscriptions_bulk():
         flash(f"✅ بدهی تعداد {success_count} اشتراک با موفقیت تسویه گردید.", "success")
     elif action == "send_reminder":
         flash(f"✅ پیام یادآوری بدهی برای {success_count} کاربر در تلگرام ارسال شد.", "success")
+    elif action == "mark_delinquent":
+        flash(f"✅ تعداد {success_count} مشتری با موفقیت به عنوان بدحساب علامت‌گذاری شدند.", "success")
+    elif action == "unmark_delinquent":
+        flash(f"✅ وضعیت بدحسابی تعداد {success_count} مشتری با موفقیت لغو گردید.", "success")
     else:
         flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
 
@@ -17868,7 +18267,7 @@ def reseller_payment_approve(payment_id):
     # پردازش کش‌بک مشتریان VIP نماینده (تنها در صورت داشتن آیدی تلگرام)
     if user_id and int(user_id) > 0:
         try:
-            vip_info = db.get_user_vip_info(user_id)
+            vip_info = db.get_user_vip_info(user_id, reseller_id=reseller_id)
             if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
                 paid_amount = int(tx.get("amount") or 0)
                 cb_rate = vip_info.get("cashback_percent", 10)
@@ -17879,7 +18278,8 @@ def reseller_payment_approve(payment_id):
                         cashback_val,
                         f"هدیه کش‌بک خرید VIP ({cb_rate}%) از {brand_title}",
                         ref_id=str(tx.get("order_id") or payment_id),
-                        tx_type="cashback"
+                        tx_type="cashback",
+                        reseller_id=reseller_id
                     )
                     new_w_bal = cb_res.get("new_balance", 0)
                     cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cashback_val:,} تومان ({cb_rate}٪) به کیف پول شما واریز گردید.\n💰 موجودی کیف پول: {new_w_bal:,} تومان"
@@ -19257,11 +19657,11 @@ def admin_create_customer():
 
         # بررسی موجودی کیف پول در صورت پرداخت از کیف پول
         if payment_method == "wallet" and telegram_id:
-            wallet_bal = db.get_user_wallet_balance(telegram_id)
+            wallet_bal = db.get_user_wallet_balance(telegram_id, reseller_id=0)
             if wallet_bal < price:
                 flash(f"موجودی کیف پول کاربر ({wallet_bal:,} تومان) کمتر از قیمت پلن ({price:,} تومان) است.", "danger")
                 return redirect(url_for("admin_create_customer"))
-            db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک {plan_name} توسط مدیریت")
+            db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک {plan_name} توسط مدیریت", reseller_id=0)
 
         # ایجاد کاربر در سرور هیدیفای
         h_comment = f"Admin:{session.get('username')}|{telegram_id or ''}"
@@ -19285,9 +19685,18 @@ def admin_create_customer():
         if payment_method == "debtor":
             payment_status = "unpaid"
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else price
+            debt_due_mode = request.form.get("debt_due_mode", "days").strip()
+            debt_due_days = request.form.get("debt_due_days", 3)
+            debt_due_date_shamsi = request.form.get("debt_due_date_shamsi", "").strip()
+            debt_auto_disable_at = calculate_debt_auto_disable_at(
+                days_val=debt_due_days if debt_due_mode == "days" else None,
+                shamsi_date_str=debt_due_date_shamsi if debt_due_mode == "calendar" else None,
+                base_dt=now_naive
+            )
         else:
             payment_status = "paid"
             debt_amount = 0
+            debt_auto_disable_at = None
 
         now = get_now_iso()
         now_naive = get_now_naive()
@@ -19317,12 +19726,12 @@ def admin_create_customer():
         conn = db.get_connection()
         conn.execute("""
             UPDATE subscriptions 
-            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, gift_traffic_gb = ?, discount_amount = ?, created_by = COALESCE(created_by, ?),
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, debt_auto_disable_at = ?, gift_traffic_gb = ?, discount_amount = ?, created_by = COALESCE(created_by, ?),
                 admin_note = ?, admin_note_updated_at = ?, admin_note_updated_by = ?,
                 customer_note = ?, customer_note_updated_at = ?, customer_note_updated_by = ?
             WHERE id = ?
         """, (
-            phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, gift_traffic, discount_amount, admin_creator,
+            phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, debt_auto_disable_at, gift_traffic, discount_amount, admin_creator,
             internal_note or None, (now if internal_note else None), (admin_creator if internal_note else None),
             customer_note or None, (now if customer_note else None), (admin_creator if customer_note else None),
             sub_id
@@ -21831,7 +22240,7 @@ def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_i
 
     is_auto_confirm_active = bool(sms_cfg.get("enabled")) if isinstance(sms_cfg, dict) else False
 
-    user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
+    user_wallet = db.get_user_wallet_balance(user_id, reseller_id=reseller_id) if user_id else 0
 
     active_methods = []
     for m in ordered_methods:
@@ -21989,19 +22398,29 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
     sub_row = None
     conn = db.get_connection()
+    deleted_sub_row = None
     if token:
         sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)", (token, token)).fetchone()
+        if not sub_row:
+            deleted_sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND is_deleted=1", (token, token)).fetchone()
+            if deleted_sub_row:
+                del_sub = dict(deleted_sub_row)
+                if not telegram_id and del_sub.get("telegram_id") and int(del_sub["telegram_id"]) > 0:
+                    telegram_id = int(del_sub["telegram_id"])
+                if reseller_id is None and del_sub.get("reseller_id"):
+                    reseller_id = int(del_sub["reseller_id"])
+                if not cust_user and del_sub.get("phone_number"):
+                    cust_user = db.get_customer_user_by_phone(del_sub["phone_number"], reseller_id)
 
-    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام معتبر مثبت داریم
+    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام یا شماره مشتری داریم
     if not sub_row and telegram_id and int(telegram_id) > 0:
-        user_subs_all = db.get_user_subscriptions(int(telegram_id))
+        user_subs_all = db.get_user_subscriptions(int(telegram_id), reseller_id=reseller_id if reseller_id else None, is_admin_bot=True if not reseller_id else False)
+        user_subs_valid = [s for s in user_subs_all if not s.get("is_deleted") and s.get("status") != "deleted"]
         if reseller_id is not None and reseller_id > 0:
-            r_subs = [s for s in user_subs_all if (s.get("reseller_id") or 0) == reseller_id]
+            r_subs = [s for s in user_subs_valid if (s.get("reseller_id") or 0) == reseller_id]
             user_subs = [s for s in r_subs if s.get("status") == "active"] or r_subs
-            if not user_subs and not r_subs:
-                user_subs = user_subs_all
         else:
-            user_subs = [s for s in user_subs_all if s.get("status") == "active"] or user_subs_all
+            user_subs = [s for s in user_subs_valid if s.get("status") == "active"] or user_subs_valid
 
         if user_subs:
             target_sub_id = request.args.get("sub_id")
@@ -22012,6 +22431,23 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                 selected_sub = user_subs[0]
             sub_row = selected_sub
             token = selected_sub.get("hidify_uuid") or str(selected_sub.get("id"))
+    elif not sub_row and (cust_user and cust_user.get("phone_number") or (deleted_sub_row and deleted_sub_row.get("phone_number"))):
+        chk_phone = (cust_user.get("phone_number") if cust_user else None) or deleted_sub_row.get("phone_number")
+        if chk_phone:
+            if reseller_id and int(reseller_id) > 0:
+                p_subs = [dict(r) for r in conn.execute(
+                    "SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                    (chk_phone, int(reseller_id))
+                ).fetchall()]
+            else:
+                p_subs = [dict(r) for r in conn.execute(
+                    "SELECT * FROM subscriptions WHERE phone_number=? AND (reseller_id IS NULL OR reseller_id=0) AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                    (chk_phone,)
+                ).fetchall()]
+            if p_subs:
+                active_p_subs = [s for s in p_subs if s.get("status") == "active"] or p_subs
+                sub_row = active_p_subs[0]
+                token = sub_row.get("hidify_uuid") or str(sub_row.get("id"))
 
     # همگام‌سازی بلادرنگ اطلاعات مصرف کاربر از پنل هیدیفای برای نمایش صحیح در پورتال مشتری
     sub_dict = dict(sub_row) if sub_row else {}
@@ -22033,8 +22469,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
     is_new_customer = False
     if not sub_row:
-        if is_webapp or telegram_id:
-            # کاربر بدون اشتراک در مینی‌اپ یا پرتال وب (حالت خرید اشتراک جدید)
+        if is_webapp or telegram_id or deleted_sub_row or cust_user:
+            # کاربر بدون اشتراک در مینی‌اپ یا پرتال وب (حالت خرید اشتراک جدید با حفظ کامل سوابق و تراکنش‌ها)
             is_new_customer = True
             acc_name = "کاربر گرامی"
             cust_phone = ""
@@ -22043,6 +22479,11 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                 cust_phone = cust_user.get("phone_number") or ""
                 if not reseller_id and cust_user.get("reseller_id"):
                     reseller_id = int(cust_user["reseller_id"])
+            elif deleted_sub_row:
+                acc_name = deleted_sub_row.get("account_name") or "کاربر گرامی"
+                cust_phone = deleted_sub_row.get("phone_number") or ""
+                if not reseller_id and deleted_sub_row.get("reseller_id"):
+                    reseller_id = int(deleted_sub_row["reseller_id"])
             sub = {
                 "id": 0,
                 "account_name": acc_name,
@@ -22063,6 +22504,43 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             sub_history = []
             tx_history = []
             total_paid = 0
+
+            # بارگذاری سوابق پرداخت و تراکنش‌های گذشته مشتری تا پروفایل و سوابق مالی حتی بدون اشتراک فعال حفظ بماند
+            try:
+                conn_tx = db.get_connection()
+                tx_conds = []
+                tx_pms = []
+                if telegram_id and int(telegram_id) > 0:
+                    tx_conds.append("(user_id=? AND user_id>0)")
+                    tx_pms.append(int(telegram_id))
+                if deleted_sub_row:
+                    tx_conds.append("(renew_sub_id=? OR subscription_id=?)")
+                    tx_pms.extend([deleted_sub_row["id"], deleted_sub_row["id"]])
+                    if deleted_sub_row.get("account_name"):
+                        tx_conds.append("(username IS NOT NULL AND username!='' AND username=?)")
+                        tx_pms.append(deleted_sub_row["account_name"])
+                if tx_conds:
+                    if reseller_id and int(reseller_id) > 0:
+                        r_tx_cond = "AND reseller_id = ?"
+                        tx_pms.append(int(reseller_id))
+                    else:
+                        r_tx_cond = "AND (reseller_id IS NULL OR reseller_id = 0)"
+                    raw_txs = conn_tx.execute(f"""
+                        SELECT * FROM transactions
+                        WHERE ({" OR ".join(tx_conds)})
+                          {r_tx_cond}
+                          AND (is_deleted = 0 OR is_deleted IS NULL)
+                          AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                        ORDER BY created_at DESC LIMIT 40
+                    """, tuple(tx_pms)).fetchall()
+                    for r in raw_txs:
+                        t = dict(r)
+                        t["created_at_shamsi"] = gregorian_to_shamsi(t["created_at"], fmt="%Y/%m/%d %H:%M") if t.get("created_at") else "-"
+                        tx_history.append(t)
+                    total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
+                conn_tx.close()
+            except Exception as e_tx:
+                logger.warning(f"Error loading past transactions for new customer view: {e_tx}")
         else:
             return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
     else:
@@ -22107,18 +22585,35 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
             WHERE order_id=? AND status='pending'
         """, (req_order_id,)).fetchone()
     if not inv_row and sub_id:
-        inv_row = conn.execute("""
-            SELECT * FROM smart_invoices 
-            WHERE sub_id=? AND status='pending' AND expires_at > ?
-            ORDER BY id DESC LIMIT 1
-        """, (sub_id, now_str)).fetchone()
+        if reseller_id and int(reseller_id) > 0:
+            inv_row = conn.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE sub_id=? AND status='pending' AND expires_at > ? AND reseller_id=?
+                ORDER BY id DESC LIMIT 1
+            """, (sub_id, now_str, int(reseller_id))).fetchone()
+        else:
+            inv_row = conn.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE sub_id=? AND status='pending' AND expires_at > ? AND (reseller_id IS NULL OR reseller_id=0)
+                ORDER BY id DESC LIMIT 1
+            """, (sub_id, now_str)).fetchone()
     if not inv_row and telegram_id:
-        inv_row = conn.execute("""
-            SELECT s.* FROM smart_invoices s
-            LEFT JOIN transactions t ON s.order_id = t.order_id
-            WHERE (s.telegram_id=? OR t.user_id=?) AND s.status='pending' AND s.expires_at > ?
-            ORDER BY s.id DESC LIMIT 1
-        """, (telegram_id, telegram_id, now_str)).fetchone()
+        if reseller_id and int(reseller_id) > 0:
+            inv_row = conn.execute("""
+                SELECT s.* FROM smart_invoices s
+                LEFT JOIN transactions t ON s.order_id = t.order_id
+                WHERE (s.telegram_id=? OR t.user_id=?) AND s.status='pending' AND s.expires_at > ?
+                  AND (s.reseller_id=? OR t.reseller_id=?)
+                ORDER BY s.id DESC LIMIT 1
+            """, (telegram_id, telegram_id, now_str, int(reseller_id), int(reseller_id))).fetchone()
+        else:
+            inv_row = conn.execute("""
+                SELECT s.* FROM smart_invoices s
+                LEFT JOIN transactions t ON s.order_id = t.order_id
+                WHERE (s.telegram_id=? OR t.user_id=?) AND s.status='pending' AND s.expires_at > ?
+                  AND ((s.reseller_id IS NULL OR s.reseller_id=0) AND (t.reseller_id IS NULL OR t.reseller_id=0))
+                ORDER BY s.id DESC LIMIT 1
+            """, (telegram_id, telegram_id, now_str)).fetchone()
     conn.close()
     invoice = dict(inv_row) if inv_row else None
 
@@ -22144,17 +22639,23 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                 CASE 
                     WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
                     ELSE 9999 
-                END ASC,
+                    END ASC,
                 renewed_at DESC, id DESC
         """, (sub_id, sub.get("hidify_uuid") or "")).fetchall()
 
-        tx_rows = conn.execute("""
+        tx_cond_r = "AND reseller_id = ?" if (reseller_id and int(reseller_id) > 0) else "AND (reseller_id IS NULL OR reseller_id = 0)"
+        tx_params_sub = [sub_id, acc_name, sub.get("telegram_id") or 0]
+        if reseller_id and int(reseller_id) > 0:
+            tx_params_sub.append(int(reseller_id))
+
+        tx_rows = conn.execute(f"""
             SELECT * FROM transactions 
             WHERE (renew_sub_id = ? OR (username IS NOT NULL AND username != '' AND username = ?) OR (user_id = ? AND user_id > 0))
+              {tx_cond_r}
               AND (is_deleted = 0 OR is_deleted IS NULL)
               AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
             ORDER BY created_at DESC LIMIT 40
-        """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
+        """, tuple(tx_params_sub)).fetchall()
         conn.close()
 
         has_subsequent_renewals = any(
@@ -22236,11 +22737,33 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
         total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
 
-    # تمام اشتراک‌های کاربر جهت نمایش در سوئیچر اکانت‌ها در مینی‌اپ
+    # تمام اشتراک‌های فعال کاربر جهت نمایش در سوئیچر اکانت‌ها در مینی‌اپ و پرتال (حذف کامل اشتراک‌های حذف‌شده)
     user_subscriptions = []
-    if telegram_id:
-        raw_user_subs = db.get_user_subscriptions(telegram_id)
+    if telegram_id and int(telegram_id) > 0:
+        raw_user_subs = db.get_user_subscriptions(
+            int(telegram_id),
+            reseller_id=reseller_id if reseller_id else None,
+            is_admin_bot=True if not reseller_id else False
+        )
         for s in raw_user_subs:
+            if not s.get("is_deleted") and s.get("status") != "deleted":
+                item = enrich_subscription_details(s)
+                user_subscriptions.append(item)
+    elif sub and sub.get("phone_number"):
+        phone = str(sub.get("phone_number")).strip()
+        conn_p = db.get_connection()
+        if reseller_id:
+            raw_phone_subs = [dict(r) for r in conn_p.execute(
+                "SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                (phone, reseller_id)
+            ).fetchall()]
+        else:
+            raw_phone_subs = [dict(r) for r in conn_p.execute(
+                "SELECT * FROM subscriptions WHERE phone_number=? AND (reseller_id IS NULL OR reseller_id=0) AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                (phone,)
+            ).fetchall()]
+        conn_p.close()
+        for s in raw_phone_subs:
             item = enrich_subscription_details(s)
             user_subscriptions.append(item)
 
@@ -22339,7 +22862,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     portal_payment_methods = get_portal_payment_methods(sub=sub, reseller_id=reseller_id, user_id=telegram_id)
     c2c_method = next((m for m in portal_payment_methods if m["id"] == "card_to_card"), None)
     is_auto_confirm_active = c2c_method.get("is_auto_confirm", False) if c2c_method else False
-    user_wallet = db.get_user_wallet_balance(telegram_id) if telegram_id else 0
+    user_wallet = db.get_user_wallet_balance(telegram_id, reseller_id=reseller_id) if telegram_id else 0
 
     if reseller_id:
         gw_cfg = db.get_reseller_gateway(reseller_id)
@@ -22474,7 +22997,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         lucky_wheel_enabled = lucky_wheel_global_enabled
 
     target_tg_id = telegram_id or (sub.get("telegram_id") if sub else None)
-    loyalty_tier_info = db.get_user_loyalty_tier(target_tg_id) if target_tg_id else {
+    loyalty_tier_info = db.get_user_loyalty_tier(target_tg_id, reseller_id=effective_r_id) if target_tg_id else {
         "tier": "none", "title": "عادی", "badge": "عضو عادی", "badge_html": '<span class="badge bg-secondary">عادی</span>',
         "discount_percent": 0, "cashback_percent": 0, "next_tier": "bronze", "next_tier_title": "برنزی",
         "remaining_tomans": 300000, "progress_percent": 0, "birthday": None
@@ -22944,7 +23467,7 @@ def customer_create_invoice(token: str):
     user_id = sub.get("telegram_id") or 0
 
     # ۱. اعمال خودکار تخفیف دائم سطوح وفاداری مشتریان (Bronze 5%, Silver 10%, Gold 15%)
-    vip_loyalty = db.get_user_loyalty_tier(user_id) if user_id else {}
+    vip_loyalty = db.get_user_loyalty_tier(user_id, reseller_id=reseller_id) if user_id else {}
     vip_disc_pct = vip_loyalty.get("discount_percent", 0)
     vip_disc_amount = 0
     if vip_disc_pct > 0 and price > 0:
@@ -23078,12 +23601,12 @@ def customer_create_invoice(token: str):
             flash("پرداخت از کیف پول فقط برای اشتراک‌های متصل به حساب تلگرام امکان‌پذیر است.", "warning")
             return redirect(url_for("customer_portal", token=token))
 
-        user_wallet = db.get_user_wallet_balance(user_id)
+        user_wallet = db.get_user_wallet_balance(user_id, reseller_id=reseller_id)
         if user_wallet < price:
             flash(f"موجودی کیف پول شما ({user_wallet:,} تومان) کافی نیست. کسری موجودی: {price - user_wallet:,} تومان.", "warning")
             return redirect(url_for("customer_portal", token=token))
 
-        deduct_res = db.deduct_wallet_balance(user_id, price, f"تمدید اشتراک {account_name} ({plan_name}) از پورتال")
+        deduct_res = db.deduct_wallet_balance(user_id, price, f"تمدید اشتراک {account_name} ({plan_name}) از پورتال", reseller_id=reseller_id)
         if not deduct_res.get("success"):
             flash(f"خطا در کسر از کیف پول: {deduct_res.get('error')}", "danger")
             return redirect(url_for("customer_portal", token=token))
@@ -23515,12 +24038,12 @@ def customer_buy_new_plan():
             flash("پرداخت از کیف پول نیازمند اتصال به حساب کاربری تلگرام است.", "warning")
             return redirect(target_return_url)
 
-        user_wallet = db.get_user_wallet_balance(telegram_id)
+        user_wallet = db.get_user_wallet_balance(telegram_id, reseller_id=reseller_id)
         if user_wallet < price:
             flash(f"موجودی کیف پول شما ({user_wallet:,} تومان) کافی نیست. کسری موجودی: {price - user_wallet:,} تومان.", "warning")
             return redirect(target_return_url)
 
-        deduct_res = db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک جدید «{plan_name}»")
+        deduct_res = db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک جدید «{plan_name}»", reseller_id=reseller_id)
         if not deduct_res.get("success"):
             flash(f"خطا در کسر از کیف پول: {deduct_res.get('error')}", "danger")
             return redirect(target_return_url)
@@ -23707,12 +24230,12 @@ def customer_settle_debt_invoice(token: str):
             flash("پرداخت از کیف پول فقط برای کاربران متصل به تلگرام مجاز است.", "warning")
             return redirect(url_for("customer_portal", token=token))
 
-        user_wallet = db.get_user_wallet_balance(user_id)
+        user_wallet = db.get_user_wallet_balance(user_id, reseller_id=reseller_id)
         if user_wallet < debt_amount:
             flash(f"موجودی کیف پول شما ({user_wallet:,} ت) برای تسویه این بدهی کافی نیست.", "warning")
             return redirect(url_for("customer_portal", token=token))
 
-        db.deduct_wallet_balance(user_id, debt_amount, f"تسویه بدهی اشتراک {account_name} از پورتال")
+        db.deduct_wallet_balance(user_id, debt_amount, f"تسویه بدهی اشتراک {account_name} از پورتال", reseller_id=reseller_id)
         db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by="کیف پول (پورتال)")
 
         order_id = f"DEBT_WAL_{int(datetime.now().timestamp())}_{sub_id}"
@@ -24459,9 +24982,9 @@ def api_portal_lucky_wheel_prizes(token: str):
     user_tg = sub.get("telegram_id")
     user_active_subs = []
     if user_tg and int(user_tg) > 0:
-        all_subs = db.get_user_subscriptions(int(user_tg))
-        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}", "uuid": s.get("hidify_uuid")} for s in all_subs if s.get("status") == "active"]
-    if not user_active_subs:
+        all_subs = db.get_user_subscriptions(int(user_tg), reseller_id=reseller_id)
+        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}", "uuid": s.get("hidify_uuid")} for s in all_subs if s.get("status") == "active" and not s.get("is_deleted") and s.get("status") != "deleted"]
+    if not user_active_subs and sub.get("status") == "active" and not sub.get("is_deleted"):
         user_active_subs = [{"id": sub["id"], "name": sub.get("account_name") or f"اشتراک #{sub['id']}", "uuid": sub.get("hidify_uuid")}]
 
     return jsonify({
@@ -24536,9 +25059,9 @@ def api_portal_lucky_wheel_spin(token: str):
     user_tg = sub.get("telegram_id")
     user_active_subs = []
     if user_tg and int(user_tg) > 0:
-        all_subs = db.get_user_subscriptions(int(user_tg))
-        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}"} for s in all_subs if s.get("status") == "active"]
-    if not user_active_subs:
+        all_subs = db.get_user_subscriptions(int(user_tg), reseller_id=reseller_id)
+        user_active_subs = [{"id": s["id"], "name": s.get("account_name") or f"اشتراک #{s['id']}"} for s in all_subs if s.get("status") == "active" and not s.get("is_deleted") and s.get("status") != "deleted"]
+    if not user_active_subs and sub.get("status") == "active" and not sub.get("is_deleted"):
         user_active_subs = [{"id": sub["id"], "name": sub.get("account_name") or f"اشتراک #{sub['id']}"}]
 
     needs_sub_choice = False
@@ -24568,7 +25091,7 @@ def api_portal_lucky_wheel_spin(token: str):
         except ValueError:
             amount = 0
         if user_tg and amount > 0:
-            db.add_wallet_balance(int(user_tg), amount, f"پاداش گردونه شانس: {prize_title}")
+            db.add_wallet_balance(int(user_tg), amount, f"پاداش گردونه شانس: {prize_title}", reseller_id=reseller_id)
             reward_message = f"تبریک! مبلغ {amount:,} تومان به کیف پول کاربری شما افزوده شد."
         else:
             reward_message = f"تبریک! شما برنده {prize_title} شدید."
@@ -24668,9 +25191,10 @@ def api_portal_vip_info(token: str):
             "rewards_granted": []
         })
 
-    loyalty = db.get_user_loyalty_tier(user_id)
+    reseller_id = sub.get("reseller_id") or 0
+    loyalty = db.get_user_loyalty_tier(user_id, reseller_id=reseller_id)
     # بررسی و شارژ خودکار پاداش روز تولد یا سالگرد عضویت در صورت انطباق با امروز
-    granted = db.process_vip_anniversary_and_birthday_rewards(user_id)
+    granted = db.process_vip_anniversary_and_birthday_rewards(user_id, reseller_id=reseller_id)
     return jsonify({
         "success": True,
         "loyalty": loyalty,
@@ -24785,32 +25309,8 @@ def api_portal_social_tasks_claim(token: str):
 @app.route("/admin/lucky-wheel")
 @permission_required("settings")
 def admin_lucky_wheel_page():
-    """صفحه اختصاصی مدیریت گردونه شانس و جوایز روزانه مدیریت کل"""
-    lucky_wheel_enabled = db.get_setting("lucky_wheel_enabled", "1") == "1"
-    lucky_wheel_cooldown_hours = int(db.get_setting("lucky_wheel_cooldown_hours", "24") or 24)
-    lucky_wheel_notify_admin = db.get_setting("lucky_wheel_notify_admin", "1") == "1"
-    lucky_wheel_title = db.get_setting("lucky_wheel_title", "گردونه خوش‌شانسی و جوایز روزانه")
-    lucky_wheel_desc = db.get_setting("lucky_wheel_desc", "هر ۲۴ ساعت شانس خود را امتحان کنید و حجم هدیه یا کد تخفیف برنده شوید!")
-    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=0, active_only=False)
-    lucky_wheel_history = db.get_lucky_wheel_history(limit=25)
-
-    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
-    for p in lucky_wheel_prizes:
-        if total_weight > 0 and p.get("is_active"):
-            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
-        else:
-            p["chance_percent"] = 0
-
-    return render_template(
-        "admin_lucky_wheel.html",
-        lucky_wheel_enabled=lucky_wheel_enabled,
-        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
-        lucky_wheel_notify_admin=lucky_wheel_notify_admin,
-        lucky_wheel_title=lucky_wheel_title,
-        lucky_wheel_desc=lucky_wheel_desc,
-        lucky_wheel_prizes=lucky_wheel_prizes,
-        lucky_wheel_history=lucky_wheel_history,
-    )
+    """هدایت یکپارچه به تب گردونه شانس در باشگاه مشتریان"""
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 @app.route("/admin/lucky-wheel/toggle", methods=["POST"])
 @permission_required("settings")
@@ -24819,7 +25319,7 @@ def admin_lucky_wheel_toggle():
     enabled = request.form.get("enabled", "0")
     db.set_setting("lucky_wheel_enabled", enabled)
     flash("تنظیمات وضعیت گردونه شانس با موفقیت بروزرسانی شد.", "success")
-    return redirect(url_for("admin_lucky_wheel_page"))
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 @app.route("/admin/lucky-wheel/config", methods=["POST"])
 @permission_required("settings")
@@ -24840,7 +25340,7 @@ def admin_lucky_wheel_config():
         db.set_setting("lucky_wheel_desc", desc)
 
     flash("تنظیمات پیشرفته گردونه شانس با موفقیت ذخیره گردید.", "success")
-    return redirect(url_for("admin_lucky_wheel_page"))
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 @app.route("/admin/lucky-wheel/prize/add", methods=["POST"])
 @permission_required("settings")
@@ -24858,7 +25358,7 @@ def admin_lucky_wheel_prize_add():
 
     if not title:
         flash("عنوان جایزه الزامی است.", "danger")
-        return redirect(url_for("admin_lucky_wheel_page"))
+        return redirect(url_for("vip_settings", tab="wheel"))
 
     res = db.add_lucky_wheel_prize(
         reseller_id=0,
@@ -24876,7 +25376,7 @@ def admin_lucky_wheel_prize_add():
         flash("جایزه جدید با موفقیت به گردونه شانس افزوده شد.", "success")
     else:
         flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
-    return redirect(url_for("admin_lucky_wheel_page"))
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 @app.route("/admin/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
 @permission_required("settings")
@@ -24909,7 +25409,7 @@ def admin_lucky_wheel_prize_edit(prize_id: int):
         flash("جایزه با موفقیت ویرایش شد.", "success")
     else:
         flash("خطا در ویرایش جایزه.", "danger")
-    return redirect(url_for("admin_lucky_wheel_page"))
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 @app.route("/admin/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
 @permission_required("settings")
@@ -24920,46 +25420,15 @@ def admin_lucky_wheel_prize_delete(prize_id: int):
         flash("جایزه با موفقیت حذف گردید.", "info")
     else:
         flash("خطا در حذف جایزه.", "danger")
-    return redirect(url_for("admin_lucky_wheel_page"))
+    return redirect(url_for("vip_settings", tab="wheel"))
 
 # ─── مدیریت جوایز و تنظیمات گردونه شانس توسط نماینده ───
 
 @app.route("/reseller/lucky-wheel")
 @reseller_required
 def reseller_lucky_wheel_page():
-    """صفحه اختصاصی مدیریت گردونه شانس و جوایز نماینده"""
-    reseller_id = session.get("reseller_id")
-    reseller = db.get_reseller(reseller_id)
-    if not reseller:
-        flash("حساب نماینده یافت نشد.", "danger")
-        return redirect(url_for("reseller_login"))
-
-    lucky_wheel_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") == "1"
-    lucky_wheel_cooldown_hours = int(db.get_setting(f"lucky_wheel_cooldown_hours_r_{reseller_id}", "24") or 24)
-    lucky_wheel_notify = db.get_setting(f"lucky_wheel_notify_r_{reseller_id}", "1") == "1"
-    lucky_wheel_title = db.get_setting(f"lucky_wheel_title_r_{reseller_id}", "")
-    lucky_wheel_desc = db.get_setting(f"lucky_wheel_desc_r_{reseller_id}", "")
-    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=False, include_fallback=False)
-    lucky_wheel_history = db.get_lucky_wheel_history(reseller_id=reseller_id, limit=25)
-
-    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
-    for p in lucky_wheel_prizes:
-        if total_weight > 0 and p.get("is_active"):
-            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
-        else:
-            p["chance_percent"] = 0
-
-    return render_template(
-        "reseller_lucky_wheel.html",
-        reseller=reseller,
-        lucky_wheel_enabled=lucky_wheel_enabled,
-        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
-        lucky_wheel_notify=lucky_wheel_notify,
-        lucky_wheel_title=lucky_wheel_title,
-        lucky_wheel_desc=lucky_wheel_desc,
-        lucky_wheel_prizes=lucky_wheel_prizes,
-        lucky_wheel_history=lucky_wheel_history,
-    )
+    """هدایت یکپارچه به تب گردونه شانس در باشگاه مشتریان نماینده"""
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 @app.route("/reseller/lucky-wheel/toggle", methods=["POST"])
 @reseller_required
@@ -24969,7 +25438,7 @@ def reseller_lucky_wheel_toggle():
     enabled = request.form.get("enabled", "0")
     db.set_setting(f"lucky_wheel_enabled_r_{reseller_id}", enabled)
     flash("وضعیت گردونه شانس مشتریان شما با موفقیت بروز شد.", "success")
-    return redirect(url_for("reseller_lucky_wheel_page"))
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 @app.route("/reseller/lucky-wheel/config", methods=["POST"])
 @reseller_required
@@ -24989,7 +25458,7 @@ def reseller_lucky_wheel_config():
     db.set_setting(f"lucky_wheel_desc_r_{reseller_id}", desc)
 
     flash("تنظیمات پیشرفته گردونه شانس شما با موفقیت ذخیره شد.", "success")
-    return redirect(url_for("reseller_lucky_wheel_page"))
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 @app.route("/reseller/lucky-wheel/prize/add", methods=["POST"])
 @reseller_required
@@ -25008,7 +25477,7 @@ def reseller_lucky_wheel_prize_add():
 
     if not title:
         flash("عنوان جایزه الزامی است.", "danger")
-        return redirect(url_for("reseller_lucky_wheel_page"))
+        return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
     res = db.add_lucky_wheel_prize(
         reseller_id=reseller_id,
@@ -25026,7 +25495,7 @@ def reseller_lucky_wheel_prize_add():
         flash("جایزه اختصاصی شما با موفقیت اضافه شد.", "success")
     else:
         flash(f"خطا در افزودن جایزه: {res.get('error')}", "danger")
-    return redirect(url_for("reseller_lucky_wheel_page"))
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 @app.route("/reseller/lucky-wheel/prize/edit/<int:prize_id>", methods=["POST"])
 @reseller_required
@@ -25060,7 +25529,7 @@ def reseller_lucky_wheel_prize_edit(prize_id: int):
         flash("جایزه اختصاصی با موفقیت ویرایش شد.", "success")
     else:
         flash("خطا در ویرایش جایزه.", "danger")
-    return redirect(url_for("reseller_lucky_wheel_page"))
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 @app.route("/reseller/lucky-wheel/prize/delete/<int:prize_id>", methods=["POST"])
 @reseller_required
@@ -25072,7 +25541,7 @@ def reseller_lucky_wheel_prize_delete(prize_id: int):
         flash("جایزه اختصاصی با موفقیت حذف شد.", "info")
     else:
         flash("خطا در حذف جایزه.", "danger")
-    return redirect(url_for("reseller_lucky_wheel_page"))
+    return redirect(url_for("reseller_vip_settings", tab="wheel"))
 
 
 # ─── باشگاه مشتریان و سطوح وفاداری نماینده (Reseller VIP Club) ───
@@ -25080,12 +25549,16 @@ def reseller_lucky_wheel_prize_delete(prize_id: int):
 @app.route("/reseller/vip-settings", methods=["GET", "POST"])
 @reseller_required
 def reseller_vip_settings():
-    """تنظیمات و مدیریت مشتریان پرمیوم و باشگاه مشتریان VIP نماینده"""
+    """تنظیمات و مدیریت مشتریان پرمیوم و باشگاه مشتریان VIP نماینده (دارای ۳ تب: سطوح وفاداری، ماموریت‌ها، گردونه شانس)"""
     reseller_id = session.get("reseller_id")
     reseller = db.get_reseller(reseller_id)
     if not reseller:
         flash("اطلاعات نماینده یافت نشد.", "danger")
         return redirect(url_for("reseller_dashboard"))
+
+    active_tab = request.args.get("tab", "loyalty").strip().lower()
+    if active_tab not in ("loyalty", "tasks", "wheel"):
+        active_tab = "loyalty"
 
     if request.method == "POST":
         settings_data = {
@@ -25124,113 +25597,16 @@ def reseller_vip_settings():
         }
         db.save_vip_settings(settings_data, reseller_id=reseller_id)
         flash("تنظیمات باشگاه مشتریان و سطوح وفاداری نماینده با موفقیت ذخیره شد.", "success")
-        return redirect(url_for("reseller_vip_settings"))
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
 
+    # داده‌های تب ۱: سطوح وفاداری
     vip_sets = db.get_vip_settings(reseller_id=reseller_id)
     vip_stats = db.get_vip_dashboard_stats(reseller_id=reseller_id)
     vip_users = db.get_vip_users_list(reseller_id=reseller_id)
-    return render_template(
-        "reseller_vip_settings.html",
-        reseller=reseller,
-        vip_settings=vip_sets,
-        vip_stats=vip_stats,
-        vip_users=vip_users
-    )
 
-@app.route("/reseller/vip-user/add", methods=["POST"])
-@reseller_required
-def reseller_vip_user_add():
-    """افزودن مستقیم مشتری نماینده به لیست مشتریان پرمیوم (VIP)"""
-    reseller_id = session.get("reseller_id")
-    user_input = request.form.get("user_identifier", "").strip()
-    days_str = request.form.get("vip_days", "").strip()
-    custom_cb_str = request.form.get("custom_cashback", "").strip()
-
-    if not user_input:
-        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
-        return redirect(url_for("reseller_vip_settings"))
-
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    if user_input.isdigit():
-        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE telegram_id = ?", (int(user_input),))
-    else:
-        clean_uname = user_input.replace("@", "").strip()
-        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
-    user_row = cursor.fetchone()
-    conn.close()
-
-    if not user_row:
-        flash(f"کاربری با شناسه «{user_input}» در سیستم یافت نشد.", "danger")
-        return redirect(url_for("reseller_vip_settings"))
-
-    tg_id = user_row["telegram_id"]
-    if not db.is_user_owned_by_reseller(reseller_id, tg_id):
-        flash("این کاربر متعلق به مشتریان نمایندگی شما نمی‌باشد.", "danger")
-        return redirect(url_for("reseller_vip_settings"))
-
-    expire_at = None
-    if days_str and days_str.isdigit() and int(days_str) > 0:
-        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
-
-    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
-    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
-
-    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
-    flash(f"مشتری {tg_id} با موفقیت به لیست مشتریان پرمیوم (سطح {vip_tier}) افزوده شد.", "success")
-    return redirect(url_for("reseller_vip_settings"))
-
-@app.route("/reseller/vip-user/edit/<int:telegram_id>", methods=["POST"])
-@reseller_required
-def reseller_vip_user_edit(telegram_id: int):
-    """ویرایش مشخصات VIP مشتری نماینده"""
-    reseller_id = session.get("reseller_id")
-    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
-        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
-        return redirect(url_for("reseller_vip_settings"))
-
-    days_str = request.form.get("vip_days", "").strip()
-    custom_cb_str = request.form.get("custom_cashback", "").strip()
-    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
-
-    expire_at = None
-    if days_str and days_str.isdigit() and int(days_str) > 0:
-        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
-
-    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
-    db.set_user_vip(telegram_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
-    flash(f"مشخصات VIP مشتری {telegram_id} با موفقیت ویرایش شد.", "success")
-    return redirect(url_for("reseller_vip_settings"))
-
-@app.route("/reseller/vip-user/remove/<int:telegram_id>", methods=["POST"])
-@reseller_required
-def reseller_vip_user_remove(telegram_id: int):
-    """لغو وضعیت VIP مشتری نماینده"""
-    reseller_id = session.get("reseller_id")
-    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
-        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
-        return redirect(url_for("reseller_vip_settings"))
-
-    db.set_user_vip(telegram_id, is_vip=False, vip_type="none", vip_tier="none")
-    flash(f"عضویت VIP کاربر {telegram_id} با موفقیت لغو شد.", "info")
-    return redirect(url_for("reseller_vip_settings"))
-
-
-# ─── ماموریت‌ها و پاداش‌های اجتماعی نماینده (Reseller Social Tasks) ───
-
-@app.route("/reseller/social-tasks", methods=["GET"])
-@reseller_required
-def reseller_social_tasks_page():
-    """مدیریت اختصاصی ماموریت‌های کسب حجم رایگان و پاداش‌های اجتماعی نماینده"""
-    reseller_id = session.get("reseller_id")
-    reseller = db.get_reseller(reseller_id)
-    if not reseller:
-        flash("حساب نماینده یافت نشد.", "danger")
-        return redirect(url_for("reseller_dashboard"))
-
+    # داده‌های تب ۲: ماموریت‌ها
     tasks = db.get_social_tasks(reseller_id=reseller_id, active_only=False, strict_reseller=True)
     total_active = sum(1 for t in tasks if t.get("is_active"))
-
     total_claims = 0
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -25252,16 +25628,133 @@ def reseller_social_tasks_page():
     plans_list = db.get_reseller_plans(reseller_id)
     plans_dict = {str(p.get("plan_id", p.get("id"))): (p.get("custom_name") or p.get("name") or p.get("title", f"بسته {p.get('id')}")) for p in plans_list}
 
+    # داده‌های تب ۳: گردونه شانس
+    lucky_wheel_enabled = db.get_setting(f"lucky_wheel_enabled_r_{reseller_id}", "1") == "1"
+    lucky_wheel_cooldown_hours = int(db.get_setting(f"lucky_wheel_cooldown_hours_r_{reseller_id}", "24") or 24)
+    lucky_wheel_notify = db.get_setting(f"lucky_wheel_notify_r_{reseller_id}", "1") == "1"
+    lucky_wheel_title = db.get_setting(f"lucky_wheel_title_r_{reseller_id}", "")
+    lucky_wheel_desc = db.get_setting(f"lucky_wheel_desc_r_{reseller_id}", "")
+    lucky_wheel_prizes = db.get_lucky_wheel_prizes(reseller_id=reseller_id, active_only=False, include_fallback=False)
+    lucky_wheel_history = db.get_lucky_wheel_history(reseller_id=reseller_id, limit=25)
+
+    total_weight = sum(p.get("chance_weight", 0) for p in lucky_wheel_prizes if p.get("is_active"))
+    for p in lucky_wheel_prizes:
+        if total_weight > 0 and p.get("is_active"):
+            p["chance_percent"] = round((p.get("chance_weight", 0) / total_weight) * 100, 1)
+        else:
+            p["chance_percent"] = 0
+
     return render_template(
-        "reseller_social_tasks.html",
+        "reseller_vip_settings.html",
         reseller=reseller,
+        active_tab=active_tab,
+        # تب ۱: سطوح وفاداری
+        vip_settings=vip_sets,
+        vip_stats=vip_stats,
+        vip_users=vip_users,
+        # تب ۲: ماموریت‌ها
         tasks=tasks,
         total_tasks=len(tasks),
         total_active=total_active,
         total_claims=total_claims,
         plans=plans_dict,
-        plans_list=plans_list
+        plans_list=plans_list,
+        # تب ۳: گردونه شانس
+        lucky_wheel_enabled=lucky_wheel_enabled,
+        lucky_wheel_cooldown_hours=lucky_wheel_cooldown_hours,
+        lucky_wheel_notify=lucky_wheel_notify,
+        lucky_wheel_title=lucky_wheel_title,
+        lucky_wheel_desc=lucky_wheel_desc,
+        lucky_wheel_prizes=lucky_wheel_prizes,
+        lucky_wheel_history=lucky_wheel_history,
     )
+
+@app.route("/reseller/vip-user/add", methods=["POST"])
+@reseller_required
+def reseller_vip_user_add():
+    """افزودن مستقیم مشتری نماینده به لیست مشتریان پرمیوم (VIP)"""
+    reseller_id = session.get("reseller_id")
+    user_input = request.form.get("user_identifier", "").strip()
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+
+    if not user_input:
+        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    if user_input.isdigit():
+        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE telegram_id = ?", (int(user_input),))
+    else:
+        clean_uname = user_input.replace("@", "").strip()
+        cursor.execute("SELECT telegram_id, username, reseller_id FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
+    user_row = cursor.fetchone()
+    conn.close()
+
+    if not user_row:
+        flash(f"کاربری با شناسه «{user_input}» در سیستم یافت نشد.", "danger")
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+    tg_id = user_row["telegram_id"]
+    if not db.is_user_owned_by_reseller(reseller_id, tg_id):
+        flash("این کاربر متعلق به مشتریان نمایندگی شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+    expire_at = None
+    if days_str and days_str.isdigit() and int(days_str) > 0:
+        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+
+    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
+
+    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
+    flash(f"مشتری {tg_id} با موفقیت به لیست مشتریان پرمیوم (سطح {vip_tier}) افزوده شد.", "success")
+    return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+@app.route("/reseller/vip-user/edit/<int:telegram_id>", methods=["POST"])
+@reseller_required
+def reseller_vip_user_edit(telegram_id: int):
+    """ویرایش مشخصات VIP مشتری نماینده"""
+    reseller_id = session.get("reseller_id")
+    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
+        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+    vip_tier = request.form.get("vip_tier", "gold").strip().lower()
+
+    expire_at = None
+    if days_str and days_str.isdigit() and int(days_str) > 0:
+        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+
+    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+    db.set_user_vip(telegram_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb, vip_tier=vip_tier)
+    flash(f"مشخصات VIP مشتری {telegram_id} با موفقیت ویرایش شد.", "success")
+    return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+@app.route("/reseller/vip-user/remove/<int:telegram_id>", methods=["POST"])
+@reseller_required
+def reseller_vip_user_remove(telegram_id: int):
+    """لغو وضعیت VIP مشتری نماینده"""
+    reseller_id = session.get("reseller_id")
+    if not db.is_user_owned_by_reseller(reseller_id, telegram_id):
+        flash("این کاربر متعلق به شما نمی‌باشد.", "danger")
+        return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+    db.set_user_vip(telegram_id, is_vip=False, vip_type="none", vip_tier="none")
+    flash(f"عضویت VIP کاربر {telegram_id} با موفقیت لغو شد.", "info")
+    return redirect(url_for("reseller_vip_settings", tab="loyalty"))
+
+
+# ─── ماموریت‌ها و پاداش‌های اجتماعی نماینده (Reseller Social Tasks) ───
+
+@app.route("/reseller/social-tasks", methods=["GET"])
+@reseller_required
+def reseller_social_tasks_page():
+    """هدایت یکپارچه به تب ماموریت‌ها در باشگاه مشتریان نماینده"""
+    return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
 @app.route("/reseller/social-tasks/add", methods=["POST"])
 @reseller_required
@@ -25284,7 +25777,7 @@ def reseller_social_task_add():
 
     if not title:
         flash("عنوان ماموریت الزامی است.", "danger")
-        return redirect(url_for("reseller_social_tasks_page"))
+        return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
     new_id = db.add_social_task(
         title=title, task_type=task_type, reward_type=reward_type, reward_value=reward_value,
@@ -25296,7 +25789,7 @@ def reseller_social_task_add():
         flash(f"ماموریت «{title}» با موفقیت افزوده شد.", "success")
     else:
         flash("خطا در ایجاد ماموریت.", "danger")
-    return redirect(url_for("reseller_social_tasks_page"))
+    return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
 @app.route("/reseller/social-tasks/edit/<int:task_id>", methods=["POST"])
 @reseller_required
@@ -25306,7 +25799,7 @@ def reseller_social_task_edit(task_id: int):
     task = db.get_social_task(task_id)
     if not task or task.get("reseller_id") != reseller_id:
         flash("شما مجاز به ویرایش این ماموریت نیستید.", "danger")
-        return redirect(url_for("reseller_social_tasks_page"))
+        return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
     update_data = {
         "title": request.form.get("title", "").strip(),
@@ -25328,7 +25821,7 @@ def reseller_social_task_edit(task_id: int):
         flash("ماموریت با موفقیت بروزرسانی شد.", "success")
     else:
         flash("خطا در ویرایش ماموریت.", "danger")
-    return redirect(url_for("reseller_social_tasks_page"))
+    return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
 @app.route("/reseller/social-tasks/toggle/<int:task_id>", methods=["POST"])
 @reseller_required
@@ -25338,11 +25831,11 @@ def reseller_social_task_toggle(task_id: int):
     task = db.get_social_task(task_id)
     if not task or task.get("reseller_id") != reseller_id:
         flash("شما مجاز به تغییر این ماموریت نیستید.", "danger")
-        return redirect(url_for("reseller_social_tasks_page"))
+        return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
     db.toggle_social_task(task_id)
     flash("وضعیت ماموریت بروزرسانی شد.", "success")
-    return redirect(url_for("reseller_social_tasks_page"))
+    return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
 @app.route("/reseller/social-tasks/delete/<int:task_id>", methods=["POST"])
 @reseller_required
@@ -25352,11 +25845,11 @@ def reseller_social_task_delete(task_id: int):
     task = db.get_social_task(task_id)
     if not task or task.get("reseller_id") != reseller_id:
         flash("شما مجاز به حذف این ماموریت نیستید.", "danger")
-        return redirect(url_for("reseller_social_tasks_page"))
+        return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
     db.delete_social_task(task_id)
     flash("ماموریت با موفقیت حذف گردید.", "info")
-    return redirect(url_for("reseller_social_tasks_page"))
+    return redirect(url_for("reseller_vip_settings", tab="tasks"))
 
 
 # ─── وب‌اپلیکیشن پیش‌رونده قابل نصب (PWA Core) ───
@@ -25666,6 +26159,22 @@ def run_dashboard(host="0.0.0.0", port=None, debug=False):
     except Exception as es:
         logger.error(f"Error starting SSL renewal worker thread: {es}")
 
+    # پردازش دوره‌ای هوشمند چرخه‌های محدودیت و فعال‌سازی مجدد مشتریان بدحساب (هر ۶۰ ثانیه)
+    def _run_periodic_debt_restriction_worker():
+        time.sleep(10)
+        from services.debt_restriction_service import process_debt_restrictions
+        while True:
+            try:
+                process_debt_restrictions(db, hidify_update_func=hidify_sync_update_user)
+            except Exception as ex:
+                logger.error(f"Error in periodic debt restriction worker: {ex}")
+            time.sleep(60)
+
+    try:
+        threading.Thread(target=_run_periodic_debt_restriction_worker, daemon=True, name="DebtRestrictionWorker").start()
+    except Exception as ed:
+        logger.error(f"Error starting debt restriction worker thread: {ed}")
+
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
@@ -25888,8 +26397,11 @@ def admin_security_terminate_session(token):
 @admin_required
 def save_hiddify_backup_settings():
     enabled = request.form.get('hiddify_backup_enabled')
-    db.set_setting('hiddify_backup_enabled', '1' if enabled else '0')
+    val = '1' if enabled else '0'
+    db.set_setting('hiddify_backup_enabled', val)
+    db.set_setting('backup_hiddify_enabled', val)
     db.set_setting('hiddify_backup_channel_id', request.form.get('hiddify_backup_channel_id', '').strip())
+    db.set_setting('backup_telegram_target', request.form.get('hiddify_backup_channel_id', '').strip())
     db.set_setting('hiddify_backup_interval_hours', request.form.get('hiddify_backup_interval_hours', '12').strip())
     flash('تنظیمات پشتیبان‌گیری هیدیفای ذخیره شد.', 'success')
     return redirect(url_for('settings'))

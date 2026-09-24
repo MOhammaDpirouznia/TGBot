@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db, DB_DIR
-from utils import get_now_shamsi, get_now_naive, get_now, get_now_iso
+from utils import get_now_shamsi, get_now_naive, get_now, get_now_iso, TEHRAN_TZ, parse_to_tehran_dt
 
 logger = logging.getLogger(__name__)
 
@@ -602,16 +602,37 @@ class AutoBackupScheduler:
     - ارسال مستقل پنل اصلی و هیدیفای به کانال/گروه تلگرام
     """
 
-    def __init__(self, admin_id=None):
+    def __init__(self, admin_id=None, db_instance=None):
         self.is_running = False
         self.task = None
         self.bot = None
+        self.db = db_instance or db
         self.last_main_run_time = None
         self.last_hiddify_run_time = None
+        self.last_main_slot = None
+        self.last_hiddify_slot = None
         self.last_checked_hour = None
 
     def set_bot(self, bot):
         self.bot = bot
+
+    def _load_last_run_times_from_db(self):
+        """بازخوانی هوشمند تاریخچه آخرین بکاپ‌های موفق از دیتابیس هنگام استارت سیستم جهت جلوگیری از اجرای تکراری پس از دیپلوی"""
+        try:
+            stats = self.db.get_backup_stats()
+            if stats.get("last_main") and stats["last_main"].get("created_at"):
+                dt = parse_to_tehran_dt(stats["last_main"]["created_at"])
+                if dt:
+                    self.last_main_run_time = dt
+                    self.last_main_slot = (dt.year, dt.month, dt.day, dt.hour)
+            if stats.get("last_hiddify") and stats["last_hiddify"].get("created_at"):
+                dt = parse_to_tehran_dt(stats["last_hiddify"]["created_at"])
+                if dt:
+                    self.last_hiddify_run_time = dt
+                    self.last_hiddify_slot = (dt.year, dt.month, dt.day, dt.hour)
+            logger.info(f"Loaded backup history from DB: last_main={self.last_main_run_time}, last_hiddify={self.last_hiddify_run_time}")
+        except Exception as e:
+            logger.warning(f"Could not load last backup times from database: {e}")
 
     async def start(self):
         if self.is_running:
@@ -631,70 +652,113 @@ class AutoBackupScheduler:
                 pass
         logger.info("Universal Auto Backup Scheduler stopped")
 
-    def _should_run_interval(self, last_run: datetime, interval_hours: int) -> bool:
+    def _should_run_interval(self, last_run: datetime, interval_hours: int, now: datetime = None) -> bool:
+        """بررسی فرارسیدن موعد اجرای دوره‌ای بر مبنای ساعت تهران"""
         if not last_run:
             return True
-        return (datetime.now() - last_run) >= timedelta(hours=interval_hours)
+        if now is None:
+            now = get_now()
+        if last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=TEHRAN_TZ)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=TEHRAN_TZ)
+        return (now - last_run) >= timedelta(hours=interval_hours)
 
-    def _should_run_fixed_hours(self, fixed_hours_str: str, current_hour: int) -> bool:
+    def _should_run_fixed_hours(self, fixed_hours_str: str, current_hour_or_now=None, last_slot=None, last_run=None) -> bool:
+        """
+        بررسی فرارسیدن موعد ساعت مشخص شبانه‌روز به وقت تهران.
+        پشتیبانی دوگانه: عدد ساعت جهت سازگاری با تست‌های واحد، یا آبجکت datetime و بررسی اسلات و پنجره اجرا.
+        """
         if not fixed_hours_str:
             return False
+
+        if isinstance(current_hour_or_now, int):
+            hours = [int(h.strip()) for h in fixed_hours_str.split(",") if h.strip().isdigit()]
+            return current_hour_or_now in hours
+
+        now = current_hour_or_now if isinstance(current_hour_or_now, datetime) else get_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=TEHRAN_TZ)
+
         hours = [int(h.strip()) for h in fixed_hours_str.split(",") if h.strip().isdigit()]
-        return current_hour in hours
+        current_hour = now.hour
+        if current_hour not in hours:
+            return False
+
+        current_slot = (now.year, now.month, now.day, current_hour)
+        if last_slot == current_slot:
+            return False
+
+        if last_run:
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=TEHRAN_TZ)
+            # اگر در کمتر از ۳۰ دقیقه گذشته بکاپ گرفته شده باشد (مثلاً ریستارت کانتینر در همان ساعت)، دوباره اجرا نشود
+            if (now - last_run).total_seconds() < 1800:
+                return False
+
+        # پنجره باز اجرای مطمئن در ۱۵ دقیقه اول ساعت
+        return now.minute < 15
 
     async def _main_scheduler_loop(self):
-        """حلقه اصلی بررسی هر ۶۰ ثانیه"""
+        """حلقه اصلی بررسی هر ۶۰ ثانیه به وقت تهران"""
         logger.info("Backup scheduler loop active")
+        # بارگذاری آخرین سابقه اجرا از دیتابیس
+        self._load_last_run_times_from_db()
+
         # مکث اولیه کوتاه بعد از استارت سیستم
         await asyncio.sleep(45)
 
         while self.is_running:
             try:
-                main_enabled = db.get_setting("backup_main_enabled", "1") == "1"
-                hiddify_enabled = db.get_setting("backup_hiddify_enabled", "1") == "1"
-                sched_type = db.get_setting("backup_schedule_type", "interval")
-                interval_hours = int(db.get_setting("backup_interval_hours", "6") or 6)
-                fixed_hours_str = db.get_setting("backup_fixed_hours", "00,06,12,18")
+                main_enabled = self.db.is_setting_enabled("backup_main_enabled", default=True)
+                hiddify_enabled = self.db.is_setting_enabled("backup_hiddify_enabled", default=True)
+                sched_type = str(self.db.get_setting("backup_schedule_type", "interval") or "interval").strip()
+                try:
+                    interval_hours = int(self.db.get_setting("backup_interval_hours", 6) or 6)
+                except Exception:
+                    interval_hours = 6
+                fixed_hours_str = str(self.db.get_setting("backup_fixed_hours", "00,06,12,18") or "00,06,12,18").strip()
 
-                now = datetime.now()
+                now = get_now()
                 current_hour = now.hour
-                current_minute = now.minute
+                current_slot = (now.year, now.month, now.day, current_hour)
 
-                # بررسی اجرای پنل اصلی
+                # ۱. بررسی اجرای پشتیبان‌گیری پنل اصلی
                 if main_enabled:
                     run_main = False
                     if sched_type == "fixed_hours":
-                        if self._should_run_fixed_hours(fixed_hours_str, current_hour):
-                            if self.last_checked_hour != current_hour and current_minute < 5:
-                                run_main = True
+                        if self._should_run_fixed_hours(fixed_hours_str, now, self.last_main_slot, self.last_main_run_time):
+                            run_main = True
                     else:
-                        if self._should_run_interval(self.last_main_run_time, interval_hours):
+                        if self._should_run_interval(self.last_main_run_time, interval_hours, now):
                             run_main = True
 
                     if run_main:
                         logger.info("Executing scheduled Main Panel backup...")
-                        # اجرا در ترد مجزا جهت جلوگیری از بلاک شدن event loop
+                        # ثبت اسلات قبل از اجرا جهت جلوگیری از اجرای موازی در تسک‌های طولانی
+                        self.last_main_slot = current_slot
+                        self.last_main_run_time = now
                         await asyncio.to_thread(trigger_main_panel_backup, trigger_type="auto")
-                        self.last_main_run_time = datetime.now()
+                        self.last_main_run_time = get_now()
 
-                # بررسی اجرای پنل هیدیفای
+                # ۲. بررسی اجرای پشتیبان‌گیری پنل هیدیفای
                 if hiddify_enabled:
                     run_hid = False
                     if sched_type == "fixed_hours":
-                        if self._should_run_fixed_hours(fixed_hours_str, current_hour):
-                            if self.last_checked_hour != current_hour and current_minute < 5:
-                                run_hid = True
+                        if self._should_run_fixed_hours(fixed_hours_str, now, self.last_hiddify_slot, self.last_hiddify_run_time):
+                            run_hid = True
                     else:
-                        if self._should_run_interval(self.last_hiddify_run_time, interval_hours):
+                        if self._should_run_interval(self.last_hiddify_run_time, interval_hours, now):
                             run_hid = True
 
                     if run_hid:
                         logger.info("Executing scheduled Hiddify backup...")
+                        self.last_hiddify_slot = current_slot
+                        self.last_hiddify_run_time = now
                         await trigger_hiddify_panel_backup_async(trigger_type="auto")
-                        self.last_hiddify_run_time = datetime.now()
+                        self.last_hiddify_run_time = get_now()
 
-                if sched_type == "fixed_hours" and current_minute < 5:
-                    self.last_checked_hour = current_hour
+                self.last_checked_hour = current_hour
 
             except asyncio.CancelledError:
                 break

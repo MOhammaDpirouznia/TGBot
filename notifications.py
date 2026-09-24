@@ -216,6 +216,52 @@ class NotificationScheduler:
             return f"https://{domain}/user/{token}"
         return ""
 
+    async def _send_notification_message(self, telegram_id: int, text: str, reply_markup=None, reseller_id=None) -> bool:
+        """ارسال هوشمند پیام اعلان از طریق ربات مربوطه (ربات نماینده یا ربات اصلی مدیریت)"""
+        r_id = int(reseller_id) if reseller_id else 0
+        if r_id > 0:
+            # ۱. اولویت اول: ارسال مستقیم از نمونه فعال ربات در multibot_manager
+            try:
+                from multibot_manager import multibot_manager
+                inst = multibot_manager.instances.get(r_id)
+                if inst and inst.is_running and inst.application and inst.application.bot:
+                    await inst.application.bot.send_message(
+                        chat_id=telegram_id,
+                        text=text,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup
+                    )
+                    return True
+            except Exception as ex_mb:
+                logger.debug(f"Direct multibot instance send failed for reseller {r_id}: {ex_mb}")
+
+            # ۲. اولویت دوم: ارسال با توکن ربات نماینده
+            try:
+                from dashboard import send_telegram_msg
+                r_info = db.get_reseller(r_id) or {}
+                r_tok = r_info.get("bot_token")
+                if r_tok:
+                    rm_dict = reply_markup.to_dict() if hasattr(reply_markup, "to_dict") else reply_markup
+                    if send_telegram_msg(telegram_id, text, reply_markup=rm_dict, bot_token=r_tok):
+                        return True
+            except Exception as ex_tok:
+                logger.debug(f"Token send failed for reseller {r_id}: {ex_tok}")
+
+        # ۳. ارسال از طریق ربات اصلی مدیریت (برای اشتراک‌های مدیریت یا در صورت در دسترس نبودن ربات نماینده)
+        if self.bot:
+            try:
+                await self.bot.send_message(
+                    chat_id=telegram_id,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Error sending message via admin bot to {telegram_id}: {e}")
+                return False
+        return False
+
     async def _check_expiration(self, telegram_id, subscription):
         """بررسی منقضی شدن اشتراک بر اساس تاریخ انقضا و ساعت تهران"""
         try:
@@ -256,10 +302,14 @@ class NotificationScheduler:
 💡 <i>جهت جلوگیری از قطع اتصال اینترنت، لطفاً پیش از موعد نسبت به تمدید اقدام فرمایید.</i>
 """
                     portal_url = self._build_portal_url(subscription)
+                    reseller_id = subscription.get("reseller_id")
 
-                    buttons = [
-                        [InlineKeyboardButton("🔄 تمدید سریع در ربات", callback_data=f"renew_{sub_id}")],
-                    ]
+                    buttons = []
+                    if reseller_id and int(reseller_id) > 0:
+                        buttons.append([InlineKeyboardButton("🔄 تمدید سریع در ربات", callback_data=f"r_renew_{sub_id}")])
+                    else:
+                        buttons.append([InlineKeyboardButton("🔄 تمدید سریع در ربات", callback_data=f"renew_sub_{sub_id}")])
+
                     if portal_url:
                         buttons.append([InlineKeyboardButton("🌐 پورتال تمدید آنلاین (بدون فیلتر)", url=portal_url)])
                     else:
@@ -267,14 +317,10 @@ class NotificationScheduler:
 
                     reply_markup = InlineKeyboardMarkup(buttons)
                     try:
-                        await self.bot.send_message(
-                            chat_id=telegram_id,
-                            text=text,
-                            parse_mode="HTML",
-                            reply_markup=reply_markup
-                        )
-                        db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Expiration notification ({days_left}d) sent to Telegram {telegram_id}")
+                        sent = await self._send_notification_message(telegram_id, text, reply_markup, reseller_id=reseller_id)
+                        if sent:
+                            db.save_notification(telegram_id, notif_type, sub_id)
+                            logger.info(f"Expiration notification ({days_left}d) sent to Telegram {telegram_id} for tenant {reseller_id or 0}")
                     except Exception as e:
                         logger.error(f"Error sending expiration notification: {e}")
 
@@ -302,6 +348,7 @@ class NotificationScheduler:
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
                     plan_name = subscription.get("plan_name", "نامشخص")
                     portal_url = self._build_portal_url(subscription)
+                    reseller_id = subscription.get("reseller_id")
                     
                     text = f"""
 🔴 <b>اشتراک شما منقضی شد!</b>
@@ -312,22 +359,20 @@ class NotificationScheduler:
 ⚠️ سرویس اتصال شما موقتاً قطع شده است.
 🔄 با تمدید یا خرید اشتراک، اتصال شما بلافاصله برقرار خواهد شد.
 """
-                    exp_buttons = [
-                        [InlineKeyboardButton("🔄 تمدید آنی در ربات", callback_data=f"renew_{sub_id}")],
-                    ]
+                    exp_buttons = []
+                    if reseller_id and int(reseller_id) > 0:
+                        exp_buttons.append([InlineKeyboardButton("🔄 تمدید آنی در ربات", callback_data=f"r_renew_{sub_id}")])
+                    else:
+                        exp_buttons.append([InlineKeyboardButton("🔄 تمدید آنی در ربات", callback_data=f"renew_sub_{sub_id}")])
                     if portal_url:
                         exp_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
                     reply_markup = InlineKeyboardMarkup(exp_buttons)
                     try:
-                        await self.bot.send_message(
-                            chat_id=telegram_id,
-                            text=text,
-                            parse_mode="HTML",
-                            reply_markup=reply_markup
-                        )
-                        db.save_notification(telegram_id, notif_type, sub_id)
-                        db.update_subscription(sub_id, status="expired")
-                        logger.info(f"Expired notification sent to {telegram_id}")
+                        sent = await self._send_notification_message(telegram_id, text, reply_markup, reseller_id=reseller_id)
+                        if sent:
+                            db.save_notification(telegram_id, notif_type, sub_id)
+                            db.update_subscription(sub_id, status="expired")
+                            logger.info(f"Expired notification sent to {telegram_id} for tenant {reseller_id or 0}")
                     except Exception as e:
                         logger.error(f"Error sending expired notification: {e}")
 
@@ -378,21 +423,20 @@ class NotificationScheduler:
 
 ⛔ <i>تنها ۵٪ از ترافیک اشتراک شما باقی مانده است. جهت تداوم اتصال تمدید فرمایید.</i>
 """
-                    u_buttons = [
-                        [InlineKeyboardButton("⚡ تمدید فوری در ربات", callback_data=f"renew_{sub_id}")],
-                    ]
+                    reseller_id = subscription.get("reseller_id")
+                    u_buttons = []
+                    if reseller_id and int(reseller_id) > 0:
+                        u_buttons.append([InlineKeyboardButton("⚡ تمدید فوری در ربات", callback_data=f"r_renew_{sub_id}")])
+                    else:
+                        u_buttons.append([InlineKeyboardButton("⚡ تمدید فوری در ربات", callback_data=f"renew_sub_{sub_id}")])
                     if portal_url:
                         u_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
                     reply_markup = InlineKeyboardMarkup(u_buttons)
                     try:
-                        await self.bot.send_message(
-                            chat_id=telegram_id,
-                            text=text,
-                            parse_mode="HTML",
-                            reply_markup=reply_markup
-                        )
-                        db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Critical 95% usage notification sent to {telegram_id}")
+                        sent = await self._send_notification_message(telegram_id, text, reply_markup, reseller_id=reseller_id)
+                        if sent:
+                            db.save_notification(telegram_id, notif_type, sub_id)
+                            logger.info(f"Critical 95% usage notification sent to {telegram_id} for tenant {reseller_id or 0}")
                     except Exception as e:
                         logger.error(f"Error sending critical usage notification: {e}")
 
@@ -423,21 +467,20 @@ class NotificationScheduler:
 
 💡 <i>بیش از ۸۰٪ حجم اشتراک شما مصرف شده است.</i>
 """
-                    u_buttons = [
-                        [InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_{sub_id}")],
-                    ]
+                    reseller_id = subscription.get("reseller_id")
+                    u_buttons = []
+                    if reseller_id and int(reseller_id) > 0:
+                        u_buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"r_renew_{sub_id}")])
+                    else:
+                        u_buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_sub_{sub_id}")])
                     if portal_url:
                         u_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
                     reply_markup = InlineKeyboardMarkup(u_buttons)
                     try:
-                        await self.bot.send_message(
-                            chat_id=telegram_id,
-                            text=text,
-                            parse_mode="HTML",
-                            reply_markup=reply_markup
-                        )
-                        db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Usage 80% notification sent to {telegram_id}")
+                        sent = await self._send_notification_message(telegram_id, text, reply_markup, reseller_id=reseller_id)
+                        if sent:
+                            db.save_notification(telegram_id, notif_type, sub_id)
+                            logger.info(f"Usage 80% notification sent to {telegram_id} for tenant {reseller_id or 0}")
                     except Exception as e:
                         logger.error(f"Error sending usage notification: {e}")
 
@@ -505,33 +548,45 @@ class NotificationScheduler:
             logger.error(f"Error in _check_offline_subscription: {ex}")
     
     async def _send_renewal_reminder(self, telegram_id, expired_subs=None):
-        """ارسال یادآوری روزانه تمدید در ساعت تعیین‌شده تهران"""
+        """ارسال یادآوری روزانه تمدید در ساعت تعیین‌شده تهران با تفکیک مدیریت و نمایندگان"""
         try:
             today_str = get_now().strftime("%Y%m%d")
-            notif_type = f"daily_renewal_{today_str}"
-            if db.was_notification_sent(telegram_id, notif_type):
-                return
-            
-            portal_url = ""
-            reseller_id = None
-            if expired_subs and isinstance(expired_subs, list) and len(expired_subs) > 0:
-                first_sub = expired_subs[0]
-                portal_url = self._build_portal_url(first_sub)
-                reseller_id = first_sub.get("reseller_id")
 
-            buttons = []
-            if expired_subs and isinstance(expired_subs, list) and len(expired_subs) > 0:
-                sub_id = expired_subs[0].get("id")
-                buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_{sub_id}")])
+            subs_by_reseller = {}
+            if expired_subs and isinstance(expired_subs, list):
+                for s in expired_subs:
+                    rid = s.get("reseller_id") or 0
+                    subs_by_reseller.setdefault(rid, []).append(s)
             else:
-                buttons.append([InlineKeyboardButton("🛒 خرید اشتراک جدید", callback_data="buy_service")])
+                subs_by_reseller[0] = []
 
-            if portal_url:
-                buttons.append([InlineKeyboardButton("🌐 پورتال تمدید آنلاین (بدون فیلتر)", url=portal_url)])
+            for r_id, subs in subs_by_reseller.items():
+                notif_type = f"daily_renewal_{today_str}_res_{r_id}" if r_id else f"daily_renewal_{today_str}"
+                if db.was_notification_sent(telegram_id, notif_type):
+                    continue
 
-            reply_markup = InlineKeyboardMarkup(buttons)
-            
-            text = """
+                portal_url = ""
+                buttons = []
+                if subs:
+                    first_sub = subs[0]
+                    portal_url = self._build_portal_url(first_sub)
+                    sub_id = first_sub.get("id")
+                    if r_id > 0:
+                        buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"r_renew_{sub_id}")])
+                    else:
+                        buttons.append([InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_sub_{sub_id}")])
+                else:
+                    if r_id > 0:
+                        buttons.append([InlineKeyboardButton("🛒 خرید اشتراک جدید", callback_data="r_plans")])
+                    else:
+                        buttons.append([InlineKeyboardButton("🛒 خرید اشتراک جدید", callback_data="buy_service")])
+
+                if portal_url:
+                    buttons.append([InlineKeyboardButton("🌐 پورتال تمدید آنلاین (بدون فیلتر)", url=portal_url)])
+
+                reply_markup = InlineKeyboardMarkup(buttons)
+                
+                text = """
 💡 <b>یادآوری تمدید اشتراک</b>
 
 اشتراک شما منقضی شده است.
@@ -539,33 +594,10 @@ class NotificationScheduler:
 
 ⏰ <i>این یادآوری روزانه بر اساس ساعت رسمی تهران ارسال گردیده است.</i>
 """
-            sent = False
-            # در صورتی که کاربر اشتراک نمایندگی دارد، اولویت ارسال با ربات نماینده است
-            if reseller_id:
-                try:
-                    from dashboard import send_telegram_msg
-                    r_info = db.get_reseller(reseller_id) or {}
-                    r_tok = r_info.get("bot_token")
-                    if r_tok:
-                        sent = send_telegram_msg(telegram_id, text, reply_markup=reply_markup.to_dict(), bot_token=r_tok)
-                except Exception as ex_r:
-                    logger.debug(f"Could not send reminder via reseller bot: {ex_r}")
-
-            if not sent and self.bot:
-                try:
-                    await self.bot.send_message(
-                        chat_id=telegram_id,
-                        text=text,
-                        parse_mode="HTML",
-                        reply_markup=reply_markup
-                    )
-                    sent = True
-                except Exception as e:
-                    logger.error(f"Error sending renewal reminder: {e}")
-
-            if sent:
-                db.save_notification(telegram_id, notif_type)
-                logger.info(f"Renewal reminder ({today_str}) sent to {telegram_id} at Tehran time")
+                sent = await self._send_notification_message(telegram_id, text, reply_markup, reseller_id=r_id)
+                if sent:
+                    db.save_notification(telegram_id, notif_type)
+                    logger.info(f"Renewal reminder ({today_str}) sent to {telegram_id} for tenant {r_id}")
         
         except Exception as e:
             logger.error(f"Error in _send_renewal_reminder: {e}")

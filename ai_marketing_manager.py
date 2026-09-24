@@ -48,8 +48,39 @@ class AIMarketingManager:
     def __init__(self):
         pass
 
+    @staticmethod
+    def normalize_model_name(model: str = "", provider: str = "gemini") -> str:
+        """اصلاح هوشمند و نرمال‌سازی نام مدل‌های هوش مصنوعی و رفع اشتباهات متداول تایپی"""
+        m = (model or "").strip()
+        p_lower = (provider or "").lower()
+        if not m:
+            if "deepseek" in p_lower:
+                return "deepseek-chat"
+            elif "openai" in p_lower or "gpt" in p_lower:
+                return "gpt-4o-mini"
+            return "gemini-2.0-flash"
+
+        m_lower = m.lower()
+
+        # رفع اشتباهات متداول مدل‌های جمنای نظیر gemini-3.0 یا gemini-3.8
+        if m_lower.startswith("gemini-3") or m_lower.startswith("models/gemini-3"):
+            if "pro" in m_lower:
+                return "gemini-1.5-pro"
+            return "gemini-2.0-flash"
+
+        if m_lower in ("gemini", "gemini-flash", "google-gemini"):
+            return "gemini-2.0-flash"
+        if m_lower in ("gemini-pro",):
+            return "gemini-1.5-pro"
+
+        # پاک‌سازی پیشوند models/ در صورت اضافه شدن غیرضروری
+        if m.startswith("models/"):
+            m = m.replace("models/", "", 1)
+
+        return m
+
     def _extract_settings(self, custom_settings: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
-        """استخراج پارامترهای موتور هوش مصنوعی با اولویت‌بندی تنظیمات مرکزی و اختصاصی"""
+        """استخراج پارامترهای موتور هوش مصنوعی استودیو با حفظ استقلال و ایزولاسیون کامل هر کاربر/نماینده"""
         s = custom_settings or {}
         provider = kwargs.get("provider") or s.get("provider") or os.getenv("AI_PROVIDER", "gemini").lower()
         api_key = kwargs.get("api_key") or s.get("api_key") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
@@ -60,39 +91,10 @@ class AIMarketingManager:
         instagram_handle = kwargs.get("instagram_handle") or kwargs.get("instagram_page") or s.get("instagram_page", "")
         signature = kwargs.get("signature") or s.get("signature", "")
 
-        # بررسی و همگام‌سازی با تنظیمات سراسری چتبات در صورت خالی بودن یا انتخاب مود ابری خارجی
-        try:
-            from database import db
-            chat_cfg = db.get_chat_settings()
-            chat_ai_mode = chat_cfg.get("chat_ai_mode", "smart_local")
-            if chat_ai_mode == "external_api":
-                # اگر کاربر در تنظیمات سیستم موتور خارجی را فعال کرده باشد، اولویت ۱۰۰٪ با تنظیمات مرکزی سیستم است
-                api_key = kwargs.get("api_key") or chat_cfg.get("chat_ai_api_key") or api_key
-                api_url = kwargs.get("api_url") or chat_cfg.get("chat_ai_api_url") or api_url
-                model = kwargs.get("model") or kwargs.get("model_name") or chat_cfg.get("chat_ai_model") or model
-                url_check = (api_url or "").lower()
-                model_check = (model or "").lower()
-                if "googleapis" in url_check or "gemini" in model_check:
-                    provider = "gemini"
-                elif "openai" in url_check or "gpt" in model_check:
-                    provider = "openai"
-                elif "deepseek" in url_check or "deepseek" in model_check:
-                    provider = "deepseek"
-                else:
-                    provider = "custom"
-            else:
-                if not api_key and chat_cfg.get("chat_ai_api_key"):
-                    api_key = chat_cfg.get("chat_ai_api_key")
-                if not api_url and chat_cfg.get("chat_ai_api_url"):
-                    api_url = chat_cfg.get("chat_ai_api_url")
-                if not model and chat_cfg.get("chat_ai_model"):
-                    model = chat_cfg.get("chat_ai_model")
-        except Exception as e_db:
-            logger.debug(f"Sync centralized AI settings: {e_db}")
-
+        # تشخیص یا نرمال‌سازی مدل
         if not model:
             if provider == "gemini":
-                model = "gemini-1.5-pro"
+                model = "gemini-2.0-flash"
             elif provider == "openai":
                 model = "gpt-4o-mini"
             elif provider == "deepseek":
@@ -100,14 +102,15 @@ class AIMarketingManager:
             elif provider == "custom":
                 model = "llama3:latest"
             else:
-                model = "smart-offline"
+                model = "gemini-2.0-flash"
+        else:
+            model = self.normalize_model_name(model, provider=provider)
 
         return {
             "provider": provider,
             "api_key": api_key,
             "api_url": api_url,
             "model": model,
-            "chat_ai_mode": chat_ai_mode if "chat_ai_mode" in locals() else "smart_local",
             "brand_name": brand_name,
             "channel_username": channel_username,
             "instagram_handle": instagram_handle,
@@ -164,15 +167,14 @@ class AIMarketingManager:
         if provider == "offline" or not api_key:
             return None
 
-        url = self.resolve_endpoint_url(api_url=api_url, model=model, provider=provider)
+        target_model = self.normalize_model_name(model, provider=provider)
+        url = self.resolve_endpoint_url(api_url=api_url, model=target_model, provider=provider)
 
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
-
-        target_model = model.strip() if model else ("gemini-1.5-pro" if "gemini" in url else "gpt-4o-mini")
 
         payload = {
             "model": target_model,
@@ -193,6 +195,23 @@ class AIMarketingManager:
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="ignore")
             logger.warning(f"AI chat_completion HTTP error {e.code} via {url}: {err_body}")
+            # تلاش مجدد هوشمند در صورت خطای ۴۰۴ مدل ناموجود در گوگل
+            if e.code == 404 and ("not found" in err_body.lower() or "gemini" in target_model.lower()):
+                fallback_model = "gemini-2.0-flash" if target_model != "gemini-2.0-flash" else "gemini-1.5-flash"
+                if target_model != fallback_model:
+                    try:
+                        logger.info(f"Retrying chat_completion with fallback model: {fallback_model}")
+                        payload["model"] = fallback_model
+                        req_data = json.dumps(payload).encode("utf-8")
+                        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+                        with urllib.request.urlopen(req, timeout=25) as resp:
+                            if resp.status == 200:
+                                resp_json = json.loads(resp.read().decode("utf-8"))
+                                choices = resp_json.get("choices", [])
+                                if choices:
+                                    return choices[0].get("message", {}).get("content", "").strip()
+                    except Exception as e_fb:
+                        logger.warning(f"Fallback chat_completion also failed: {e_fb}")
             return None
         except Exception as e:
             logger.warning(f"AI chat_completion failed via {url}: {e}")
@@ -212,11 +231,10 @@ class AIMarketingManager:
         start_time = time.time()
 
         if not api_key:
-            return {"success": False, "error": "کلید دسترسی (API Key) وارد نشده است."}
+            return {"success": False, "error": "کلید دسترسی (API Key) وارد نشده است. لطفاً ابتدا کلید معتبر خود را وارد نمایید."}
 
-        url = self.resolve_endpoint_url(api_url=api_url, model=model, provider=provider)
-
-        target_model = model.strip() if model else ("gemini-1.5-pro" if "gemini" in url else "gpt-4o-mini")
+        target_model = self.normalize_model_name(model, provider=provider)
+        url = self.resolve_endpoint_url(api_url=api_url, model=target_model, provider=provider)
 
         test_payload = {
             "model": target_model,
@@ -253,7 +271,7 @@ class AIMarketingManager:
                         }
                     return {
                         "success": False,
-                        "error": "پاسخ معتبری از هوش مصنوعی دریافت نشد (choices خالی است).",
+                        "error": "پاسخ معتبری از هوش مصنوعی دریافت نشد (فهرست choices خالی است).",
                         "raw": resp_json
                     }
         except urllib.error.HTTPError as e:
@@ -272,24 +290,39 @@ class AIMarketingManager:
                         err_msg = err_detail
             except Exception:
                 pass
+
+            if e.code == 404:
+                err_msg = (
+                    f"مدل «{target_model}» در سرویس هوش مصنوعی یافت نشد (خطای ۴۰۴).\n"
+                    "⚠️ توجه: نام مدل‌هایی نظیر gemini-3.0 یا gemini-3.8 در حال حاضر در گوگل تعریف نشده‌اند. لطفاً از مدل‌های فعال استفاده فرمایید:\n"
+                    "• Google Gemini: gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash / gemini-1.5-pro\n"
+                    "• OpenAI: gpt-4o-mini / gpt-4o\n"
+                    "• DeepSeek: deepseek-chat"
+                )
+            elif e.code in (400, 401, 403) and ("api key" in err_body.lower() or "key not valid" in err_body.lower() or "unauthorized" in err_body.lower() or "api_key_invalid" in err_body.lower()):
+                err_msg = "کلید دسترسی (API Key) وارد شده معتبر نمی‌باشد یا منقضی شده است. لطفاً کلید صحیح را از پنل ارائه‌دهنده دریافت و وارد فرمایید."
+
             return {
                 "success": False,
                 "status_code": e.code,
                 "error": err_msg,
                 "raw": err_body,
                 "latency_ms": latency_ms,
+                "model": target_model,
                 "url": url
             }
         except urllib.error.URLError as e:
             return {
                 "success": False,
                 "error": f"خطا در برقراری ارتباط شبکه/DNS: {e.reason}. لطفاً فیلترینگ، اتصال سرور یا آدرس Endpoint را بررسی نمایید.",
+                "model": target_model,
                 "url": url
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": f"خطای غیرمنتظره: {str(e)}",
+                "model": target_model,
                 "url": url
             }
 
@@ -336,10 +369,10 @@ class AIMarketingManager:
         )
 
         if not ai_text:
-            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+            if cfg.get("provider") != "offline" and cfg.get("api_key"):
                 ai_text = (
                     "⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی برای تولید پست.\n\n"
-                    "لطفاً در بخش «تنظیمات سیستم > چت و هوش مصنوعی» با کلیک روی «تست اتصال به هوش مصنوعی»، از فعال بودن کلید API و در دسترس بودن سرور اطمینان حاصل فرمایید."
+                    "لطفاً در تب «تنظیمات هوش مصنوعی و کانال‌ها» در همین صفحه، با زدن دکمه «تست اتصال به هوش مصنوعی»، از فعال بودن کلید API و صحت مدل اطمینان حاصل فرمایید."
                 )
             else:
                 ai_text = self._fallback_channel_post(topic, brand, channel_username, sig)
@@ -404,10 +437,10 @@ class AIMarketingManager:
                 poll_data = None
 
         if not poll_data or "question" not in poll_data or "options" not in poll_data:
-            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+            if cfg.get("provider") != "offline" and cfg.get("api_key"):
                 poll_data = {
                     "question": "⚠️ خطا در دریافت پاسخ از مدل ابری هوش مصنوعی",
-                    "options": ["بررسی کلید API در تنظیمات", "تست مجدد اتصال"],
+                    "options": ["بررسی کلید API در تنظیمات استودیو", "تست مجدد اتصال"],
                     "is_anonymous": True,
                     "allows_multiple_answers": False
                 }
@@ -473,10 +506,10 @@ class AIMarketingManager:
         hashtags = []
 
         if not ai_text:
-            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+            if cfg.get("provider") != "offline" and cfg.get("api_key"):
                 ai_text = (
                     "⚠️ خطا در دریافت خروجی از مدل هوش مصنوعی ابری.\n\n"
-                    "لطفاً در منوی «تنظیمات سیستم > چت و هوش مصنوعی»، صحت کلید دسترسی و آدرس Endpoint را تست نمایید."
+                    "لطفاً در تب «تنظیمات هوش مصنوعی و کانال‌ها»، صحت کلید دسترسی و اتصال مدل را بررسی فرمایید."
                 )
                 caption = ai_text
                 story_idea = "⚠️ لطفا اتصال API هوش مصنوعی را در تنظیمات بررسی کنید."
@@ -544,11 +577,11 @@ class AIMarketingManager:
         )
 
         if not ai_text:
-            if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
+            if cfg.get("provider") != "offline" and cfg.get("api_key"):
                 ai_text = (
                     f"⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی.\n"
                     f"کد تخفیف اختصاصی: `{code}` ({discount_percent}٪ تخفیف تا {duration_days} روز برای {max_uses} نفر).\n"
-                    f"لطفاً در منوی تنظیمات سیستم، اتصال کلید API و Endpoint مدل هوش مصنوعی را تست فرمایید."
+                    f"لطفاً در تب تنظیمات استودیو هوش مصنوعی، اتصال کلید API و مدل را تست فرمایید."
                 )
             else:
                 ai_text = (
@@ -619,15 +652,10 @@ class AIMarketingManager:
             return ai_res
 
         # اگر کلید یا مود API خارجی فعال است، خطای ارتباط را صریحاً گزارش کند و از موتور محلی استفاده نکند
-        if cfg.get("chat_ai_mode") == "external_api" or (cfg.get("api_key") and cfg.get("provider") != "offline"):
-            if not cfg.get("api_key"):
-                return (
-                    "⚠️ موتور هوش مصنوعی روی API خارجی تنظیم شده است اما کلید API (API Key) وارد نشده است.\n\n"
-                    "لطفاً در منوی تنظیمات سیستم > چت و هوش مصنوعی، کلید API مربوطه را وارد نموده و اتصال را تست فرمایید."
-                )
+        if cfg.get("provider") != "offline" and cfg.get("api_key"):
             return (
                 "⚠️ خطا در برقراری ارتباط با مدل ابری هوش مصنوعی.\n\n"
-                "لطفاً در بخش «تنظیمات سیستم > چت و هوش مصنوعی»، با زدن دکمه «تست اتصال به هوش مصنوعی»، صحت API Key، Endpoint و مدل خود را بررسی فرمایید."
+                "لطفاً در تب «تنظیمات هوش مصنوعی و کانال‌ها»، با زدن دکمه «تست اتصال به هوش مصنوعی»، صحت API Key و مدل خود را بررسی فرمایید."
             )
 
         # پاسخ هوشمند بومی صرفاً در صورت انتخاب موتور محلی آفلاین

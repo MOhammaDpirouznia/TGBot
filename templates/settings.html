@@ -2480,7 +2480,12 @@ function selectPalette(pid) {
                     <!-- گزینه‌های موتور هوش مصنوعی -->
                     <div class="col-12 mt-2" id="aiSettingsBox" style="{% if not chat_settings.chat_ai_enabled %}display: none;{% endif %}">
                         <div class="p-3 bg-white border rounded-3 shadow-xs">
-                            <label class="form-label fw-bold small">انتخاب موتور پردازش هوش مصنوعی:</label>
+                            <div class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom">
+                                <label class="form-label fw-bold small mb-0">انتخاب موتور پردازش هوش مصنوعی پشتیبانی:</label>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1" style="font-size: 0.72rem;">
+                                    💬 اختصاصی گفتگوی مشتریان و پورتال تیکت‌ها
+                                </span>
+                            </div>
                             <div class="d-flex flex-column gap-2 mb-3">
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="chat_ai_mode" id="aiModeLocal" value="smart_local" {% if chat_settings.chat_ai_mode != 'external_api' %}checked{% endif %} onchange="toggleAiApiBox()">
@@ -2491,7 +2496,7 @@ function selectPalette(pid) {
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="chat_ai_mode" id="aiModeExternal" value="external_api" {% if chat_settings.chat_ai_mode == 'external_api' %}checked{% endif %} onchange="toggleAiApiBox()">
                                     <label class="form-check-label small fw-semibold" for="aiModeExternal">
-                                        🌐 <strong>اتصال به API مدل‌های زبانی خارجی (OpenAI / Gemini / مدل دلخواه)</strong>: پاسخگویی با مدل‌های پیشرفته ابری
+                                        🌐 <strong>اتصال به API مدل‌های زبانی خارجی (Gemini / OpenAI / مدل دلخواه)</strong>: پاسخگویی هوشمند با درک کامل مکالمه
                                     </label>
                                 </div>
                             </div>
@@ -2507,7 +2512,17 @@ function selectPalette(pid) {
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-1 fw-bold">نام مدل (Model):</label>
-                                    <input type="text" name="chat_ai_model" id="chatAiModel" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_model or 'gemini-1.5-pro' }}" placeholder="gemini-1.5-pro">
+                                    <select class="form-select form-select-sm font-monospace" id="chatAiModelSelect" onchange="onChatAiModelSelectChange(this)">
+                                        <option value="gemini-2.0-flash">gemini-2.0-flash (سریع و بهینه - پیشنهادی)</option>
+                                        <option value="gemini-2.5-flash">gemini-2.5-flash (جدید و فوق‌سریع)</option>
+                                        <option value="gemini-1.5-flash">gemini-1.5-flash (رایگان و سبک)</option>
+                                        <option value="gemini-1.5-pro">gemini-1.5-pro (استدلال پیشرفته)</option>
+                                        <option value="gpt-4o-mini">gpt-4o-mini (اقتصادی OpenAI)</option>
+                                        <option value="gpt-4o">gpt-4o (پرچمدار OpenAI)</option>
+                                        <option value="deepseek-chat">deepseek-chat (DeepSeek V3)</option>
+                                        <option value="custom">سایر (تایپ دستی مدل)...</option>
+                                    </select>
+                                    <input type="text" name="chat_ai_model" id="chatAiModel" class="form-control form-control-sm font-monospace mt-1" style="direction: ltr; display: none;" value="{{ chat_settings.chat_ai_model or 'gemini-2.0-flash' }}" placeholder="gemini-2.0-flash">
                                 </div>
 
                                 <!-- الگوهای آماده سریع و دکمه تست اتصال -->
@@ -2612,18 +2627,64 @@ function toggleAiApiBox() {
     }
 }
 
+function onChatAiModelSelectChange(selectElem) {
+    const modelInput = document.getElementById("chatAiModel");
+    if (!modelInput) return;
+    if (selectElem.value === 'custom') {
+        modelInput.style.display = 'block';
+        modelInput.focus();
+    } else {
+        modelInput.style.display = 'none';
+        modelInput.value = selectElem.value;
+    }
+}
+
+function initChatAiModelSelect() {
+    const selectElem = document.getElementById("chatAiModelSelect");
+    const modelInput = document.getElementById("chatAiModel");
+    if (!selectElem || !modelInput) return;
+    const currentVal = (modelInput.value || '').trim();
+    let found = false;
+    for (let i = 0; i < selectElem.options.length; i++) {
+        if (selectElem.options[i].value === currentVal) {
+            selectElem.selectedIndex = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found && currentVal) {
+        selectElem.value = 'custom';
+        modelInput.style.display = 'block';
+    } else if (found) {
+        modelInput.style.display = 'none';
+    }
+}
+
 function applyAiPreset(provider) {
     const urlInput = document.getElementById("chatAiApiUrl");
     const modelInput = document.getElementById("chatAiModel");
+    const modelSelect = document.getElementById("chatAiModelSelect");
     if (provider === 'gemini') {
         if (urlInput) urlInput.value = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-        if (modelInput) modelInput.value = "gemini-1.5-pro";
+        if (modelInput) modelInput.value = "gemini-2.0-flash";
+        if (modelSelect) {
+            modelSelect.value = "gemini-2.0-flash";
+            modelInput.style.display = "none";
+        }
     } else if (provider === 'openai') {
         if (urlInput) urlInput.value = "https://api.openai.com/v1/chat/completions";
         if (modelInput) modelInput.value = "gpt-4o-mini";
+        if (modelSelect) {
+            modelSelect.value = "gpt-4o-mini";
+            modelInput.style.display = "none";
+        }
     } else if (provider === 'deepseek') {
         if (urlInput) urlInput.value = "https://api.deepseek.com/v1/chat/completions";
         if (modelInput) modelInput.value = "deepseek-chat";
+        if (modelSelect) {
+            modelSelect.value = "deepseek-chat";
+            modelInput.style.display = "none";
+        }
     }
 }
 
@@ -2731,6 +2792,8 @@ function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+document.addEventListener('DOMContentLoaded', initChatAiModelSelect);
 </script>
 
 

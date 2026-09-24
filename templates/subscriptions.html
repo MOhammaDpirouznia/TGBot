@@ -22,6 +22,9 @@
         <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='debtors', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
             <i class="fas fa-hand-holding-dollar me-1"></i> 🔴 بدهکاران ({{ debtor_count }})
         </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='delinquent', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'delinquent' else 'btn-outline-danger' }}" title="مشاهده مشتریان علامت‌گذاری شده به عنوان بدحساب">
+            <i class="fas fa-user-clock me-1"></i> ⚠️ بدحساب‌ها ({{ delinquent_count or 0 }})
+        </a>
         <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
             <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
         </a>
@@ -37,6 +40,9 @@
         <button type="button" class="btn btn-sm btn-dark text-white fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#patternTransferModal">
             <i class="fas fa-wand-magic-sparkles text-warning me-1"></i> انتقال هوشمند با الگو ⚡️
         </button>
+        <a href="{{ url_for('admin_delinquent_settings') }}" class="btn btn-sm btn-outline-danger fw-bold shadow-sm" title="تنظیمات جامع چرخه‌ها و محدودیت‌های مشتریان بدحساب">
+            <i class="fas fa-gear me-1"></i> تنظیمات بدحسابی ⚙️
+        </a>
     </div>
 </div>
 
@@ -93,6 +99,8 @@
                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط متصلین آنلاین</span>
             {% elif status_filter == 'queue' %}
                 <span class="badge bg-info text-dark shadow-sm"><i class="fas fa-layer-group me-1"></i>فیلتر: مشتریان دارای بسته در صف تمدید ({{ total_count }})</span>
+            {% elif status_filter == 'delinquent' %}
+                <span class="badge bg-danger text-white shadow-sm"><i class="fas fa-user-clock me-1"></i>فیلتر: مشتریان بدحساب و دارای محدودیت ({{ total_count }})</span>
             {% endif %}
         </div>
         
@@ -301,8 +309,8 @@
                             <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
                         </td>
                         <td class="ps-2" data-value="{{ (sub['account_name'] or sub.get('telegram_id') or '')|striptags }}">
-                            <div class="d-flex align-items-center gap-2 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">
-                                <div class="position-relative">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="position-relative cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">
                                     <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
                                          alt="{{ sub['account_name'] or sub.get('telegram_id') }}" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
@@ -314,7 +322,7 @@
                                 </div>
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
-                                        <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        <span class="text-primary text-decoration-underline-hover cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">{{ sub['account_name'] or 'بدون نام' }}</span>
                                         {% set has_sub_note = true if (sub.get('admin_note') or sub.get('customer_note')) else false %}
                                         <button type="button" 
                                                 class="btn btn-link p-0 text-decoration-none sub-note-btn ms-1 {% if has_sub_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
@@ -383,18 +391,45 @@
                                     <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1 cursor-pointer" role="button" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')" title="مشاهده گزارش و سوابق بدهی">
                                         <i class="fas fa-hand-holding-dollar"></i> بدهکار: {{ "{:,}".format(sub.get('debt_amount')|int) }} ت
                                     </span>
-                                    <button type="button" class="btn btn-outline-danger py-0 px-1 mt-1 d-block w-100" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
-                                        <i class="fas fa-file-invoice-dollar me-1"></i>گزارش بدهی
-                                    </button>
+                                    {% if sub.get('in_debt_restriction') %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-dark text-warning border border-warning px-2 py-1 d-inline-flex align-items-center gap-1 cursor-pointer" title="مشتری بدحساب - مشمول محدودیت مصرف چرخه‌ای" onclick="toggleDelinquentFast('{{ sub['id'] }}', this)">
+                                                <i class="fas fa-user-clock text-warning"></i> بدحساب
+                                                {% if sub.get('debt_restricted_until') %}
+                                                    <i class="fas fa-pause text-danger ms-1" title="اتصال موقتاً مسدود است"></i>
+                                                {% endif %}
+                                            </span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="d-flex align-items-center gap-1 mt-1">
+                                        <button type="button" class="btn btn-outline-danger py-0 px-1 flex-grow-1" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
+                                            <i class="fas fa-file-invoice-dollar me-1"></i>گزارش
+                                        </button>
+                                        <button type="button" class="btn btn-sm py-0 px-1 {% if sub.get('in_debt_restriction') %}btn-warning text-dark{% else %}btn-outline-secondary{% endif %}" style="font-size: 10px;" title="{% if sub.get('in_debt_restriction') %}لغو وضعیت بدحسابی{% else %}علامت‌گذاری به عنوان بدحساب{% endif %}" onclick="toggleDelinquentFast('{{ sub['id'] }}', this)">
+                                            <i class="fas fa-user-clock"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             {% else %}
                                 <div>
                                     <span class="badge bg-success-subtle text-success border border-success">
                                         <i class="fas fa-check-circle me-1"></i> تسویه شده
                                     </span>
-                                    <button type="button" class="btn btn-link text-muted py-0 px-1 mt-1 d-block w-100 text-decoration-none" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
-                                        <i class="fas fa-file-invoice me-1"></i>گزارش بدهی
-                                    </button>
+                                    {% if sub.get('in_debt_restriction') %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-dark text-warning border border-warning px-2 py-1 d-inline-flex align-items-center gap-1 cursor-pointer" title="علامت بدحساب روی حساب تسویه شده" onclick="toggleDelinquentFast('{{ sub['id'] }}', this)">
+                                                <i class="fas fa-user-clock text-warning"></i> بدحساب
+                                            </span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="d-flex align-items-center gap-1 mt-1">
+                                        <button type="button" class="btn btn-link text-muted py-0 px-1 flex-grow-1 text-decoration-none" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
+                                            <i class="fas fa-file-invoice me-1"></i>گزارش
+                                        </button>
+                                        <button type="button" class="btn btn-sm py-0 px-1 {% if sub.get('in_debt_restriction') %}btn-warning text-dark{% else %}btn-outline-secondary{% endif %}" style="font-size: 10px;" title="{% if sub.get('in_debt_restriction') %}لغو وضعیت بدحسابی{% else %}علامت‌گذاری به عنوان بدحساب{% endif %}" onclick="toggleDelinquentFast('{{ sub['id'] }}', this)">
+                                            <i class="fas fa-user-clock"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             {% endif %}
                         </td>
@@ -639,6 +674,12 @@
         </button>
         <button type="button" class="btn btn-sm btn-outline-success" onclick="openAdminBulkClearDebtModal()">
             <i class="fas fa-check-double me-1"></i> تسویه بدهی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-warning fw-bold" onclick="submitBulkAction('adminSubBulkForm', 'mark_delinquent', 'آیا از علامت‌گذاری مشتریان انتخاب‌شده به عنوان «بدحساب» اطمینان دارید؟ قوانین محدودیت مصرف چرخه‌ای بر روی آنها فعال خواهد شد.')">
+            <i class="fas fa-user-clock me-1"></i> تبدیل به بدحساب
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info" onclick="submitBulkAction('adminSubBulkForm', 'unmark_delinquent', 'آیا از لغو وضعیت بدحسابی مشتریان انتخاب‌شده اطمینان دارید؟ در صورت توقف موقت، اتصال آنها مجدداً فعال می‌شود.')">
+            <i class="fas fa-user-check me-1"></i> لغو بدحسابی
         </button>
         {% if has_permission('sub_delete') %}
         <button type="button" class="btn btn-sm btn-danger" onclick="openAdminBulkDeleteModal()">
@@ -1003,6 +1044,16 @@
                         <i class="fas fa-plus-circle me-1"></i> ثبت بدهی جدید
                     </button>
 
+                    <!-- دکمه تبدیل / لغو مشتری بدحساب -->
+                    <button type="button" class="btn {% if sub.get('in_debt_restriction') %}btn-warning text-dark{% else %}btn-outline-danger{% endif %} flex-grow-1 py-2 fw-bold" onclick="toggleDelinquentFast('{{ sub['id'] }}', this)" title="اعمال یا لغو محدودیت‌های چرخه‌ای بدحسابی برای این مشتری">
+                        <i class="fas fa-user-clock me-1"></i>
+                        {% if sub.get('in_debt_restriction') %}
+                            لغو وضعیت بدحسابی
+                        {% else %}
+                            تبدیل به مشتری بدحساب
+                        {% endif %}
+                    </button>
+
                     <!-- ۶. تسویه بدهی -->
                     {% if is_debtor %}
                     <button type="button" class="btn btn-success flex-grow-1 py-2 fw-bold" onclick="openSettleDebtModal({{ sub['id'] }}, '{{ sub['account_name'] }}', {{ sub.get('debt_amount', 0) }}, 'full')">
@@ -1139,20 +1190,24 @@
                     </div>
 
                     <div class="border-top pt-3">
-                        {% set is_sub_depleted = (sub['status'] != 'active' or sub.get('is_expired') or sub.get('is_traffic_expired') or (sub['data_limit'] > 0 and (sub['data_used'] or 0) >= sub['data_limit']) or (sub.get('remaining_days') is not none and sub.get('remaining_days') <= 0)) %}
-                        <div class="form-check form-switch p-2 {% if is_sub_depleted %}bg-warning bg-opacity-10 border-warning{% else %}bg-light border{% endif %} rounded-3 border">
-                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="adminInstantActivate{{ sub['id'] }}" value="1" {% if is_sub_depleted %}checked{% endif %}>
-                            <label class="form-check-label fw-bold text-dark cursor-pointer d-flex align-items-center justify-content-between flex-wrap gap-2" for="adminInstantActivate{{ sub['id'] }}">
-                                <span>⚡ فعال‌سازی آنی تمدید (ریست کامل حجم و روزها)</span>
+                        {% set rem_gb = (sub['data_limit'] - (sub['data_used'] or 0)) if sub.get('data_limit') else 999 %}
+                        {% set is_sub_depleted = (sub['status'] != 'active' or sub.get('is_expired') or sub.get('is_traffic_expired') or (sub['data_limit'] > 0 and (sub['data_used'] or 0) >= sub['data_limit']) or (sub.get('remaining_days') is not none and sub.get('remaining_days') <= 0) or rem_gb <= 1.0) %}
+                        <div class="p-2.5 rounded-3 border {% if is_sub_depleted %}bg-warning bg-opacity-10 border-warning{% else %}bg-light border{% endif %}" id="adminInstantBox{{ sub['id'] }}">
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="adminInstantActivate{{ sub['id'] }}" value="1" {% if is_sub_depleted %}checked{% endif %} onchange="updateAdminInstantNotice('{{ sub['id'] }}')">
+                                <label class="form-check-label fw-bold text-dark cursor-pointer d-flex align-items-center justify-content-between flex-wrap gap-2" for="adminInstantActivate{{ sub['id'] }}">
+                                    <span>⚡ فعال‌سازی آنی تمدید (ریست در همین لحظه)</span>
+                                    <span id="adminInstantBadge{{ sub['id'] }}" class="badge {% if is_sub_depleted %}bg-danger bg-opacity-15 text-danger border border-danger border-opacity-25{% else %}bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25{% endif %} small" style="font-size: 0.72rem;">
+                                        {% if is_sub_depleted %}پیش‌فرض فعال: اشتراک منقضی/اتمام حجم{% else %}پیش‌فرض غیرفعال: رزرو در صف تمدید{% endif %}
+                                    </span>
+                                </label>
+                            </div>
+                            <div id="adminInstantDesc{{ sub['id'] }}" class="mt-2 pt-1 border-top small" style="font-size: 0.78rem;">
                                 {% if is_sub_depleted %}
-                                <span class="badge bg-danger bg-opacity-15 text-danger border border-danger border-opacity-25 small" style="font-size: 0.72rem;">پیش‌فرض فعال: اشتراک منقضی/اتمام حجم</span>
+                                <div class="text-success fw-bold"><i class="fas fa-check-circle me-1"></i> تمدید آنی: حجم مصرفی صفر شده و بسته جدید بلافاصله اعمال می‌گردد.</div>
                                 {% else %}
-                                <span class="badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 small" style="font-size: 0.72rem;">پیش‌فرض غیرفعال: حفظ روزها و رزرو در صف</span>
+                                <div class="text-primary"><i class="fas fa-clock me-1"></i> <strong>رزرو در صف:</strong> هزینه کسر می‌شود ولی حجم تا زمان اتمام بسته فعلی تغییر نمی‌کند و به محض اتمام، خودکار فعال خواهد شد.</div>
                                 {% endif %}
-                            </label>
-                            <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
-                                <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر تیک فعال باشد:</strong> حجم مصرفی در هیدیفای صفر شده و بسته جدید بلافاصله جایگزین می‌شود.</div>
-                                <div class="mt-1"><i class="fas fa-clock text-primary me-1"></i> <strong>اگر تیک خاموش باشد:</strong> بسته وارد <strong>صف رزرو</strong> می‌شود و پس از مصرف ۹۹٪ یا در روز پایانی اشتراک، به صورت خودکار و بدون قطعی فعال می‌گردد.</div>
                             </div>
                         </div>
                     </div>
@@ -1244,6 +1299,77 @@
                                         بدهی قبلی: <strong>{{ "{:,}".format(sub.get('debt_amount', 0)) }} ت</strong> + این دوره: <span id="adminRenewThisPeriodDebt{{ sub['id'] }}">۰ ت</span> = کل بدهی جدید: <strong class="text-danger" id="adminRenewTotalDebtCalc{{ sub['id'] }}">{{ "{:,}".format(sub.get('debt_amount', 0)) }} ت</strong>
                                     </div>
                                     {% endif %}
+                                </div>
+                                <div class="col-12" id="adminRenewDebtDueBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
+                                    <!-- کادر مهلت تسویه بدهی و قطع خودکار سرویس -->
+                                    <div class="p-3 bg-white rounded-3 border border-danger border-opacity-50 mt-1 shadow-xs">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <label class="form-label fw-bold text-danger mb-0 small">
+                                                <i class="fas fa-user-clock text-danger me-1"></i>مهلت تسویه حساب و زمان قطع خودکار سرویس:
+                                            </label>
+                                            <div class="form-check form-switch m-0">
+                                                <input class="form-check-input ms-0 me-1" type="checkbox" role="switch" id="debtDueCalendarSwitch_adminRenew_{{ sub['id'] }}" onchange="toggleDebtDueCalendar('adminRenew_{{ sub['id'] }}')">
+                                                <label class="form-check-label small text-muted cursor-pointer" for="debtDueCalendarSwitch_adminRenew_{{ sub['id'] }}" style="font-size: 0.78rem;">
+                                                    <i class="fas fa-calendar-alt text-primary me-1"></i>انتخاب تاریخ دقیق شمسی
+                                                </label>
+                                            </div>
+                                        </div>
+                                        
+                                        <input type="hidden" name="debt_due_mode" id="debtDueMode_adminRenew_{{ sub['id'] }}" value="days">
+                                        
+                                        <!-- ورودی حالت ۱: تعداد روز مهلت -->
+                                        <div id="debtDueDaysBox_adminRenew_{{ sub['id'] }}" class="mb-2">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text bg-light text-danger border-danger"><i class="fas fa-hourglass-half"></i></span>
+                                                <input type="number" min="1" max="365" name="debt_due_days" id="debtDueDaysInput_adminRenew_{{ sub['id'] }}" class="form-control form-control-sm border-danger font-monospace text-center fw-bold" value="3" oninput="updateDebtDuePreview('adminRenew_{{ sub['id'] }}')">
+                                                <span class="input-group-text bg-light text-muted">روز مهلت تسویه</span>
+                                            </div>
+                                            <div class="d-flex gap-1 mt-1 flex-wrap">
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="1" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 1)">۱ روز</button>
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="2" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 2)">۲ روز</button>
+                                                <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2 active fw-bold" style="font-size: 0.7rem;" data-days="3" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 3)">۳ روز</button>
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="5" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 5)">۵ روز</button>
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="7" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 7)">۱ هفته</button>
+                                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="14" onclick="setDebtDueQuickDays('adminRenew_{{ sub['id'] }}', 14)">۲ هفته</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- ورودی حالت ۲: تقویم و تاریخ دقیق شمسی -->
+                                        <div id="debtDueCalendarBox_adminRenew_{{ sub['id'] }}" class="mb-2" style="display: none;">
+                                            <div class="row g-1 align-items-center">
+                                                <div class="col-4">
+                                                    <label class="small text-muted mb-0" style="font-size: 0.7rem;">روز:</label>
+                                                    <select id="debtDueDay_adminRenew_{{ sub['id'] }}" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('adminRenew_{{ sub['id'] }}')"></select>
+                                                </div>
+                                                <div class="col-4">
+                                                    <label class="small text-muted mb-0" style="font-size: 0.7rem;">ماه:</label>
+                                                    <select id="debtDueMonth_adminRenew_{{ sub['id'] }}" class="form-select form-select-sm border-primary text-center" onchange="syncDebtDueCalendar('adminRenew_{{ sub['id'] }}')"></select>
+                                                </div>
+                                                <div class="col-4">
+                                                    <label class="small text-muted mb-0" style="font-size: 0.7rem;">سال:</label>
+                                                    <select id="debtDueYear_adminRenew_{{ sub['id'] }}" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('adminRenew_{{ sub['id'] }}')"></select>
+                                                </div>
+                                            </div>
+                                            <input type="hidden" name="debt_due_date_shamsi" id="debtDueDateShamsi_adminRenew_{{ sub['id'] }}" value="">
+                                        </div>
+                                        
+                                        <!-- پیش‌نمایش زنده تاریخ و ساعت دقیق قطع -->
+                                        <div class="alert alert-danger bg-danger bg-opacity-10 border border-danger border-opacity-25 py-1.5 px-2 mb-0 rounded-2" style="font-size: 0.76rem;">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <div class="fw-bold">
+                                                    <i class="fas fa-stopwatch text-danger me-1"></i>
+                                                    <span>زمان قطع سرویس در صورت عدم تسویه:</span>
+                                                </div>
+                                                <span class="badge bg-danger text-white font-monospace" id="debtDueTimeBadge_adminRenew_{{ sub['id'] }}">--:--</span>
+                                            </div>
+                                            <div class="mt-1 fw-bold text-danger text-start font-monospace" id="debtDuePreviewText_adminRenew_{{ sub['id'] }}">
+                                                در حال محاسبه...
+                                            </div>
+                                            <div class="text-muted small mt-0.5" style="font-size: 0.68rem;">
+                                                * ساعت قطع خودکار دقیقاً منطبق بر ساعت ثبت این تمدید خواهد بود. در صورت تسویه حساب، اشتراک هرگز غیرفعال نمی‌گردد.
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label small text-muted"><i class="fas fa-comment-dots me-1"></i>توضیحات و یادداشت (اختیاری):</label>
@@ -2838,6 +2964,22 @@ function updateAdminRenewDebtBreakdown(subId) {
     if (totalEl) totalEl.innerText = total.toLocaleString('fa-IR') + ' ت';
 }
 
+function updateAdminInstantNotice(subId) {
+    const chk = document.getElementById('adminInstantActivate' + subId);
+    const badge = document.getElementById('adminInstantBadge' + subId);
+    const desc = document.getElementById('adminInstantDesc' + subId);
+    if (!chk || !badge || !desc) return;
+    if (chk.checked) {
+        badge.className = 'badge bg-success bg-opacity-15 text-success border border-success border-opacity-25 small';
+        badge.textContent = 'فعال‌سازی آنی انتخابی';
+        desc.innerHTML = '<div class="text-success fw-bold"><i class="fas fa-check-circle me-1"></i> تمدید آنی: حجم مصرفی صفر شده و بسته جدید بلافاصله اعمال می‌گردد.</div>';
+    } else {
+        badge.className = 'badge bg-primary bg-opacity-15 text-primary border border-primary border-opacity-25 small';
+        badge.textContent = 'رزرو در صف تمدید';
+        desc.innerHTML = '<div class="text-primary"><i class="fas fa-clock me-1"></i> <strong>رزرو در صف:</strong> هزینه کسر می‌شود ولی حجم تا زمان اتمام بسته فعلی تغییر نمی‌کند و به محض اتمام، خودکار فعال خواهد شد.</div>';
+    }
+}
+
 function toggleAdminRenewFree(subId) {
     const isFree = document.getElementById('adminIsFree' + subId);
     const paySec = document.getElementById('adminRenewPaymentSection' + subId);
@@ -2849,10 +2991,12 @@ function toggleAdminRenewFree(subId) {
 function toggleAdminRenewDebtor(subId) {
     const sel = document.getElementById('adminRenewPaymentStatus' + subId);
     const box = document.getElementById('adminRenewDebtAmountBox' + subId);
+    const dueBox = document.getElementById('adminRenewDebtDueBox' + subId);
     const destBox = document.getElementById('adminRenewPaymentDestBox' + subId);
     if (!sel) return;
     if (sel.value === 'unpaid') {
         if (box) box.style.display = 'block';
+        if (dueBox) dueBox.style.display = 'block';
         if (destBox) destBox.style.display = 'none';
         const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
         if (debtInput && (!debtInput.value || debtInput.value === '0')) {
@@ -2860,8 +3004,12 @@ function toggleAdminRenewDebtor(subId) {
         } else {
             updateAdminRenewDebtBreakdown(subId);
         }
+        if (typeof initDebtDuePicker === 'function') {
+            initDebtDuePicker('adminRenew_' + subId, 3);
+        }
     } else {
         if (box) box.style.display = 'none';
+        if (dueBox) dueBox.style.display = 'none';
         if (destBox) destBox.style.display = 'block';
     }
 }
@@ -2871,6 +3019,10 @@ document.addEventListener('shown.bs.modal', function(event) {
     if (modal && modal.id && modal.id.startsWith('renewModal')) {
         const subId = modal.id.replace('renewModal', '');
         handleAdminRenewPlanChange(subId);
+        const sel = document.getElementById('adminRenewPaymentStatus' + subId);
+        if (sel && sel.value === 'unpaid' && typeof initDebtDuePicker === 'function') {
+            initDebtDuePicker('adminRenew_' + subId, 3);
+        }
     }
 });
 
@@ -4892,6 +5044,42 @@ function submitAdminBulkDelete() {
     if (actionInput) actionInput.value = 'delete';
 
     form.submit();
+}
+
+async function toggleDelinquentFast(subId, btn) {
+    if (!subId) return;
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    try {
+        const resp = await fetch(`/api/subscriptions/${subId}/toggle-delinquent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (data.success) {
+            if (typeof showToast === 'function') {
+                showToast(data.is_delinquent ? 'مشتری به عنوان بدحساب علامت‌گذاری شد' : 'وضعیت بدحسابی مشتری لغو شد', data.is_delinquent ? 'warning' : 'success');
+            }
+            setTimeout(() => {
+                location.reload();
+            }, 400);
+        } else {
+            alert(data.error || 'خطا در تغییر وضعیت بدحسابی');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        }
+    } catch (e) {
+        alert('خطای ارتباط با سرور: ' + e);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
 }
 </script>
 

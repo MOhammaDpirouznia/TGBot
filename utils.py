@@ -461,4 +461,61 @@ def format_single_link(template, uuid: str, name: str) -> str:
     return res
 
 
+def to_english_digits(text: Union[str, int, float, None]) -> str:
+    """تبدیل کلیه ارقام فارسی و عربی به ارقام انگلیسی"""
+    if text is None:
+        return ""
+    s = str(text)
+    persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+    arabic_digits = "٠١٢٣٤٥٦٧٨٩"
+    for i in range(10):
+        s = s.replace(persian_digits[i], str(i)).replace(arabic_digits[i], str(i))
+    return s
 
+
+def calculate_debt_auto_disable_at(
+    days_val: Union[int, str, None] = 3,
+    shamsi_date_str: Optional[str] = None,
+    base_dt: Optional[datetime] = None
+) -> str:
+    """
+    محاسبه تاریخ و زمان دقیق انقضا و قطع خودکار اشتراک بدهکار.
+    ساعت، دقیقه و ثانیه دقیقا مطابق با لحظه تنظیم فرم (base_dt) حفظ می‌گردد.
+    
+    Args:
+        days_val: تعداد روز مهلت (پیش‌فرض ۳ روز)
+        shamsi_date_str: تاریخ دقیق شمسی به صورت YYYY/MM/DD یا YYYY-MM-DD
+        base_dt: شیء datetime مبدا (پیش‌فرض زمان جاری تهران یا سرور)
+        
+    Returns:
+        رشته ISO میلادی زمان قطع خودکار
+    """
+    if base_dt is None:
+        base_dt = get_now_naive()
+
+    # ۱. اگر تاریخ شمسی دقیق ارسال شده باشد
+    if shamsi_date_str and str(shamsi_date_str).strip():
+        clean_str = to_english_digits(str(shamsi_date_str).strip().replace("-", "/"))
+        parts = [int(p) for p in clean_str.split("/") if p.isdigit()]
+        if len(parts) == 3:
+            jy, jm, jd = parts
+            try:
+                g_date = jdatetime.date(jy, jm, jd).togregorian()
+                target_dt = datetime.combine(g_date, base_dt.time())
+                # اگر تاریخ انتخابی از زمان فعلی گذشته باشد، حداقل مهلت ۱ روزه اعمال می‌شود
+                if target_dt <= base_dt:
+                    target_dt = base_dt + timedelta(days=1)
+                return target_dt.isoformat()
+            except Exception:
+                pass
+
+    # ۲. محاسبه بر مبنای تعداد روز
+    try:
+        days = int(days_val or 3)
+        if days <= 0:
+            days = 3
+    except Exception:
+        days = 3
+
+    target_dt = base_dt + timedelta(days=days)
+    return target_dt.isoformat()

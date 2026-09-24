@@ -104,6 +104,77 @@
                                 <input type="text" name="debt_notes" class="form-control form-control-sm border-danger" placeholder="مثلاً: مهلت تسویه تا آخر هفته - ارسال فیش در بخش تمدید">
                                 <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">توجه: این متن در صورت بدهکار بودن مشتری، در فاکتور بدهی پورتال به خود کاربر نمایش داده می‌شود.</small>
                             </div>
+                            <div class="col-12" id="resellerDebtDueContainer" style="display: none;">
+                                <!-- کادر مهلت تسویه بدهی و قطع خودکار سرویس -->
+                                <div class="p-3 bg-white rounded-3 border border-danger border-opacity-50 mt-2 shadow-xs">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <label class="form-label fw-bold text-danger mb-0 small">
+                                            <i class="fas fa-user-clock text-danger me-1"></i>مهلت تسویه حساب و زمان قطع خودکار سرویس:
+                                        </label>
+                                        <div class="form-check form-switch m-0">
+                                            <input class="form-check-input ms-0 me-1" type="checkbox" role="switch" id="debtDueCalendarSwitch_resellerCreate" onchange="toggleDebtDueCalendar('resellerCreate')">
+                                            <label class="form-check-label small text-muted cursor-pointer" for="debtDueCalendarSwitch_resellerCreate" style="font-size: 0.78rem;">
+                                                <i class="fas fa-calendar-alt text-primary me-1"></i>انتخاب تاریخ دقیق شمسی
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <input type="hidden" name="debt_due_mode" id="debtDueMode_resellerCreate" value="days">
+                                    
+                                    <!-- ورودی حالت ۱: تعداد روز مهلت -->
+                                    <div id="debtDueDaysBox_resellerCreate" class="mb-2">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-light text-danger border-danger"><i class="fas fa-hourglass-half"></i></span>
+                                            <input type="number" min="1" max="365" name="debt_due_days" id="debtDueDaysInput_resellerCreate" class="form-control form-control-sm border-danger font-monospace text-center fw-bold" value="3" oninput="updateDebtDuePreview('resellerCreate')">
+                                            <span class="input-group-text bg-light text-muted">روز مهلت تسویه</span>
+                                        </div>
+                                        <div class="d-flex gap-1 mt-1 flex-wrap">
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="1" onclick="setDebtDueQuickDays('resellerCreate', 1)">۱ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="2" onclick="setDebtDueQuickDays('resellerCreate', 2)">۲ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2 active fw-bold" style="font-size: 0.7rem;" data-days="3" onclick="setDebtDueQuickDays('resellerCreate', 3)">۳ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="5" onclick="setDebtDueQuickDays('resellerCreate', 5)">۵ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="7" onclick="setDebtDueQuickDays('resellerCreate', 7)">۱ هفته</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="14" onclick="setDebtDueQuickDays('resellerCreate', 14)">۲ هفته</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- ورودی حالت ۲: تقویم و تاریخ دقیق شمسی -->
+                                    <div id="debtDueCalendarBox_resellerCreate" class="mb-2" style="display: none;">
+                                        <div class="row g-1 align-items-center">
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">روز:</label>
+                                                <select id="debtDueDay_resellerCreate" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">ماه:</label>
+                                                <select id="debtDueMonth_resellerCreate" class="form-select form-select-sm border-primary text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">سال:</label>
+                                                <select id="debtDueYear_resellerCreate" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                        </div>
+                                        <input type="hidden" name="debt_due_date_shamsi" id="debtDueDateShamsi_resellerCreate" value="">
+                                    </div>
+                                    
+                                    <!-- پیش‌نمایش زنده تاریخ و ساعت دقیق قطع -->
+                                    <div class="alert alert-danger bg-danger bg-opacity-10 border border-danger border-opacity-25 py-1.5 px-2 mb-0 rounded-2" style="font-size: 0.76rem;">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <div class="fw-bold">
+                                                <i class="fas fa-stopwatch text-danger me-1"></i>
+                                                <span>زمان قطع سرویس در صورت عدم تسویه:</span>
+                                            </div>
+                                            <span class="badge bg-danger text-white font-monospace" id="debtDueTimeBadge_resellerCreate">--:--</span>
+                                        </div>
+                                        <div class="mt-1 fw-bold text-danger text-start font-monospace" id="debtDuePreviewText_resellerCreate">
+                                            در حال محاسبه...
+                                        </div>
+                                        <div class="text-muted small mt-0.5" style="font-size: 0.68rem;">
+                                            * ساعت قطع خودکار دقیقاً منطبق بر ساعت ثبت این فرم خواهد بود. در صورت تسویه حساب، اشتراک هرگز غیرفعال نمی‌گردد.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -321,11 +392,16 @@
         const isDebtor = (sel.value === 'unpaid');
         document.getElementById('resellerDebtAmountBox').style.display = isDebtor ? 'block' : 'none';
         document.getElementById('resellerDebtNoteBox').style.display = isDebtor ? 'block' : 'none';
+        const debtDueBox = document.getElementById('resellerDebtDueContainer');
+        if (debtDueBox) debtDueBox.style.display = isDebtor ? 'block' : 'none';
         const destBox = document.getElementById('resellerPaymentDestBox');
         if (destBox) destBox.style.display = isDebtor ? 'none' : 'block';
         const debtInput = document.getElementById('resellerDebtAmountInput');
         if (isDebtor && (!debtInput.value || debtInput.value === '0')) {
             debtInput.value = currentRetailPrice || currentFinalPrice;
+        }
+        if (isDebtor && typeof initDebtDuePicker === 'function') {
+            initDebtDuePicker('resellerCreate', 3);
         }
     }
 

@@ -173,6 +173,98 @@ class TestAutoBackupSystem(unittest.TestCase):
         self.assertEqual(normalize_telegram_chat_id(""), "")
         self.assertEqual(normalize_telegram_chat_id(None), "")
 
+    def test_is_setting_enabled_resilience(self):
+        """تست مقاومت متد is_setting_enabled در برابر باگ Type Coercion ناشی از json.loads و خالی شدن کش در ریستارت"""
+        from cache_manager import cache
+
+        # ۱. ذخیره به عنوان رشته "1" و پاک‌سازی کش (شبیه‌سازی ریستارت کانتینر در ریلوی)
+        self.db.save_setting("test_railway_deploy_key", "1")
+        cache.delete("setting:test_railway_deploy_key")
+        
+        # مقدار دریافتی از json.loads باید عدد صحیح 1 باشد
+        raw_val = self.db.get_setting("test_railway_deploy_key")
+        self.assertIsInstance(raw_val, int)
+        self.assertEqual(raw_val, 1)
+        # در کد قدیمی 1 == "1" فالس می‌شد:
+        self.assertFalse(raw_val == "1")
+        # اما با متد جدید is_setting_enabled دقیقاً True برمی‌گرداند
+        self.assertTrue(self.db.is_setting_enabled("test_railway_deploy_key"))
+
+        # ۲. ذخیره مقدار "0"
+        self.db.save_setting("test_railway_deploy_key", "0")
+        cache.delete("setting:test_railway_deploy_key")
+        self.assertFalse(self.db.is_setting_enabled("test_railway_deploy_key"))
+
+        # ۳. انواع مقادیر متنی و بولین
+        self.db.save_setting("test_true_str", "true")
+        self.assertTrue(self.db.is_setting_enabled("test_true_str"))
+        self.db.save_setting("test_false_str", "false")
+        self.assertFalse(self.db.is_setting_enabled("test_false_str"))
+
+        # ۴. کلید ناموجود با مقدار پیش‌فرض
+        self.assertTrue(self.db.is_setting_enabled("non_existing_key", default=True))
+        self.assertFalse(self.db.is_setting_enabled("non_existing_key", default=False))
+
+    def test_scheduler_fixed_hours_tehran_timezone_and_daily_slots(self):
+        """تست اجرای زمان‌بندی ساعات مشخص به وقت تهران و حل باگ اجرای روزهای بعد"""
+        from utils import TEHRAN_TZ
+        scheduler = AutoBackupScheduler()
+
+        # زمان فرضی ساعت ۱۲:۰۵ به وقت تهران
+        dt_day1_1205 = datetime(2026, 9, 23, 12, 5, tzinfo=TEHRAN_TZ)
+        slot_empty = None
+        last_run_none = None
+
+        # بار اول در ساعت ۱۲ باید اجرا شود
+        should_run = scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1205, slot_empty, last_run_none)
+        self.assertTrue(should_run)
+
+        # پس از اجرا، اسلات برای ساعت ۱۲ روز جاری ثبت می‌شود
+        slot_day1_12 = (2026, 9, 23, 12)
+        last_run_recent = dt_day1_1205
+
+        # در دقایق بعدی همان ساعت ۱۲ (مثلاً ۱۲:۰۶) نباید مجدداً اجرا شود
+        dt_day1_1206 = datetime(2026, 9, 23, 12, 6, tzinfo=TEHRAN_TZ)
+        self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1206, slot_day1_12, last_run_recent))
+
+        # خارج از پنجره ۱۵ دقیقه (مثلاً ۱۲:۲۰) نباید اجرا شود
+        dt_day1_1220 = datetime(2026, 9, 23, 12, 20, tzinfo=TEHRAN_TZ)
+        self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1220, (2026, 9, 23, 6), None))
+
+        # در ساعت غیرمجاز (مثلاً ساعت ۱۳) نباید اجرا شود
+        dt_day1_1305 = datetime(2026, 9, 23, 13, 5, tzinfo=TEHRAN_TZ)
+        self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1305, slot_day1_12, last_run_recent))
+
+        # ساعت مقرر بعدی (ساعت ۱۸:۰۲) باید به درستی اجرا شود
+        dt_day1_1802 = datetime(2026, 9, 23, 18, 2, tzinfo=TEHRAN_TZ)
+        self.assertTrue(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1802, slot_day1_12, last_run_recent))
+
+        # روز بعد در همان ساعت ۱۲:۰۵ (رفع باگ روز بعد که قبلاً به خاطر last_checked_hour اجرا نمی‌شد):
+        dt_day2_1205 = datetime(2026, 9, 24, 12, 5, tzinfo=TEHRAN_TZ)
+        slot_day1_18 = (2026, 9, 23, 18)
+        self.assertTrue(scheduler._should_run_fixed_hours("00,06,12,18", dt_day2_1205, slot_day1_18, last_run_recent))
+
+    def test_scheduler_state_restoration_from_db(self):
+        """تست بازخوانی موفقیت‌آمیز سابقه آخرین بکاپ از دیتابیس در زمان راه‌اندازی زمان‌بند"""
+        from utils import get_now_iso
+        now_iso = get_now_iso()
+
+        # ذخیره یک رکورد بکاپ موفق در دیتابیس
+        self.db.save_backup_record(
+            backup_file="restore_test.zip",
+            backup_size=1024,
+            backup_type="main_panel",
+            status="success",
+            target_chat="-10099999"
+        )
+
+        # ساخت نمونه جدید زمان‌بند و بازخوانی سابقه با دیتابیس تست
+        scheduler = AutoBackupScheduler(db_instance=self.db)
+        self.assertIsNone(scheduler.last_main_run_time)
+        scheduler._load_last_run_times_from_db()
+        self.assertIsNotNone(scheduler.last_main_run_time)
+        self.assertIsNotNone(scheduler.last_main_slot)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -563,6 +563,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sub_token = arg.replace("link_", "").strip()
                 sub_to_link = db.get_subscription_by_uuid(sub_token) or (db.get_subscription(int(sub_token)) if sub_token.isdigit() else None)
                 if sub_to_link:
+                    sub_reseller_id = int(sub_to_link.get("reseller_id") or 0)
+                    if sub_reseller_id > 0:
+                        r_info = db.get_reseller(sub_reseller_id)
+                        bot_user = r_info.get("bot_username") if r_info else None
+                        bot_hint = f" (@{bot_user})" if bot_user else ""
+                        await update.message.reply_text(
+                            f"⚠️ این اشتراک متعلق به نماینده است. لطفاً جهت اتصال و مدیریت اشتراک از ربات اختصاصی نماینده{bot_hint} استفاده فرمایید.",
+                            parse_mode="HTML"
+                        )
+                        return
                     full_nm = f"{user.first_name or ''} {user.last_name or ''}".strip()
                     db.link_subscription_to_telegram(
                         sub_id=sub_to_link["id"],
@@ -830,7 +840,7 @@ def get_payment_selection_payload(
 
     price = max(0, base_price - disc_amount)
     price_formatted = f"{price:,}".replace(",", "،")
-    user_wallet = db.get_user_wallet_balance(user_id)
+    user_wallet = db.get_user_wallet_balance(user_id, reseller_id=reseller_id or 0)
     usdt_price = CryptoPaymentGateway.toman_to_usdt(price, db)
     crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
 
@@ -1423,7 +1433,7 @@ async def wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
         sub = None
         try:
-            subs = db.get_user_subscriptions(user_id)
+            subs = db.get_user_subscriptions(user_id, is_admin_bot=True)
             if subs:
                 sub = subs[0]
         except Exception:
@@ -2149,7 +2159,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 
     if query.data == "pay_wallet_insufficient":
         try:
-            user_wallet = db.get_user_wallet_balance(user.id)
+            user_wallet = db.get_user_wallet_balance(user.id, reseller_id=0)
             await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این بسته کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
         except Exception:
             pass
@@ -2162,7 +2172,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             pass
 
         # پرداخت ۱۰۰٪ آنی و خودکار از موجودی کیف پول!
-        user_wallet = db.get_user_wallet_balance(user.id)
+        user_wallet = db.get_user_wallet_balance(user.id, reseller_id=0)
         if user_wallet < price:
             try:
                 await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
@@ -2176,6 +2186,9 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         if is_ren and ren_sub_id:
             target_sub = db.get_subscription(ren_sub_id)
             if target_sub:
+                if int(target_sub.get("reseller_id") or 0) > 0:
+                    await query.answer("❌ این اشتراک متعلق به این ربات نیست.", show_alert=True)
+                    return SELECTING_PAYMENT
                 is_cooldown, remaining, cool_msg = RenewalGuard.check_cooldown(
                     ren_sub_id, target_sub.get("last_renewed_at"), cooldown_seconds=30
                 )
@@ -2194,7 +2207,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                     return SELECTING_PAYMENT
 
         # کسر از موجودی کیف پول
-        deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}")
+        deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}", reseller_id=0)
         if not deduct_res.get("success"):
             if is_ren and ren_sub_id:
                 RenewalGuard.release_lock(ren_sub_id)
@@ -2458,7 +2471,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             logger.error(f"Error activating sub from wallet: {e}")
             # بازگشت وجه در صورت خطا
-            db.add_wallet_balance(user.id, price, "بازگشت وجه به دلیل خطای سرور هیدیفای", tx_type="refund")
+            db.add_wallet_balance(user.id, price, "بازگشت وجه به دلیل خطای سرور هیدیفای", tx_type="refund", reseller_id=0)
             try:
                 await query.edit_message_text(f"❌ خطایی در فعال‌سازی اشتراک رخ داد و مبلغ به کیف پول شما برگشت داده شد:\n{str(e)[:150]}")
             except Exception:
@@ -3149,7 +3162,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     msg_obj = update.message or (update.callback_query.message if update.callback_query else None)
     try:
-        subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
+        subscriptions = [s for s in db.get_user_subscriptions(user.id, is_admin_bot=True) if not s.get("is_deleted") and s.get("status") != "deleted"]
     except Exception as e:
         logger.error(f"Error getting subscriptions: {e}")
         if msg_obj:
@@ -3171,7 +3184,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     querying_txt = db.get_menu_text("admin", "my_subscriptions", "querying", default=def_querying)
     status_msg = await msg_obj.reply_text(querying_txt) if msg_obj else None
 
-    vip_info = db.get_user_vip_info(user.id)
+    vip_info = db.get_user_vip_info(user.id, reseller_id=0)
     my_sub_hdr = db.get_menu_text("admin", "my_subscriptions", "header", default="📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>", brand=brand)
     if vip_info.get("is_vip"):
         cb_val = vip_info.get("cashback_percent", 10)
@@ -3415,7 +3428,7 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT q.*, s.account_name, s.data_used, s.data_limit, s.duration as sub_duration 
+            SELECT q.*, s.account_name, s.data_used, s.data_limit, s.duration as sub_duration, s.telegram_id, s.reseller_id 
             FROM subscription_queue q 
             JOIN subscriptions s ON q.subscription_id = s.id 
             WHERE q.id=? AND q.status='pending'
@@ -3428,6 +3441,10 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
             return
 
         q_dict = dict(item)
+        if int(q_dict.get("telegram_id") or 0) != int(user.id) or int(q_dict.get("reseller_id") or 0) > 0:
+            await query.answer("❌ دسترسی غیرمجاز.", show_alert=True)
+            return
+
         sub_id = q_dict.get("subscription_id")
         pname = q_dict.get("plan_name") or "بسته تمدیدی"
         acc_name = q_dict.get("account_name") or f"sub_{sub_id}"
@@ -3452,6 +3469,24 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
         try:
             queue_id = int(data.replace("usr_qconf_", ""))
         except ValueError:
+            return
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.*, s.telegram_id, s.reseller_id 
+            FROM subscription_queue q 
+            JOIN subscriptions s ON q.subscription_id = s.id 
+            WHERE q.id=? AND q.status='pending'
+        """, (queue_id,))
+        item = cursor.fetchone()
+        conn.close()
+        if not item:
+            await query.answer("⚠️ این بسته در صف یافت نشد یا قبلاً فعال شده است.", show_alert=True)
+            return
+        q_dict = dict(item)
+        if int(q_dict.get("telegram_id") or 0) != int(user.id) or int(q_dict.get("reseller_id") or 0) > 0:
+            await query.answer("❌ دسترسی غیرمجاز.", show_alert=True)
             return
 
         await query.answer("⏳ در حال فعال‌سازی آنی بسته... لطفاً شکیبا باشید")
@@ -3481,12 +3516,16 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
         except ValueError:
             return
 
+        sub = db.get_subscription(sub_id)
+        if not sub or int(sub.get("telegram_id") or 0) != int(user.id) or int(sub.get("reseller_id") or 0) > 0:
+            await query.answer("❌ دسترسی غیرمجاز.", show_alert=True)
+            return
+
         q_items = db.get_pending_queue_items(sub_id)
         if not q_items or len(q_items) < 2:
             await query.answer("صف تمدید کمتر از ۲ بسته دارد و نیاز به تغییر چینش ندارد.", show_alert=True)
             return
 
-        sub = db.get_subscription(sub_id)
         acc_name = sub.get("account_name") if sub else f"اشتراک #{sub_id}"
 
         txt = (
@@ -3518,12 +3557,15 @@ async def customer_queue_action_callback(update: Update, context: ContextTypes.D
             q_id = int(parts[0])
             direction = parts[1]
             sub_id = int(parts[2])
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("telegram_id") or 0) != int(user.id) or int(sub.get("reseller_id") or 0) > 0:
+                await query.answer("❌ دسترسی غیرمجاز.", show_alert=True)
+                return
             db.reorder_subscription_queue(sub_id, q_id, direction)
             await query.answer("✅ اولویت جابجا شد.")
 
             # Re-render queue management menu
             q_items = db.get_pending_queue_items(sub_id)
-            sub = db.get_subscription(sub_id)
             acc_name = sub.get("account_name") if sub else f"اشتراک #{sub_id}"
             txt = (
                 f"🔀 **مدیریت و اولویت‌بندی صف تمدید**\n"
@@ -3563,7 +3605,7 @@ async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TY
 
     user = update.effective_user
     try:
-        transactions = db.get_user_transactions(user.id)
+        transactions = db.get_user_transactions(user.id, reseller_id=0)
     except Exception as e:
         logger.error(f"Error getting user transactions: {e}")
         await update.message.reply_text("❌ خطا در دریافت سوابق پرداخت.")
@@ -3651,7 +3693,7 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CHOOSING
 
-    active_subs = [s for s in subscriptions if s.get("hidify_uuid")]
+    active_subs = [s for s in subscriptions if s.get("hidify_uuid") and not s.get("is_deleted") and s.get("status") != "deleted"]
     if not active_subs:
         await update.message.reply_text(
             "❌ اشتراک فعالی یافت نشد.\n\n"
@@ -3879,7 +3921,7 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # دریافت اشتراک‌های کاربر از دیتابیس
     subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
-    non_test_subs = [s for s in subscriptions if s.get("plan_id") != "test"]
+    non_test_subs = [s for s in subscriptions if s.get("plan_id") != "test" and not s.get("is_deleted") and s.get("status") != "deleted"]
 
     if not non_test_subs:
         # بررسی اطلاعات قدیمی
@@ -3983,15 +4025,22 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "renew_history":
         return await show_payments_history(update, context)
 
-    # اگر اشتراک خاصی انتخاب شده (renew_sub_123)
-    if query.data.startswith("renew_sub_"):
-        sub_id = int(query.data.replace("renew_sub_", ""))
+    # اگر اشتراک خاصی انتخاب شده (renew_sub_123 یا renew_123)
+    if query.data.startswith("renew_sub_") or (query.data.startswith("renew_") and query.data.replace("renew_", "").isdigit()):
+        sub_id = int(query.data.replace("renew_sub_", "").replace("renew_", ""))
         context.user_data["renew_subscription_id"] = sub_id
         target_sub = None
         for s in db.get_user_subscriptions(update.effective_user.id, is_admin_bot=True):
-            if s.get("id") == sub_id:
+            if s.get("id") == sub_id and not s.get("is_deleted") and s.get("status") != "deleted":
                 target_sub = s
                 break
+        if not target_sub:
+            chk_sub = db.get_subscription(sub_id)
+            if chk_sub and chk_sub.get("reseller_id") and int(chk_sub.get("reseller_id")) > 0:
+                await query.answer("این اشتراک متعلق به این ربات نیست. لطفاً از طریق ربات نماینده خود اقدام فرمایید.", show_alert=True)
+            else:
+                await query.answer("❌ این اشتراک حذف شده است و امکان تمدید ندارد.", show_alert=True)
+            return CHOOSING
         s_name = target_sub.get("account_name", f"اشتراک #{sub_id}") if target_sub else f"اشتراک #{sub_id}"
         p_name = target_sub.get("plan_name", "") if target_sub else ""
         keyboard = get_renew_inline_buttons(target_sub or {"id": sub_id})
@@ -4084,9 +4133,12 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["renew_subscription_id"] = sub_id
         target_sub = None
         for s in db.get_user_subscriptions(update.effective_user.id, is_admin_bot=True):
-            if s.get("id") == sub_id:
+            if s.get("id") == sub_id and not s.get("is_deleted") and s.get("status") != "deleted":
                 target_sub = s
                 break
+        if not target_sub:
+            await query.answer("❌ این اشتراک حذف شده است و امکان تمدید ندارد.", show_alert=True)
+            return CHOOSING
         plan_id = target_sub.get("plan_id") if target_sub else None
         plans = {**get_all_plans(), **get_plans()}
         if plan_id and plan_id in plans:
@@ -4127,9 +4179,12 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sub_id:
         user_subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
         for s in user_subscriptions:
-            if s["id"] == sub_id:
+            if s["id"] == sub_id and not s.get("is_deleted") and s.get("status") != "deleted":
                 target_sub = s
                 break
+        if not target_sub:
+            await query.edit_message_text("❌ این اشتراک حذف شده است و امکان تمدید ندارد.")
+            return CHOOSING
 
     # تنظیم داده‌های تمدید در session کاربر برای مرحله پرداخت
     context.user_data["is_renewal"] = True
@@ -4480,9 +4535,9 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
 async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش داشبورد کیف پول هوشمند کاربر و تراکنش‌ها"""
     user = update.effective_user
-    balance = db.get_user_wallet_balance(user.id)
+    balance = db.get_user_wallet_balance(user.id, reseller_id=0)
     usdt_equiv = CryptoPaymentGateway.toman_to_usdt(balance, db)
-    txs = db.get_wallet_transactions(user.id, limit=5)
+    txs = db.get_wallet_transactions(user.id, limit=5, reseller_id=0)
     
     tx_lines = ""
     if txs:
@@ -4495,7 +4550,7 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         tx_lines = "<i>هنوز تراکنشی ثبت نشده است.</i>\n"
 
-    vip_info = db.get_user_vip_info(user.id)
+    vip_info = db.get_user_vip_info(user.id, reseller_id=0)
     vip_line = ""
     if vip_info.get("is_vip"):
         cb_val = vip_info.get("cashback_percent", 10)
@@ -5331,6 +5386,9 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         if is_renewal and renew_sub_id:
             target_sub = db.get_subscription(renew_sub_id)
             if target_sub:
+                if int(target_sub.get("reseller_id") or 0) != int(r_id or 0):
+                    await query.answer("❌ این اشتراک متعلق به این پنل یا نماینده نیست.", show_alert=True)
+                    return
                 user_uuid = target_sub.get("hidify_uuid", "")
                 old_limit = float(target_sub.get("data_limit") or 0)
                 old_used = float(target_sub.get("data_used") or 0)
@@ -5459,7 +5517,7 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         # ۴. کش‌بک و ارتقای سطح VIP کاربر
         cashback_note = ""
         try:
-            vip_info = db.get_user_vip_info(user_id)
+            vip_info = db.get_user_vip_info(user_id, reseller_id=r_id or 0)
             if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
                 cb_pct = vip_info.get("cashback_percent", 10)
                 amount_paid = tx.get("amount", 0)
@@ -5470,7 +5528,8 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                         cb_amount,
                         f"هدیه کش‌بک خرید VIP ({cb_pct}%)",
                         ref_id=str(order_id),
-                        tx_type="cashback"
+                        tx_type="cashback",
+                        reseller_id=r_id or 0
                     )
                     new_b = cb_res.get("new_balance", 0)
                     cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cb_amount:,} تومان ({cb_pct}٪) به کیف پول شما واریز شد.\n💰 موجودی کیف پول: {new_b:,} تومان"
@@ -6338,7 +6397,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             sub_id = context.user_data.get("res_renew_sub_id")
             plan_id = context.user_data.get("res_renew_plan_id")
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             plans_dict = db.get_reseller_plans_dict(r_id)
             plan = plans_dict.get(plan_id) if plans_dict else None
             if not sub or not plan:
@@ -6552,7 +6611,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     plan = plans.get(plan_id) or all_p.get(plan_id, {})
 
     # ۱. بررسی تراکنش برای جلوگیری از تایید تکراری (Idempotency / Double-Click Lock)
-    user_transactions = db.get_user_transactions(user_id)
+    user_transactions = db.get_user_transactions(user_id, reseller_id=0)
     target_tx = None
     for tx in user_transactions:
         if tx.get("status") == "pending" or str(tx.get("plan_id")) == str(plan_id):
@@ -6763,7 +6822,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
     plan = plans.get(plan_id) or all_p.get(plan_id, {})
 
     # ۱. بررسی وضعیت تراکنش در دیتابیس برای جلوگیری از تایید تکراری (Idempotency)
-    user_transactions = db.get_user_transactions(user_id)
+    user_transactions = db.get_user_transactions(user_id, reseller_id=0)
     target_tx = None
     for tx in user_transactions:
         if tx.get("status") == "pending" or tx.get("is_renewal"):
@@ -6801,7 +6860,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         await edit_admin_message_safe(query, admin_done_text)
         return
 
-    user_subscriptions = db.get_user_subscriptions(user_id)
+    user_subscriptions = db.get_user_subscriptions(user_id, is_admin_bot=True)
     target_sub = next((s for s in user_subscriptions if s["id"] == sub_id), None)
     
     user_uuid = ""
@@ -7057,7 +7116,7 @@ async def admin_reject_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # بروزرسانی تراکنش
     try:
-        user_transactions = db.get_user_transactions(user_id)
+        user_transactions = db.get_user_transactions(user_id, reseller_id=0)
         target_trans = None
         for trans in user_transactions:
             if trans.get("status") == "pending":
@@ -7243,8 +7302,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await admin_panel(update, context)
 
     # ─── بررسی دسترسی امنیتی دکمه‌های غیرفعال برای نمایندگان یا مدیران بدون دسترسی ───
-    if data in ("admin_backup", "admin_restore"):
-        if not is_super_admin:
+    if data in ("admin_backup", "admin_restore", "adm_instant_backup"):
+        if not is_sys_admin:
             await query.answer("⛔ این بخش فقط برای مدیریت ارشد سیستم در دسترس است.", show_alert=True)
             return ADMIN_MENU
 
@@ -7266,8 +7325,11 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if data in ("admin_stats_btn", "res_adm_stats"):
         return await admin_stats(update, context)
 
-    if data == "admin_backup":
-        return await admin_backup_handler(update, context)
+    if data in ("adm_instant_backup", "admin_backup"):
+        if not is_sys_admin:
+            await query.answer("⛔ این عملیات فقط برای مدیریت ارشد سیستم مجاز است.", show_alert=True)
+            return ADMIN_MENU
+        return await admin_instant_backup_handler(update, context)
 
     if data == "admin_restore":
         return await admin_restore_handler(update, context)
@@ -8344,7 +8406,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         elif data.startswith("res_adm_rsub_"):
             sub_id = int(data.replace("res_adm_rsub_", ""))
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                 await query.answer("❌ اشتراک یافت نشد یا متعلق به شما نیست.", show_alert=True)
                 return ADMIN_MENU
@@ -8386,6 +8448,11 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parts = data.replace("res_act_queue_", "").split("_")
             q_id = int(parts[0])
             sub_id = int(parts[1])
+            sub = db.get_reseller_subscription(r_id, sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.edit_message_text("❌ اشتراک یافت نشد یا متعلق به شما نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                return ADMIN_MENU
+
             from dashboard import activate_single_queue_item
             res = activate_single_queue_item(q_id, triggered_by=f"نماینده در تلگرام ({user.id})")
             if res.get("success"):
@@ -8393,10 +8460,6 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             else:
                 err_msg = res.get("error", "خطای ناشناخته")
                 await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
-            sub = db.get_subscription(sub_id)
-            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
-                await query.edit_message_text("❌ اشتراک یافت نشد یا متعلق به شما نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
-                return ADMIN_MENU
             plans = db.get_reseller_plans(r_id)
             r_name = sub.get("account_name") or f"sub_{sub_id}"
             u_gb = round(sub.get("data_used", 0), 1)
@@ -8431,7 +8494,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parts = data.replace("res_adm_cfren_", "").split("_", 1)
             sub_id = int(parts[0])
             plan_id = parts[1]
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                 await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
@@ -8510,7 +8573,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             mode = parts[0]
             sub_id = int(parts[1])
             plan_id = parts[2]
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                 await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
@@ -8555,7 +8618,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parts = data.replace("res_adm_rskip_disc_", "").split("_", 1)
             sub_id = int(parts[0])
             plan_id = parts[1]
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                 await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
@@ -8622,7 +8685,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 target_card_id = None
                 plan_id = "_".join(parts[2:])
 
-            sub = db.get_subscription(sub_id)
+            sub = db.get_reseller_subscription(r_id, sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
                 await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
                 return ADMIN_MENU
@@ -9693,56 +9756,186 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # پشتیبان‌گیری و بازیابی از پنل مدیریت
 # ═══════════════════════════════════════════════════════════════════════
 
-async def admin_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پشتیبان‌گیری از پنل مدیریت"""
+async def admin_instant_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    تهیه فوری بکاپ جامع از هر دو پنل (دیتابیس SQLite پنل اصلی و تنظیمات/کاربران هیدیفای)
+    و ارسال مستقیم هر دو فایل همراه با متادیتا به چت تلگرام ادمین
+    """
     query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("⏳ در حال ایجاد پشتیبان...")
-
-    backup_mgr = BackupManager()
-    result = backup_mgr.create_backup()
-
-    if result.get("success"):
-        backup_size = result["size"]
-        backup_file = result["filename"]
-
-        # ارسال فایل پشتیبان
-        with open(result["file"], "rb") as f:
-            await context.bot.send_document(
-                chat_id=update.effective_user.id,
-                document=f,
-                caption=f"🔒 پشتیبان موفق!\n\n"
-                        f"📁 فایل: {backup_file}\n"
-                        f"📊 حجم: {backup_size:,} بایت\n"
-                        f"📅 تاریخ: {get_now_shamsi()}\n\n"
-                        f"برای بازیابی، فایل را ذخیره کرده و از منوی مدیریت گزینه بازیابی پشتیبان را انتخاب کنید.",
+    if query:
+        await query.answer("⏳ در حال تهیه پشتیبان از هر دو پنل...", show_alert=False)
+        try:
+            await query.edit_message_text(
+                "⏳ **در حال ایجاد فایل پشتیبان کامل...**\n\n"
+                "• 📦 دیتابیس پنل اصلی و نمایندگان\n"
+                "• ⚡ کاربران و تنظیمات پنل هیدیفای\n\n"
+                "لطفاً چند لحظه شکیبا باشید...",
+                parse_mode="Markdown"
             )
+        except Exception:
+            pass
+    elif update.message:
+        try:
+            await update.message.reply_text(
+                "⏳ **در حال ایجاد فایل پشتیبان کامل...**\n\n"
+                "• 📦 دیتابیس پنل اصلی و نمایندگان\n"
+                "• ⚡ کاربران و تنظیمات پنل هیدیفای\n\n"
+                "لطفاً چند لحظه شکیبا باشید...",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
 
-        # نمایش پنل مدیریت دوباره
-        keyboard = [
-            [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-            [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
-            [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
-            [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
-            [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text="✅ پشتیبان با موفقیت ایجاد و ارسال شد!\n\n🔧 پنل مدیریت",
-            reply_markup=reply_markup,
+    from backup import backup_manager, format_file_size
+    now_sh = get_now_shamsi()
+    user_id = update.effective_user.id
+
+    # ۱. تهیه پشتیبان پنل اصلی (دیتابیس SQLite فشرده شده در فایل Zip همراه با متادیتا)
+    main_res = await asyncio.to_thread(backup_manager.create_database_backup, True)
+    main_sent = False
+    main_err = None
+    if main_res.get("success"):
+        try:
+            m_path = main_res["file"]
+            m_name = main_res["filename"]
+            m_size = main_res["size"]
+            metrics = main_res.get("metrics", {})
+            m_caption = (
+                "🛡️ <b>پشتیبان کامل پنل اصلی و نمایندگان</b>\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+                f"📁 <b>نام فایل:</b> <code>{m_name}</code>\n"
+                f"📊 <b>حجم فایل:</b> {format_file_size(m_size)}\n\n"
+                "📈 <b>شاخص‌های آماری لحظه‌ای سامانه:</b>\n"
+                f"👥 <b>تعداد کل مشتریان:</b> {metrics.get('total_subscriptions', 0):,}\n"
+                f"🟢 <b>اشتراک‌های فعال:</b> {metrics.get('active_subscriptions', 0):,}\n"
+                f"👔 <b>نمایندگان فعال:</b> {metrics.get('active_resellers', 0):,}\n"
+                f"👤 <b>کل کاربران:</b> {metrics.get('total_users', 0):,}\n"
+                f"💳 <b>کارت‌های بانکی:</b> {metrics.get('active_cards', 0):,}\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "🔒 سامانه مدیریت یکپارچه سرویس"
+            )
+            with open(m_path, "rb") as f_m:
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=f_m,
+                    filename=m_name,
+                    caption=m_caption,
+                    parse_mode="HTML"
+                )
+            main_sent = True
+        except Exception as e:
+            main_err = str(e)
+            logger.error(f"Error sending main backup to telegram: {e}")
+    else:
+        main_err = main_res.get("error", "خطا در ایجاد بکاپ پنل اصلی")
+
+    # ۲. تهیه پشتیبان پنل هیدیفای (JSON کامل کاربران، کانفیگ‌ها و دامنه‌ها)
+    hiddify_res = await backup_manager.create_hiddify_backup()
+    hiddify_sent = False
+    hiddify_err = None
+    if hiddify_res.get("success"):
+        try:
+            h_path = hiddify_res["file"]
+            h_name = hiddify_res["filename"]
+            h_size = hiddify_res["size"]
+            details = hiddify_res.get("details", {})
+            extra_h = ""
+            if details.get("proxies_count"):
+                extra_h += f"🔌 <b>تعداد پروکسی‌ها/کانفیگ‌ها:</b> {details.get('proxies_count', 0):,}\n"
+            if details.get("domains_count"):
+                extra_h += f"🌐 <b>تعداد دامنه‌ها و نودها:</b> {details.get('domains_count', 0):,}\n"
+            h_caption = (
+                "⚡ <b>پشتیبان کامل پنل هیدیفای (Hiddify)</b>\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                f"📅 <b>تاریخ و ساعت:</b> {now_sh}\n"
+                f"📁 <b>نام فایل:</b> <code>{h_name}</code>\n"
+                f"📊 <b>حجم فایل:</b> {format_file_size(h_size)}\n\n"
+                f"👥 <b>تعداد کاربران ثبت‌شده در هیدیفای:</b> {details.get('users_count', 0):,}\n"
+                f"{extra_h}"
+                "━━━━━━━━━━━━━━━━━\n"
+                "🔒 سامانه مدیریت یکپارچه سرویس"
+            )
+            with open(h_path, "rb") as f_h:
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=f_h,
+                    filename=h_name,
+                    caption=h_caption,
+                    parse_mode="HTML"
+                )
+            hiddify_sent = True
+        except Exception as e:
+            hiddify_err = str(e)
+            logger.error(f"Error sending hiddify backup to telegram: {e}")
+    else:
+        hiddify_err = hiddify_res.get("error", "خطا در دریافت بکاپ هیدیفای")
+
+    # ۳. ثبت گزارش سوابق در دیتابیس
+    try:
+        if main_res.get("success"):
+            db.save_backup_record(
+                backup_file=main_res.get("filename", ""),
+                backup_size=main_res.get("size", 0),
+                backup_type="main_panel",
+                status="success" if main_sent else "failed",
+                target_chat=str(user_id),
+                error_message=main_err,
+                trigger_type="manual_bot"
+            )
+        if hiddify_res.get("success"):
+            db.save_backup_record(
+                backup_file=hiddify_res.get("filename", ""),
+                backup_size=hiddify_res.get("size", 0),
+                backup_type="hiddify",
+                status="success" if hiddify_sent else "failed",
+                target_chat=str(user_id),
+                error_message=hiddify_err,
+                trigger_type="manual_bot"
+            )
+    except Exception as ex_log:
+        logger.warning(f"Error logging backup records: {ex_log}")
+
+    # ۴. پیام تایید نهایی و دکمه بازگشت
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]])
+
+    if main_sent and hiddify_sent:
+        result_text = (
+            "✅ **پشتیبان‌گیری فوری با موفقیت انجام شد!**\n\n"
+            "فایل‌های پشتیبان هر دو پنل (دیتابیس اصلی و پنل هیدیفای) در همین چت برای شما ارسال گردیدند.\n"
+            f"📅 زمان تهیه: {now_sh}"
+        )
+    elif main_sent and not hiddify_sent:
+        result_text = (
+            "⚠️ **پشتیبان پنل اصلی ارسال شد، اما هیدیفای با خطا مواجه شد:**\n\n"
+            f"❌ خطای هیدیفای: `{hiddify_err}`\n"
+            "فایل پشتیبان دیتابیس اصلی برای شما ارسال گردید."
+        )
+    elif not main_sent and hiddify_sent:
+        result_text = (
+            "⚠️ **پشتیبان هیدیفای ارسال شد، اما پنل اصلی با خطا مواجه شد:**\n\n"
+            f"❌ خطای پنل اصلی: `{main_err}`\n"
+            "فایل پشتیبان هیدیفای برای شما ارسال گردید."
         )
     else:
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=f"❌ خطا در ایجاد پشتیبان:\n{result.get('error', 'نامشخص')}\n\n🔧 پنل مدیریت",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back_menu")],
-            ]),
+        result_text = (
+            "❌ **خطا در تهیه پشتیبان:**\n\n"
+            f"• پنل اصلی: `{main_err}`\n"
+            f"• هیدیفای: `{hiddify_err}`"
         )
 
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=result_text,
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
     return ADMIN_MENU
+
+
+async def admin_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """متد سازگاری به هندلر تهیه بکاپ فوری"""
+    return await admin_instant_backup_handler(update, context)
 
 
 # وضعیت برای بازیابی پشتیبان
@@ -9828,7 +10021,7 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
         [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
         [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
-        [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
+        [InlineKeyboardButton("💾 تهیه فوری بکاپ (اصلی + هیدیفای)", callback_data="adm_instant_backup")],
         [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
     ]
@@ -9845,38 +10038,22 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ═══════════════════════════════════════════════════════════════════════
 
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور پشتیبان‌گیری دستی"""
+    """دستور پشتیبان‌گیری دستی - تهیه بکاپ فوری از هر دو پنل"""
     user = update.effective_user
+    from database import db
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    is_admin_mgr = False
+    try:
+        admin_mgr = db.get_admin_manager_by_telegram_id(user.id)
+        is_admin_mgr = bool(admin_mgr and admin_mgr.get("bot_access"))
+    except Exception:
+        pass
 
-    if user.id != ADMIN_ID:
+    if not is_super_admin and not is_admin_mgr:
         await update.message.reply_text("❌ شما ادمین نیستید!")
         return
 
-    await update.message.reply_text("⏳ در حال ایجاد پشتیبان...")
-
-    backup_mgr = BackupManager()
-    result = backup_mgr.create_backup()
-
-    if result.get("success"):
-        backup_size = result["size"]
-        backup_file = result["filename"]
-
-        # ارسال فایل پشتیبان
-        with open(result["file"], "rb") as f:
-            await context.bot.send_document(
-                chat_id=user.id,
-                document=f,
-                caption=f"🔒 **پشتیبان موفق!**\n\n"
-                        f"📁 فایل: {backup_file}\n"
-                        f"📊 حجم: {backup_size:,} بایت\n"
-                        f"📅 تاریخ: {get_now_shamsi()}\n\n"
-                        f"برای بازیابی، فایل را ذخیره کرده و دستور /restore استفاده کنید.",
-                parse_mode="Markdown",
-            )
-    else:
-        await update.message.reply_text(
-            f"❌ خطا در ایجاد پشتیبان:\n{result.get('error', 'نامشخص')}"
-        )
+    return await admin_instant_backup_handler(update, context)
 
 
 async def backups_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10081,8 +10258,8 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
         elif b_id == "renew":
             return await renew_subscription(update, context)
         elif b_id == "wallet":
-            bal = db.get_user_wallet_balance(user.id)
-            vip_info = db.get_user_vip_info(user.id)
+            bal = db.get_user_wallet_balance(user.id, reseller_id=0)
+            vip_info = db.get_user_vip_info(user.id, reseller_id=0)
             vip_txt = ""
             if vip_info.get("is_vip"):
                 cb = vip_info.get("cashback_percent", 10)
