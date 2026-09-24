@@ -10346,8 +10346,12 @@ class Database:
                         s_updates.append("birthday = ?")
                         s_params.append(birthday.strip())
                     if telegram_username is not None:
-                        s_updates.append("telegram_username = ?")
-                        s_params.append(telegram_username.strip().lstrip("@"))
+                        clean_u = telegram_username.strip().lstrip("@")
+                        if clean_u and re.match(r"^[a-zA-Z0-9_]{3,32}$", clean_u):
+                            s_updates.append("telegram_username = ?")
+                            s_params.append(clean_u)
+                        elif not clean_u:
+                            s_updates.append("telegram_username = NULL")
 
                     s_params.append(int(sub_id))
                     cursor.execute(f"UPDATE subscriptions SET {', '.join(s_updates)} WHERE id = ?", s_params)
@@ -10409,8 +10413,10 @@ class Database:
                     u_updates.append("custom_avatar = ?")
                     u_params.append(custom_avatar.strip())
                 if telegram_username is not None and telegram_username.strip() and not user_dict.get("is_verified"):
-                    u_updates.append("username = ?")
-                    u_params.append(telegram_username.strip().lstrip("@"))
+                    clean_u = telegram_username.strip().lstrip("@")
+                    if clean_u and re.match(r"^[a-zA-Z0-9_]{3,32}$", clean_u):
+                        u_updates.append("username = ?")
+                        u_params.append(clean_u)
 
                 u_params.append(user_dict["id"])
                 cursor.execute(f"UPDATE users SET {', '.join(u_updates)} WHERE id = ?", u_params)

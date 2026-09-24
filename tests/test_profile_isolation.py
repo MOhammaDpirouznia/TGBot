@@ -103,5 +103,92 @@ class TestProfileIsolationAndSafety(unittest.TestCase):
         res = self.db.set_user_phone(0, '09129999999')
         self.assertFalse(res)
 
+    def test_telegram_username_sanitization(self):
+        res = self.db.save_subscription(
+            telegram_id=0,
+            hidify_uuid='uuid-tg-test',
+            plan_id='plan1',
+            plan_name='پایه',
+            account_name='test_tg_user',
+            data_limit=30,
+            duration=30,
+            status='active'
+        )
+        sub_id = res['subscription_id']
+
+        # Invalid username with Persian and spaces
+        self.db.update_customer_profile(
+            sub_id=sub_id,
+            account_name='test_tg_user',
+            telegram_username='الین کلاه بردار'
+        )
+        conn = self.db.get_connection()
+        s = conn.execute("SELECT telegram_username FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+        conn.close()
+        self.assertIsNone(s['telegram_username'])
+
+        # Valid username with @ prefix
+        self.db.update_customer_profile(
+            sub_id=sub_id,
+            account_name='test_tg_user',
+            telegram_username='@valid_user_123'
+        )
+        conn = self.db.get_connection()
+        s = conn.execute("SELECT telegram_username FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+        conn.close()
+        self.assertEqual(s['telegram_username'], 'valid_user_123')
+
+    def test_portal_session_leak_prevention_on_unlinked_subscription(self):
+        import dashboard
+        orig_db = dashboard.db
+        dashboard.db = self.db
+        try:
+            # Create a fake test user in database with session cookie details
+            reg_res = self.db.register_customer_user(
+                phone='09028461197',
+                username='fake_user',
+                password='password123',
+                reseller_id=0
+            )
+            fake_tg_id = reg_res.get('telegram_id')
+            conn = self.db.get_connection()
+            conn.execute(
+                "UPDATE users SET full_name = 'الین کلاه بردار' WHERE phone_number = '09028461197'"
+            )
+            conn.commit()
+            conn.close()
+
+            # Create an unlinked subscription (like Mohsen Hesari #91)
+            res = self.db.save_subscription(
+                telegram_id=0,
+                hidify_uuid='uuid-mohsan-hesari-91',
+                plan_id='plan1',
+                plan_name='پایه',
+                account_name='محسن حصاری',
+                data_limit=30,
+                duration=30,
+                status='active'
+            )
+            sub_id = res['subscription_id']
+
+            client = dashboard.app.test_client()
+            with client.session_transaction() as sess:
+                sess['customer_phone'] = '09028461197'
+                sess['customer_tg_id'] = fake_tg_id
+
+            resp = client.get('/portal/uuid-mohsan-hesari-91')
+            self.assertEqual(resp.status_code, 200)
+            html = resp.get_data(as_text=True)
+
+            # Ensure fake session user data did not leak into unlinked subscription view
+            self.assertNotIn('الین کلاه بردار', html)
+            self.assertNotIn('09028461197', html)
+            self.assertIn('محسن حصاری', html)
+            self.assertIn('نیازمند اتصال', html)
+            self.assertIn('20%', html)
+        finally:
+            dashboard.db = orig_db
+
 if __name__ == '__main__':
     unittest.main()
+

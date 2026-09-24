@@ -22364,11 +22364,6 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
                 telegram_id = int(str(tg_id_arg).strip())
             except (ValueError, TypeError):
                 pass
-        if not telegram_id and session.get("customer_tg_id"):
-            try:
-                telegram_id = int(session.get("customer_tg_id"))
-            except (ValueError, TypeError):
-                pass
 
         r_arg = request.args.get("r") or request.args.get("reseller_id")
         if r_arg is not None:
@@ -22389,49 +22384,107 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         if not is_webapp and (request.args.get("tg_id") or request.path.startswith("/webapp")):
             is_webapp = True
 
-    # بازیابی اطلاعات حساب کاربری مشتری در صورت ثبت‌نام وب یا ورود با شماره
-    cust_user = None
-    if telegram_id:
-        cust_user = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
-    if not cust_user and session.get("customer_phone"):
-        cust_user = db.get_customer_user_by_phone(session.get("customer_phone"), reseller_id)
-
     sub_row = None
-    conn = db.get_connection()
     deleted_sub_row = None
+    cust_user = None
+    conn = db.get_connection()
+
     if token:
-        sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)", (token, token)).fetchone()
+        sub_row = conn.execute(
+            "SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)",
+            (str(token), str(token))
+        ).fetchone()
         if not sub_row:
-            deleted_sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND is_deleted=1", (token, token)).fetchone()
+            deleted_sub_row = conn.execute(
+                "SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND is_deleted=1",
+                (str(token), str(token))
+            ).fetchone()
             if deleted_sub_row:
                 del_sub = dict(deleted_sub_row)
-                if not telegram_id and del_sub.get("telegram_id") and int(del_sub["telegram_id"]) > 0:
+                if del_sub.get("telegram_id") and int(del_sub["telegram_id"]) > 0:
                     telegram_id = int(del_sub["telegram_id"])
+                    cust_user = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
+                elif del_sub.get("phone_number"):
+                    cust_user = db.get_customer_user_by_phone(del_sub["phone_number"], reseller_id)
+                    if cust_user and cust_user.get("telegram_id") and int(cust_user["telegram_id"]) > 0:
+                        telegram_id = int(cust_user["telegram_id"])
+                    else:
+                        telegram_id = 0
                 if reseller_id is None and del_sub.get("reseller_id"):
                     reseller_id = int(del_sub["reseller_id"])
-                if not cust_user and del_sub.get("phone_number"):
-                    cust_user = db.get_customer_user_by_phone(del_sub["phone_number"], reseller_id)
 
-    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام یا شماره مشتری داریم
-    if not sub_row and telegram_id and int(telegram_id) > 0:
-        user_subs_all = db.get_user_subscriptions(int(telegram_id), reseller_id=reseller_id if reseller_id else None, is_admin_bot=True if not reseller_id else False)
-        user_subs_valid = [s for s in user_subs_all if not s.get("is_deleted") and s.get("status") != "deleted"]
-        if reseller_id is not None and reseller_id > 0:
-            r_subs = [s for s in user_subs_valid if (s.get("reseller_id") or 0) == reseller_id]
-            user_subs = [s for s in r_subs if s.get("status") == "active"] or r_subs
+    if sub_row:
+        sub_data = dict(sub_row)
+        if reseller_id is None and sub_data.get("reseller_id"):
+            reseller_id = int(sub_data["reseller_id"])
+
+        # استخراج مالک اشتراک منحصراً از رکورد دیتابیس همین اشتراک (جلوگیری قطعی از نشت سشن تست یا کاربران دیگر)
+        sub_tg_id = int(sub_data["telegram_id"]) if (sub_data.get("telegram_id") and int(sub_data["telegram_id"]) > 0) else 0
+        sub_phone = normalize_phone_number(sub_data.get("phone_number")) if sub_data.get("phone_number") else None
+
+        if sub_tg_id > 0:
+            telegram_id = sub_tg_id
+            cust_user = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
+        elif sub_phone:
+            cust_user = db.get_customer_user_by_phone(sub_phone, reseller_id)
+            if cust_user and cust_user.get("telegram_id") and int(cust_user["telegram_id"]) > 0:
+                telegram_id = int(cust_user["telegram_id"])
+            else:
+                telegram_id = 0
         else:
-            user_subs = [s for s in user_subs_valid if s.get("status") == "active"] or user_subs_valid
+            # اشتراک‌های مستقل یا قدیمی بدون مالک تلگرام و شماره تماس، کاملاً ایزوله بوده و اطلاعات سشن مرورگر نباید به آن الصاق شود
+            telegram_id = 0
+            cust_user = None
 
-        if user_subs:
-            target_sub_id = request.args.get("sub_id")
-            selected_sub = None
-            if target_sub_id and str(target_sub_id).isdigit():
-                selected_sub = next((s for s in user_subs if s.get("id") == int(target_sub_id)), None)
-            if not selected_sub:
-                selected_sub = user_subs[0]
-            sub_row = selected_sub
-            token = selected_sub.get("hidify_uuid") or str(selected_sub.get("id"))
-    elif not sub_row and (cust_user and cust_user.get("phone_number") or (deleted_sub_row and deleted_sub_row.get("phone_number"))):
+    elif not sub_row and not deleted_sub_row:
+        # تنها در حالتی که توکن مشخصی داده نشده باشد (ورود با فرم وب یا سشن مستقیم به /portal)
+        if not telegram_id and session.get("customer_tg_id"):
+            try:
+                telegram_id = int(session.get("customer_tg_id"))
+            except (ValueError, TypeError):
+                pass
+
+        if telegram_id and int(telegram_id) > 0:
+            cust_user = db.get_customer_user_by_id(telegram_id) or db.get_user(telegram_id)
+        if not cust_user and session.get("customer_phone"):
+            cust_user = db.get_customer_user_by_phone(session.get("customer_phone"), reseller_id)
+
+        # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام یا شماره مشتری داریم
+        if telegram_id and int(telegram_id) > 0:
+            user_subs_all = db.get_user_subscriptions(int(telegram_id), reseller_id=reseller_id if reseller_id else None, is_admin_bot=True if not reseller_id else False)
+            user_subs_valid = [s for s in user_subs_all if not s.get("is_deleted") and s.get("status") != "deleted"]
+            if reseller_id is not None and reseller_id > 0:
+                r_subs = [s for s in user_subs_valid if (s.get("reseller_id") or 0) == reseller_id]
+                user_subs = [s for s in r_subs if s.get("status") == "active"] or r_subs
+            else:
+                user_subs = [s for s in user_subs_valid if s.get("status") == "active"] or user_subs_valid
+
+            if user_subs:
+                target_sub_id = request.args.get("sub_id")
+                selected_sub = None
+                if target_sub_id and str(target_sub_id).isdigit():
+                    selected_sub = next((s for s in user_subs if s.get("id") == int(target_sub_id)), None)
+                if not selected_sub:
+                    selected_sub = user_subs[0]
+                sub_row = selected_sub
+                token = selected_sub.get("hidify_uuid") or str(selected_sub.get("id"))
+        elif cust_user and cust_user.get("phone_number"):
+            chk_phone = cust_user.get("phone_number")
+            if reseller_id and int(reseller_id) > 0:
+                p_subs = [dict(r) for r in conn.execute(
+                    "SELECT * FROM subscriptions WHERE phone_number=? AND reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                    (chk_phone, int(reseller_id))
+                ).fetchall()]
+            else:
+                p_subs = [dict(r) for r in conn.execute(
+                    "SELECT * FROM subscriptions WHERE phone_number=? AND (reseller_id IS NULL OR reseller_id=0) AND (is_deleted=0 OR is_deleted IS NULL) AND (status!='deleted' OR status IS NULL) ORDER BY id DESC",
+                    (chk_phone,)
+                ).fetchall()]
+            if p_subs:
+                active_p_subs = [s for s in p_subs if s.get("status") == "active"] or p_subs
+                sub_row = active_p_subs[0]
+                token = sub_row.get("hidify_uuid") or str(sub_row.get("id"))
+    elif deleted_sub_row and not sub_row and (cust_user and cust_user.get("phone_number") or deleted_sub_row.get("phone_number")):
         chk_phone = (cust_user.get("phone_number") if cust_user else None) or deleted_sub_row.get("phone_number")
         if chk_phone:
             if reseller_id and int(reseller_id) > 0:
@@ -22550,23 +22603,22 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         if reseller_id is None:
             reseller_id = sub.get("reseller_id") or 0
         if not telegram_id:
-            telegram_id = sub.get("telegram_id") or 0
+            telegram_id = int(sub.get("telegram_id") or 0)
         if not cust_user and sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
             cust_user = db.get_customer_user_by_id(int(sub["telegram_id"])) or db.get_user(int(sub["telegram_id"]))
         if not cust_user and sub.get("phone_number"):
             cust_user = db.get_customer_user_by_phone(sub["phone_number"], reseller_id)
         if cust_user:
-            # اگر کاربر در تلگرام تایید شده باشد یا اشتراک متصل به تلگرام باشد، اطلاعات تلگرامی با اولویت جایگزین می‌شود
-            is_tg_verified = cust_user.get("is_verified") or (sub.get("telegram_id") and int(sub["telegram_id"]) > 0)
-            if cust_user.get("phone_number") and (is_tg_verified or not sub.get("phone_number")):
+            # اگر اطلاعات کاربر متصل به این اشتراک باشد و فیلدی در اشتراک خالی باشد، از پروفایل کاربر تکمیل می‌شود
+            if not sub.get("phone_number") and cust_user.get("phone_number"):
                 sub["phone_number"] = cust_user.get("phone_number")
-            if cust_user.get("full_name") and (is_tg_verified or not sub.get("full_name")):
+            if not sub.get("full_name") and cust_user.get("full_name"):
                 sub["full_name"] = cust_user.get("full_name")
-            if cust_user.get("birthday") and not sub.get("birthday"):
+            if not sub.get("birthday") and cust_user.get("birthday"):
                 sub["birthday"] = cust_user.get("birthday")
-            if cust_user.get("primary_isp") and not sub.get("primary_isp"):
+            if not sub.get("primary_isp") and cust_user.get("primary_isp"):
                 sub["primary_isp"] = cust_user.get("primary_isp")
-            if cust_user.get("secondary_isp") and not sub.get("secondary_isp"):
+            if not sub.get("secondary_isp") and cust_user.get("secondary_isp"):
                 sub["secondary_isp"] = cust_user.get("secondary_isp")
 
         # روزهای مانده از تابع غنی‌ساز هیدیفای
@@ -22952,7 +23004,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         customer_ref_stats["wallet_balance"] = user_wallet
 
     # استخراج شماره تماس یا کد معرف مشتری
-    cust_phone = (cust_user.get("phone_number") if cust_user else "") or (sub.get("phone_number") if sub else "") or session.get("customer_phone", "")
+    cust_phone = (sub.get("phone_number") if sub else "") or (cust_user.get("phone_number") if cust_user else "")
     if cust_phone:
         customer_ref_code = cust_phone
     elif target_tg_id and int(target_tg_id) > 0:
@@ -23004,15 +23056,16 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     }
     user_social_tasks = db.get_user_social_tasks_progress(target_tg_id or 0, reseller_id=reseller_id or 0) if target_tg_id else []
 
-    # استخراج تمیز نام کاربری تلگرام (بدون ارقام خالی و بدون شناسه عددی اشتباه)
+    # استخراج تمیز نام کاربری تلگرام (فقط کاراکترهای مجاز انگلیسی/اعداد/زیرخط بدون فاصله و بدون کاراکترهای فارسی)
     clean_tg_username = ""
+    tg_u_pattern = re.compile(r"^[a-zA-Z0-9_]{3,32}$")
     if cust_user and cust_user.get("username"):
         u = str(cust_user.get("username")).strip().lstrip("@")
-        if not u.isdigit():
+        if not u.isdigit() and tg_u_pattern.match(u):
             clean_tg_username = u
     if not clean_tg_username and sub and sub.get("telegram_username"):
         u = str(sub.get("telegram_username")).strip().lstrip("@")
-        if not u.isdigit():
+        if not u.isdigit() and tg_u_pattern.match(u):
             clean_tg_username = u
 
     effective_numeric_tg_id = None
@@ -23025,11 +23078,11 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
     # محاسبه درصد تکمیل مشخصات پروفایل برای نمایش به کاربر
     prof_acc = (sub.get("account_name") or "").strip() if sub else ""
-    prof_full = (cust_user.get("full_name") if cust_user else "") or (sub.get("full_name") if sub else "") or ""
-    prof_phone = (sub.get("phone_number") or (cust_user.get("phone_number") if cust_user else "")) or ""
-    prof_bday = (cust_user.get("birthday") if cust_user else "") or (sub.get("birthday") if sub else "") or ""
-    prof_isp = (cust_user.get("primary_isp") if cust_user else (sub.get("primary_isp") or "")) or ""
-    prof_avatar = (sub.get("custom_avatar") or (cust_user.get("custom_avatar") if cust_user else "")) or ""
+    prof_full = (sub.get("full_name") if sub else "") or (cust_user.get("full_name") if cust_user else "") or ""
+    prof_phone = (sub.get("phone_number") if sub else "") or (cust_user.get("phone_number") if cust_user else "") or ""
+    prof_bday = (sub.get("birthday") if sub else "") or (cust_user.get("birthday") if cust_user else "") or ""
+    prof_isp = (sub.get("primary_isp") if sub else "") or (cust_user.get("primary_isp") if cust_user else "") or ""
+    prof_avatar = (sub.get("custom_avatar") if sub else "") or (cust_user.get("custom_avatar") if cust_user else "") or ""
     prof_tg = effective_numeric_tg_id or 0
 
     profile_score = 0
@@ -23149,6 +23202,19 @@ def customer_portal_dynamic(portal_prefix: str, token: str):
     return _handle_customer_portal_view(token)
 
 
+@app.route("/portal/logout", methods=["GET", "POST"])
+def portal_logout():
+    """خروج مشتری از حساب کاربری وب پرتال و پاکسازی کوکی سشن مشتری"""
+    session.pop("customer_phone", None)
+    session.pop("customer_tg_id", None)
+    session.pop("customer_reseller_id", None)
+    flash("از حساب پرتال با موفقیت خارج شدید.", "info")
+    r_id = request.args.get("r")
+    if r_id and str(r_id).isdigit():
+        return redirect(url_for("customer_portal", r=int(r_id)))
+    return redirect(url_for("customer_portal"))
+
+
 @app.route("/api/subscription/<token>/traffic-analytics", methods=["GET"])
 @app.route("/api/sub/<token>/traffic-analytics", methods=["GET"])
 def api_subscription_traffic_analytics(token):
@@ -23200,10 +23266,10 @@ def api_customer_profile_update(token: str = None):
     sub_dict = dict(sub_row) if sub_row else {}
     effective_sub_id = sub_dict.get("id")
     effective_tg_id = None
-    if req_tg_id and str(req_tg_id).isdigit():
-        effective_tg_id = int(req_tg_id)
-    elif sub_dict.get("telegram_id") and int(sub_dict["telegram_id"]) > 0:
+    if sub_dict.get("telegram_id") and int(sub_dict["telegram_id"]) > 0:
         effective_tg_id = int(sub_dict["telegram_id"])
+    elif not effective_sub_id and req_tg_id and str(req_tg_id).isdigit() and int(req_tg_id) > 0:
+        effective_tg_id = int(req_tg_id)
 
     # استخراج مقادیر ارسالی از فرم یا جیسون
     data = request.form if request.form else (request.get_json(silent=True) or {})
@@ -23213,7 +23279,14 @@ def api_customer_profile_update(token: str = None):
     birthday = str(data.get("birthday", "")).strip()
     primary_isp = str(data.get("primary_isp", "")).strip()
     secondary_isp = str(data.get("secondary_isp", "")).strip()
-    telegram_username = str(data.get("telegram_username", "")).strip()
+    raw_tg_u = str(data.get("telegram_username", "")).strip().lstrip("@")
+    if raw_tg_u:
+        if not re.match(r"^[a-zA-Z0-9_]{3,32}$", raw_tg_u):
+            return jsonify({
+                "success": False,
+                "error": "نام کاربری تلگرام باید فقط شامل حروف انگلیسی، اعداد و زیرخط (_) و بین ۳ تا ۳۲ کاراکتر بدون فاصله باشد."
+            }), 400
+    telegram_username = raw_tg_u if raw_tg_u else None
     notification_pref = str(data.get("notification_pref", "both")).strip()
     avatar_preset = str(data.get("avatar_preset", "")).strip()
 

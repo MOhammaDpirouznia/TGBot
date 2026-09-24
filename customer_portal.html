@@ -4402,7 +4402,7 @@
                         <!-- کادر متنی دستی -->
                         <div class="input-group input-group-sm">
                             <span class="input-group-text bg-secondary bg-opacity-25 text-secondary border-secondary" style="font-size: 0.72rem;">تایپ دستی:</span>
-                            <input type="text" dir="ltr" id="userBirthdayInput" class="form-control bg-dark text-white border-secondary font-monospace text-center" placeholder="1375/06/15" value="{{ (cust_user.get('birthday') if cust_user else '') or (sub.get('birthday') or '') or (loyalty_tier_info.birthday if loyalty_tier_info else '') }}" oninput="syncBdayModalFromInput()">
+                            <input type="text" dir="ltr" id="userBirthdayInput" class="form-control bg-dark text-white border-secondary font-monospace text-center" placeholder="1375/06/15" value="{{ (sub.get('birthday') if sub else '') or (cust_user.get('birthday') if cust_user else '') or (loyalty_tier_info.birthday if loyalty_tier_info else '') or '' }}" oninput="syncBdayModalFromInput()">
                         </div>
                         <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
                             <i class="fas fa-gift text-warning me-1"></i> می‌توانید تاریخ را از منوهای بالا انتخاب کنید یا به صورت مستقیم تایپ فرمایید.
@@ -4457,12 +4457,13 @@
                     </div>
 
                     <!-- بخش ۰: احراز هویت و اتصال رسمی با تلگرام -->
+                    {% set is_tg_connected = (sub.get('telegram_id') and sub.get('telegram_id')|int > 0) or (cust_user and cust_user.get('telegram_id') and cust_user.get('telegram_id')|int > 0 and cust_user.get('is_verified')) %}
                     <div class="mb-4 p-3 rounded-3 position-relative overflow-hidden" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%); border: 1.5px dashed rgba(56, 189, 248, 0.4);">
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                             <div>
                                 <div class="d-flex align-items-center gap-2 mb-1">
                                     <span class="badge bg-info text-dark fw-bold px-2 py-1"><i class="fab fa-telegram me-1"></i> احراز هویت رسمی با تلگرام</span>
-                                    {% if (cust_user and cust_user.get('is_verified')) or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                    {% if is_tg_connected %}
                                         <span class="badge bg-success-subtle text-success border border-success px-2 py-1"><i class="fas fa-check-circle me-1"></i> متصل و احراز شده</span>
                                     {% else %}
                                         <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1"><i class="fas fa-shield-halved me-1"></i> نیازمند اتصال</span>
@@ -4476,7 +4477,7 @@
                             <div class="text-nowrap">
                                 <a href="https://t.me/{{ bot_username or 'bot' }}?start=link_{{ token or sub.get('hidify_uuid') or sub.get('id') }}" target="_blank" class="btn btn-sm btn-info text-dark fw-bold px-3 py-2 shadow-sm rounded-pill d-inline-flex align-items-center gap-2">
                                     <i class="fab fa-telegram fs-6"></i>
-                                    <span>{% if (cust_user and cust_user.get('is_verified')) or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}اتصال مجدد به تلگرام{% else %}اتصال و احراز هویت تلگرامی 🚀{% endif %}</span>
+                                    <span>{% if is_tg_connected %}اتصال مجدد به تلگرام{% else %}اتصال و احراز هویت تلگرامی 🚀{% endif %}</span>
                                 </a>
                             </div>
                         </div>
@@ -4490,7 +4491,7 @@
                     <form id="customerProfileForm" onsubmit="submitCustomerProfile(event)" enctype="multipart/form-data">
                         <input type="hidden" name="token" value="{{ token or sub.get('hidify_uuid') or sub.get('id') }}">
                         <input type="hidden" name="sub_id" value="{{ sub.get('id') }}">
-                        <input type="hidden" name="telegram_id" value="{{ sub.get('telegram_id') or (cust_user.get('telegram_id') if cust_user else '') }}">
+                        <input type="hidden" name="telegram_id" value="{{ sub.get('telegram_id') if (sub.get('telegram_id') and sub.get('telegram_id')|int > 0) else '' }}">
                         <input type="hidden" id="selectedAvatarPreset" name="avatar_preset" value="">
 
                         <div class="row g-3">
@@ -4514,7 +4515,7 @@
                                     <label class="form-label small text-light fw-bold">
                                         <i class="fas fa-user text-primary me-1"></i> ۲. نام و نام خانوادگی:
                                     </label>
-                                    <input type="text" class="form-control bg-dark text-white border-secondary" id="profFullName" name="full_name" value="{{ (cust_user.get('full_name') if cust_user else '') or (sub.get('full_name') or '') }}" placeholder="مثال: علی رضایی">
+                                    <input type="text" class="form-control bg-dark text-white border-secondary" id="profFullName" name="full_name" value="{{ sub.get('full_name') or (cust_user.get('full_name') if cust_user else '') or '' }}" placeholder="مثال: علی رضایی">
                                     <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
                                         <i class="fas fa-credit-card text-info me-1"></i> جهت تطبیق نام واریزکننده در پرداخت‌های کارت‌به‌کارت و رهگیری آسان فاکتورهای حسابداری.
                                     </div>
@@ -4527,7 +4528,7 @@
                                     <label class="form-label small text-light fw-bold">
                                         <i class="fas fa-phone text-success me-1"></i> ۳. شماره تماس (موبایل):
                                     </label>
-                                    <input type="tel" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace text-start" id="profPhoneNumber" name="phone_number" value="{{ sub.get('phone_number') or ((cust_user.get('phone_number') if cust_user else '') or '') }}" placeholder="0912xxxxxxx">
+                                    <input type="tel" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace text-start" id="profPhoneNumber" name="phone_number" value="{{ sub.get('phone_number') or (cust_user.get('phone_number') if cust_user else '') or '' }}" placeholder="0912xxxxxxx">
                                     <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
                                         <i class="fas fa-bell text-warning me-1"></i> جهت ارسال پیامک یادآوری پایان اشتراک، هشدار اتمام ترافیک و لینک‌های اضطراری در زمان قطعی.
                                     </div>
@@ -4574,7 +4575,7 @@
                                     <!-- کادر متنی مستقیم -->
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text bg-secondary bg-opacity-25 text-secondary border-secondary" style="font-size: 0.72rem;">تایپ دستی:</span>
-                                        <input type="text" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace text-center" id="profBirthday" name="birthday" value="{{ (cust_user.get('birthday') if cust_user else '') or (sub.get('birthday') or '') }}" placeholder="1375/06/15" oninput="syncBdayFromInput()">
+                                        <input type="text" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace text-center" id="profBirthday" name="birthday" value="{{ sub.get('birthday') or (cust_user.get('birthday') if cust_user else '') or '' }}" placeholder="1375/06/15" oninput="syncBdayFromInput()">
                                     </div>
                                     <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
                                         <i class="fas fa-gift text-danger me-1"></i> در سالروز تولدتان، بسته حجم رایگان و کد تخفیف تمدید به عنوان هدیه تقدیم خواهد شد! 🎂
@@ -4657,7 +4658,7 @@
                                 <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25 h-100">
                                     <label class="form-label small text-light fw-bold d-flex align-items-center justify-content-between">
                                         <span><i class="fab fa-telegram text-info me-1"></i> ۶. آیدی یا نام‌کاربری تلگرام:</span>
-                                        {% if (cust_user and cust_user.get('is_verified')) or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                        {% if is_tg_connected and clean_tg_username %}
                                             <span class="badge bg-success-subtle text-success" style="font-size: 0.65rem;"><i class="fas fa-check-double me-1"></i>تایید شده</span>
                                         {% else %}
                                             <span class="badge bg-secondary-subtle text-secondary" style="font-size: 0.65rem;">ورود اختیاری</span>
@@ -4668,24 +4669,25 @@
                                         <input type="text" dir="ltr" class="form-control bg-dark text-white border-secondary font-monospace" id="profTelegramUsername" name="telegram_username" 
                                                value="{{ clean_tg_username or '' }}" 
                                                placeholder="username" 
-                                               {% if cust_user and cust_user.get('is_verified') %}readonly style="background-color: rgba(16, 185, 129, 0.08) !important;"{% endif %}>
+                                               oninput="this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');"
+                                               {% if is_tg_connected and clean_tg_username %}readonly style="background-color: rgba(16, 185, 129, 0.08) !important;"{% endif %}>
                                     </div>
                                     {% if effective_numeric_tg_id and effective_numeric_tg_id|int > 0 %}
                                     <div class="mt-2 p-2 rounded-2 bg-dark bg-opacity-75 border border-info border-opacity-25 d-flex align-items-center justify-content-between">
                                         <span class="small text-light"><i class="fas fa-fingerprint text-info me-1"></i> شناسه عددی تلگرام:</span>
                                         <div class="d-flex align-items-center gap-1">
                                             <span class="badge bg-info-subtle text-info border border-info border-opacity-50 font-monospace fs-6 px-2 py-1">{{ effective_numeric_tg_id }}</span>
-                                            {% if cust_user and cust_user.get('is_verified') %}
+                                            {% if is_tg_connected %}
                                             <span class="badge bg-success-subtle text-success border border-success border-opacity-50 px-2 py-1" style="font-size: 0.7rem;"><i class="fas fa-check-circle me-1"></i>احراز هویت شده</span>
                                             {% endif %}
                                         </div>
                                     </div>
                                     {% endif %}
                                     <div class="form-text text-secondary mt-2" style="font-size: 0.72rem; line-height: 1.5;">
-                                        {% if (cust_user and cust_user.get('is_verified')) or (sub.get('telegram_id') and sub.get('telegram_id') > 0) %}
+                                        {% if is_tg_connected and clean_tg_username %}
                                             <i class="fas fa-check-circle text-success me-1"></i> این حساب به صورت مستقیم با ربات تلگرام احراز و پیوند خورده است.
                                         {% else %}
-                                            <i class="fas fa-circle-info text-info me-1"></i> نام کاربری تلگرام (اختیاری) جهت ارتباط با پشتیبانی و دریافت اعلان‌ها.
+                                            <i class="fas fa-circle-info text-info me-1"></i> نام کاربری تلگرام (اختیاری) بدون فاصله و حروف فارسی جهت ارتباط با پشتیبانی.
                                         {% endif %}
                                     </div>
                                 </div>
@@ -9358,6 +9360,19 @@ async function submitCustomerProfile(event) {
             alertBox.classList.remove('d-none');
         }
         return;
+    }
+
+    const tgUsernameInput = document.getElementById('profTelegramUsername');
+    if (tgUsernameInput && tgUsernameInput.value.trim()) {
+        const cleanTg = tgUsernameInput.value.trim().replace(/^@+/, '');
+        if (!/^[a-zA-Z0-9_]{3,32}$/.test(cleanTg)) {
+            if (alertBox) {
+                alertBox.className = 'alert alert-warning py-2 px-3 small mt-3 mb-0 rounded-3';
+                alertBox.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> نام کاربری تلگرام نامعتبر است. فقط حروف انگلیسی، اعداد و خط زیر (_) مجاز است (۳ تا ۳۲ کاراکتر بدون فاصله یا حروف فارسی).';
+                alertBox.classList.remove('d-none');
+            }
+            return;
+        }
     }
 
     const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
