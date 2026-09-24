@@ -3450,5 +3450,46 @@
             });
         }
     </script>
+
+    {% if session.get('role') == 'reseller' %}
+    <!-- 🛡️ سیستم محافظت از سورس و مسدودسازی بازرسی پنل نمایندگی -->
+    <script>
+        (function() {
+            // ۱. غیرفعال‌سازی کلیک راست (با حفظ قابلیت درج و کپی داخل کادرهای متنی)
+            document.addEventListener('contextmenu', function(e) {
+                const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea') return;
+                e.preventDefault();
+                return false;
+            }, { capture: true });
+
+            // ۲. مسدودسازی کلیدهای بازرسی و مشاهده سورس (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U, Ctrl+S)
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'F12' || e.keyCode === 123) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+                if (isCtrlOrCmd) {
+                    const k = (e.key || '').toLowerCase();
+                    if ((e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) || k === 'u' || k === 's') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                }
+            }, { capture: true });
+
+            // ۳. پاک‌سازی خودکار لاگ‌های کنسول
+            if (window.console) {
+                setInterval(function() {
+                    try { console.clear(); } catch(err) {}
+                }, 2000);
+            }
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>
+

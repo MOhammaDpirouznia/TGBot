@@ -10313,7 +10313,24 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
 
 def main():
     """راه‌اندازی ربات و پنل مدیریت وب"""
+    # ۰. بررسی و اعتبارسنجی لایسنس نرم‌افزار
+    try:
+        from license_guard import guard
+        lic_res = guard.verify()
+        if not lic_res.get("valid"):
+            logger.critical(f"License verification failed: {lic_res.get('message')}")
+            print("\n" + "=" * 65)
+            print("⛔ [LicenseGuard] خطا در تایید مجوز اجرای پروژه!")
+            print(f"📌 پیام سیستم: {lic_res.get('message')}")
+            print(f"🖥️ شناسه سخت‌افزاری سرور (Machine ID): {guard.machine_id}")
+            print("=" * 65 + "\n")
+            return
+        guard.start_watchdog(interval_minutes=30)
+    except Exception as e_lic:
+        logger.error(f"License guard check error: {e_lic}")
+
     # ۱. اجرای بلادرنگ پنل مدیریت وب در ترد مستقل (جلوگیری از توقف پروسس و کرش در ریلوی و لینوکس)
+
     try:
         port = int(os.getenv("PORT", 5000))
         start_dashboard_thread()
