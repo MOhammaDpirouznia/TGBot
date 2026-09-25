@@ -28,6 +28,18 @@
     {% if branding.get('logo_url') %}
     <link rel="apple-touch-icon" href="{{ branding.get('logo_url') }}">
     {% endif %}
+
+    <script>
+        (function() {
+            try {
+                const savedTheme = localStorage.getItem('app_theme') || 'light';
+                document.documentElement.setAttribute('data-bs-theme', savedTheme);
+                if (localStorage.getItem('sidebar_collapsed') === 'true' && window.innerWidth >= 992) {
+                    document.documentElement.classList.add('sidebar-mini');
+                }
+            } catch(e) {}
+        })();
+    </script>
     <style>
         {% if palette_css %}
         {{ palette_css|safe }}
@@ -683,7 +695,7 @@
             flex-direction: column;
             box-shadow: -4px 0 15px rgba(0,0,0,0.06);
             border-left: 1px solid var(--sidebar-border);
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
         }
 
@@ -1499,6 +1511,382 @@
             }
         }
 
+        /* ══════════════════════════════════════════════════════════════
+           حالت مینی و جمع‌شونده سایدبار دسکتاپ (Collapsible Mini Sidebar)
+           ══════════════════════════════════════════════════════════════ */
+        .sidebar-desktop-toggle-bar {
+            padding: 6px 12px;
+            border-bottom: 1px solid var(--sidebar-border);
+            min-height: 38px;
+            flex-shrink: 0;
+            transition: all 0.25s ease;
+        }
+
+        .sidebar-desktop-toggle-bar .sidebar-toggle-title {
+            font-size: 0.72rem;
+            color: var(--sidebar-text-muted);
+            letter-spacing: 0.3px;
+            user-select: none;
+        }
+
+        .sidebar-collapse-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border-radius: 8px;
+            border: 1px solid var(--sidebar-border);
+            background: rgba(148, 163, 184, 0.08);
+            color: var(--sidebar-text-muted);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .sidebar-collapse-btn:hover {
+            background: var(--sidebar-hover-bg);
+            color: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 2px 6px rgba(79, 70, 229, 0.15);
+        }
+
+        .sidebar-collapse-btn i {
+            font-size: 0.82rem;
+            transition: transform 0.25s ease;
+        }
+
+        @media (min-width: 992px) {
+            html.sidebar-mini .sidebar {
+                width: 68px !important;
+            }
+
+            html.sidebar-mini .main-content {
+                margin-right: 68px !important;
+            }
+
+            html.sidebar-mini .sidebar-desktop-toggle-bar {
+                justify-content: center !important;
+                padding: 6px 0 !important;
+            }
+
+            html.sidebar-mini .sidebar-desktop-toggle-bar .sidebar-toggle-title {
+                display: none !important;
+            }
+
+            html.sidebar-mini .sidebar-collapse-btn i {
+                transform: rotate(180deg);
+            }
+
+            /* برند و سربرگ */
+            html.sidebar-mini .sidebar-brand-wrapper {
+                padding: 8px 4px !important;
+            }
+
+            html.sidebar-mini .sidebar-brand-wrapper .brand {
+                justify-content: center !important;
+                padding: 6px 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                border-radius: 12px !important;
+                gap: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar-brand-wrapper .brand-text-block {
+                display: none !important;
+            }
+
+            html.sidebar-mini .sidebar-brand-wrapper .brand-logo-img,
+            html.sidebar-mini .sidebar-brand-wrapper .brand-logo-fallback {
+                width: 38px !important;
+                height: 38px !important;
+                margin: 0 auto !important;
+            }
+
+            /* دسته‌بندی‌ها به خط جداکننده تبدیل می‌شوند */
+            html.sidebar-mini .sidebar .nav-category {
+                font-size: 0 !important;
+                height: 1px !important;
+                min-height: 1px !important;
+                padding: 0 !important;
+                margin: 6px 10px !important;
+                background: var(--sidebar-border) !important;
+                border: none !important;
+                overflow: hidden !important;
+                opacity: 0.7;
+            }
+
+            /* لینک‌های تکی ناوبری */
+            html.sidebar-mini .sidebar .nav {
+                padding: 6px 4px !important;
+                align-items: center !important;
+            }
+
+            html.sidebar-mini .sidebar .nav-link {
+                font-size: 0 !important;
+                justify-content: center !important;
+                text-align: center !important;
+                padding: 10px 0 !important;
+                margin: 2px auto !important;
+                width: 44px !important;
+                height: 44px !important;
+                border-radius: 10px !important;
+                position: relative !important;
+                gap: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar .nav-link:hover {
+                transform: none !important;
+            }
+
+            html.sidebar-mini .sidebar .nav-link i {
+                font-size: 1.2rem !important;
+                width: auto !important;
+                margin: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar .nav-link span:not(.badge) {
+                display: none !important;
+            }
+
+            html.sidebar-mini .sidebar .nav-link .badge {
+                position: absolute !important;
+                top: 4px !important;
+                left: 4px !important;
+                font-size: 0.65rem !important;
+                padding: 2px 4px !important;
+                min-width: 14px !important;
+                height: 14px !important;
+                line-height: 10px !important;
+                border-radius: 8px !important;
+                margin: 0 !important;
+            }
+
+            /* منوهای کشویی آکاردئونی */
+            html.sidebar-mini .sidebar .sidebar-dropdown-toggle {
+                font-size: 0 !important;
+                justify-content: center !important;
+                text-align: center !important;
+                padding: 10px 0 !important;
+                margin: 2px auto !important;
+                width: 44px !important;
+                height: 44px !important;
+                border-radius: 10px !important;
+                position: relative !important;
+                gap: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar .sidebar-dropdown-toggle:hover {
+                transform: none !important;
+            }
+
+            html.sidebar-mini .sidebar .sidebar-dropdown-toggle > span {
+                justify-content: center !important;
+                margin: 0 !important;
+                gap: 0 !important;
+                width: 100% !important;
+            }
+
+            html.sidebar-mini .sidebar .sidebar-dropdown-toggle i:not(.dropdown-chevron) {
+                font-size: 1.2rem !important;
+                width: auto !important;
+                margin: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar .sidebar-dropdown-toggle span > span,
+            html.sidebar-mini .sidebar .dropdown-chevron {
+                display: none !important;
+            }
+
+            html.sidebar-mini .sidebar .submenu-collapse {
+                display: none !important;
+            }
+
+            /* فوتر سایدبار در حالت فشرده */
+            html.sidebar-mini .sidebar-footer {
+                padding: 8px 4px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                gap: 6px !important;
+            }
+
+            html.sidebar-mini .sidebar-footer .user-pill {
+                padding: 4px !important;
+                width: 44px !important;
+                height: 44px !important;
+                justify-content: center !important;
+                margin-bottom: 0 !important;
+                border-radius: 10px !important;
+            }
+
+            html.sidebar-mini .sidebar-footer .user-pill > div:last-child {
+                display: none !important;
+            }
+
+            html.sidebar-mini .sidebar-footer .user-pill img {
+                width: 32px !important;
+                height: 32px !important;
+                margin: 0 !important;
+            }
+
+            html.sidebar-mini #baseSidebarPwaInstallBtn {
+                width: 44px !important;
+                height: 36px !important;
+                padding: 0 !important;
+                margin-bottom: 0 !important;
+                justify-content: center !important;
+                display: inline-flex !important;
+            }
+
+            html.sidebar-mini #baseSidebarPwaInstallBtn span {
+                display: none !important;
+            }
+
+            html.sidebar-mini #themeToggleBtn {
+                width: 44px !important;
+                height: 36px !important;
+                padding: 0 !important;
+                margin-bottom: 0 !important;
+                justify-content: center !important;
+                display: inline-flex !important;
+            }
+
+            html.sidebar-mini #themeLabel {
+                display: none !important;
+            }
+
+            html.sidebar-mini #themeIcon {
+                margin: 0 !important;
+                font-size: 1rem !important;
+            }
+
+            html.sidebar-mini .sidebar-footer a[href*="logout"] {
+                width: 44px !important;
+                height: 36px !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                justify-content: center !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                font-size: 0 !important;
+            }
+
+            html.sidebar-mini .sidebar-footer a[href*="logout"] i {
+                font-size: 1rem !important;
+                margin: 0 !important;
+            }
+        }
+
+        /* ─── پاپ‌آپ شناور هوشمند نام و زیرمنو در حالت مینی سایدبار (Floating Popup) ─── */
+        .sidebar-floating-popup {
+            position: fixed;
+            z-index: 1090;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(6px);
+            transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+            background: #0f172a;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.45), 0 4px 10px -2px rgba(0, 0, 0, 0.25);
+            border-radius: 10px;
+            font-size: 0.825rem;
+            white-space: nowrap;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            overflow: hidden;
+        }
+
+        [data-bs-theme="light"] .sidebar-floating-popup {
+            background: rgba(255, 255, 255, 0.96);
+            color: #0f172a;
+            border-color: rgba(79, 70, 229, 0.2);
+            box-shadow: 0 10px 30px -4px rgba(79, 70, 229, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+        }
+
+        .sidebar-floating-popup.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(0);
+        }
+
+        .sidebar-floating-popup.has-interactive {
+            pointer-events: auto;
+        }
+
+        .sidebar-tooltip-content {
+            padding: 8px 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1.4;
+        }
+
+        .sidebar-flyout-content {
+            min-width: 195px;
+            max-width: 260px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-flyout-header {
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 0.84rem;
+            color: var(--primary);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(79, 70, 229, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-flyout-body {
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-height: 70vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+
+        .sidebar-flyout-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            color: inherit !important;
+            text-decoration: none !important;
+            font-size: 0.81rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+
+        .sidebar-flyout-item i {
+            font-size: 0.88rem;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar-flyout-item:hover {
+            background: rgba(79, 70, 229, 0.12);
+            color: var(--primary) !important;
+            transform: translateX(-3px);
+        }
+
+        .sidebar-flyout-item.active {
+            background: var(--primary) !important;
+            color: #ffffff !important;
+            font-weight: 700;
+        }
+
         @media (max-width: 768px) {
             .page-header {
                 display: flex !important;
@@ -1645,6 +2033,9 @@
         </div>
     </div>
 
+    <!-- Floating Popup for Mini Sidebar Hover (Tooltip / Submenu Flyout) -->
+    <div id="sidebarFloatingPopup" class="sidebar-floating-popup"></div>
+
     <!-- Sidebar Backdrop for Mobile -->
     <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
 
@@ -1685,6 +2076,14 @@
                     </div>
                 </div>
             </a>
+        </div>
+
+        <!-- نوار کنترل جمع‌شدن سایدبار در حالت دسکتاپ -->
+        <div class="sidebar-desktop-toggle-bar d-none d-lg-flex align-items-center justify-content-between">
+            <span class="sidebar-toggle-title">منوی ناوبری</span>
+            <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebarCollapse()" title="جمع کردن منو" aria-label="جمع کردن منو">
+                <i class="fas fa-angles-right"></i>
+            </button>
         </div>
 
         <nav class="nav flex-column flex-nowrap w-100">
@@ -2770,9 +3169,247 @@
             }
         }
 
-        // مقداردهی اولیه تم
+        // ─── سیستم سایدبار جمع‌شونده دسکتاپ (Collapsible Mini Sidebar) ───
+        function toggleSidebarCollapse() {
+            const isCurrentlyMini = document.documentElement.classList.contains('sidebar-mini');
+            if (isCurrentlyMini) {
+                document.documentElement.classList.remove('sidebar-mini');
+                localStorage.setItem('sidebar_collapsed', 'false');
+            } else {
+                document.documentElement.classList.add('sidebar-mini');
+                localStorage.setItem('sidebar_collapsed', 'true');
+            }
+            hideSidebarFloatingPopup();
+
+            const collapseBtn = document.getElementById('sidebarCollapseBtn');
+            if (collapseBtn) {
+                const nowMini = !isCurrentlyMini;
+                collapseBtn.setAttribute('title', nowMini ? 'باز کردن منو' : 'جمع کردن منو');
+                collapseBtn.setAttribute('aria-label', nowMini ? 'باز کردن منو' : 'جمع کردن منو');
+            }
+
+            // ارسال رویداد resize جهت هماهنگی و بازطراحی نمودارهای Chart.js و جداول
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 260);
+        }
+
+        let sidebarPopupTimer = null;
+
+        function hideSidebarFloatingPopup() {
+            if (sidebarPopupTimer) {
+                clearTimeout(sidebarPopupTimer);
+                sidebarPopupTimer = null;
+            }
+            const popup = document.getElementById('sidebarFloatingPopup');
+            if (popup) {
+                popup.classList.remove('show');
+                popup.classList.remove('has-interactive');
+                popup.style.opacity = '0';
+                popup.style.visibility = 'hidden';
+            }
+        }
+
+        function initSidebarHoverTooltips() {
+            const popup = document.getElementById('sidebarFloatingPopup');
+            if (!popup) return;
+
+            popup.addEventListener('mouseenter', () => {
+                if (sidebarPopupTimer) {
+                    clearTimeout(sidebarPopupTimer);
+                    sidebarPopupTimer = null;
+                }
+            });
+
+            popup.addEventListener('mouseleave', () => {
+                hideSidebarFloatingPopup();
+            });
+
+            function getItemLabel(el) {
+                if (el.getAttribute('data-tooltip')) return el.getAttribute('data-tooltip');
+                if (el.id === 'sidebarCollapseBtn') {
+                    return document.documentElement.classList.contains('sidebar-mini') ? 'باز کردن منو' : 'جمع کردن منو';
+                }
+                if (el.id === 'themeToggleBtn') {
+                    const theme = document.documentElement.getAttribute('data-bs-theme') || 'light';
+                    return theme === 'dark' ? 'حالت روشن' : 'حالت تیره';
+                }
+                if (el.getAttribute('href') && el.getAttribute('href').includes('logout')) {
+                    return 'خروج از پنل';
+                }
+                if (el.id === 'baseSidebarPwaInstallBtn') {
+                    return 'نصب وب‌اپلیکیشن (PWA)';
+                }
+                if (el.classList.contains('user-pill')) {
+                    const userDiv = el.querySelector('div');
+                    return userDiv ? userDiv.textContent.replace(/\s+/g, ' ').trim() : 'حساب کاربری';
+                }
+                const clone = el.cloneNode(true);
+                clone.querySelectorAll('i, .badge, .dropdown-chevron').forEach(n => n.remove());
+                return clone.textContent.replace(/\s+/g, ' ').trim();
+            }
+
+            const sidebarItems = document.querySelectorAll(
+                '.sidebar .nav-link, .sidebar .sidebar-dropdown-toggle, .sidebar #sidebarCollapseBtn, .sidebar-footer .user-pill, .sidebar-footer #baseSidebarPwaInstallBtn, .sidebar-footer #themeToggleBtn, .sidebar-footer a[href*="logout"]'
+            );
+
+            sidebarItems.forEach(el => {
+                el.addEventListener('mouseenter', () => {
+                    if (window.innerWidth < 992 || !document.documentElement.classList.contains('sidebar-mini')) {
+                        return;
+                    }
+
+                    if (sidebarPopupTimer) {
+                        clearTimeout(sidebarPopupTimer);
+                        sidebarPopupTimer = null;
+                    }
+
+                    const rect = el.getBoundingClientRect();
+                    const label = getItemLabel(el);
+
+                    // بررسی آیا آیتم یک منوی کشویی حاوی زیرمنوها است
+                    if (el.classList.contains('sidebar-dropdown-toggle')) {
+                        const targetId = el.getAttribute('data-bs-target');
+                        const collapseEl = targetId ? document.querySelector(targetId) : null;
+                        const subItems = collapseEl ? collapseEl.querySelectorAll('.submenu-item') : [];
+
+                        if (subItems && subItems.length > 0) {
+                            let itemsHtml = '';
+                            subItems.forEach(si => {
+                                const isActive = si.classList.contains('active');
+                                const href = si.getAttribute('href') || '#';
+                                const iconEl = si.querySelector('i');
+                                const iconHtml = iconEl ? iconEl.outerHTML : '';
+                                const clone = si.cloneNode(true);
+                                clone.querySelectorAll('i, .badge').forEach(n => n.remove());
+                                const text = clone.textContent.trim();
+
+                                itemsHtml += `
+                                    <a href="${href}" class="sidebar-flyout-item ${isActive ? 'active' : ''}">
+                                        ${iconHtml}
+                                        <span>${text}</span>
+                                    </a>
+                                `;
+                            });
+
+                            const iconEl = el.querySelector('i');
+                            const iconHtml = iconEl ? iconEl.outerHTML : '';
+
+                            popup.innerHTML = `
+                                <div class="sidebar-flyout-content">
+                                    <div class="sidebar-flyout-header">
+                                        ${iconHtml}
+                                        <span>${label}</span>
+                                    </div>
+                                    <div class="sidebar-flyout-body">
+                                        ${itemsHtml}
+                                    </div>
+                                </div>
+                            `;
+
+                            popup.classList.add('has-interactive');
+                            popup.style.visibility = 'visible';
+                            popup.style.opacity = '0';
+                            popup.style.display = 'block';
+
+                            const popupHeight = popup.offsetHeight;
+                            let top = rect.top;
+                            if (top + popupHeight > window.innerHeight - 10) {
+                                top = window.innerHeight - popupHeight - 10;
+                            }
+                            top = Math.max(10, top);
+
+                            popup.style.top = top + 'px';
+                            popup.style.right = '76px';
+                            popup.style.left = 'auto';
+
+                            requestAnimationFrame(() => {
+                                popup.classList.add('show');
+                                popup.style.opacity = '1';
+                            });
+                            return;
+                        }
+                    }
+
+                    // تولتیپ تک‌خطی برای سایر آیتم‌ها
+                    if (!label) return;
+
+                    const iconEl = el.querySelector('i');
+                    const iconHtml = iconEl ? iconEl.outerHTML : '';
+
+                    popup.innerHTML = `
+                        <div class="sidebar-tooltip-content">
+                            ${iconHtml}
+                            <span>${label}</span>
+                        </div>
+                    `;
+
+                    popup.classList.remove('has-interactive');
+                    popup.style.visibility = 'visible';
+                    popup.style.opacity = '0';
+                    popup.style.display = 'block';
+
+                    const popupHeight = popup.offsetHeight;
+                    const centerY = rect.top + (rect.height / 2);
+                    let top = centerY - (popupHeight / 2);
+                    top = Math.max(10, Math.min(window.innerHeight - popupHeight - 10, top));
+
+                    popup.style.top = top + 'px';
+                    popup.style.right = '76px';
+                    popup.style.left = 'auto';
+
+                    requestAnimationFrame(() => {
+                        popup.classList.add('show');
+                        popup.style.opacity = '1';
+                    });
+                });
+
+                el.addEventListener('mouseleave', () => {
+                    if (window.innerWidth < 992 || !document.documentElement.classList.contains('sidebar-mini')) {
+                        return;
+                    }
+                    sidebarPopupTimer = setTimeout(() => {
+                        hideSidebarFloatingPopup();
+                    }, 120);
+                });
+            });
+
+            // بستن پاپ‌آپ هنگام اسکرول سایدبار یا کلیک خارج از آن
+            const sidebarNav = document.querySelector('.sidebar .nav');
+            if (sidebarNav) {
+                sidebarNav.addEventListener('scroll', () => {
+                    hideSidebarFloatingPopup();
+                }, { passive: true });
+            }
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#sidebarFloatingPopup') && !e.target.closest('.sidebar')) {
+                    hideSidebarFloatingPopup();
+                }
+            });
+
+            // به‌روزرسانی عنوان دکمه جمع‌شدن منو در بارگذاری اولیه
+            const collapseBtn = document.getElementById('sidebarCollapseBtn');
+            if (collapseBtn) {
+                const isMini = document.documentElement.classList.contains('sidebar-mini');
+                collapseBtn.setAttribute('title', isMini ? 'باز کردن منو' : 'جمع کردن منو');
+                collapseBtn.setAttribute('aria-label', isMini ? 'باز کردن منو' : 'جمع کردن منو');
+            }
+        }
+
+        window.addEventListener('resize', function() {
+            if (window.innerWidth < 992) {
+                hideSidebarFloatingPopup();
+            }
+        });
+
+        // مقداردهی اولیه تم و سایدبار
         const savedTheme = localStorage.getItem('app_theme') || 'light';
         applyTheme(savedTheme);
+        if (localStorage.getItem('sidebar_collapsed') === 'true' && window.innerWidth >= 992) {
+            document.documentElement.classList.add('sidebar-mini');
+        }
+        initSidebarHoverTooltips();
 
         let lastResellerReceiptsCount = -1;
         let lastResellerCustomerTicketsCount = -1;
