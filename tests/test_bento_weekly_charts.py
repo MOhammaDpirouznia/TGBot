@@ -99,6 +99,26 @@ class TestBentoWeeklyCharts(unittest.TestCase):
             self.assertIn("شروع دوره", html3)
             self.assertIn("امروز", html3)
 
+    def test_portal_rendering_with_phone_number(self):
+        # بررسی رندر بدون خطای NameError در صورت وجود شماره تماس در اشتراک
+        conn = self.db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO subscriptions (id, hidify_uuid, telegram_id, phone_number, plan_id, status, is_deleted)
+            VALUES (99998, 'test_phone_sub_uuid', 0, '09129998877', 'test_plan', 'active', 0)
+        """)
+        conn.commit()
+        conn.close()
+
+        try:
+            with self.app.test_request_context("/sub/test_phone_sub_uuid"):
+                html = dashboard._handle_customer_portal_view("test_phone_sub_uuid")
+                self.assertIsNotNone(html)
+        finally:
+            conn = self.db.get_connection()
+            conn.execute("DELETE FROM subscriptions WHERE id=99998")
+            conn.commit()
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
