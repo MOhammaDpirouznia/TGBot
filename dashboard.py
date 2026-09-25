@@ -425,6 +425,33 @@ def generate_fallback_avatar_svg(identifier: str) -> str:
     return avatar_generator.generate_procedural_avatar_svg(str(identifier))
 
 
+def invalidate_avatar_cache(identifier: str = None, telegram_id: int = None, sub_id: int = None):
+    """ابطال و پاکسازی فایل‌های کش آواتار هنگام ویرایش پروفایل یا تغییرات مشخصات مشتری"""
+    if not AVATAR_CACHE_DIR.exists():
+        return
+    targets = set()
+    if telegram_id:
+        targets.add(f"tg_{telegram_id}.jpg")
+        targets.add(f"tg_none_{telegram_id}.flag")
+    if identifier:
+        clean = str(identifier).strip().lstrip("@")
+        h = hashlib.md5(clean.encode("utf-8")).hexdigest()[:12]
+        targets.add(f"smart3d_{h}.svg")
+        if clean.isdigit():
+            targets.add(f"tg_{clean}.jpg")
+            targets.add(f"tg_none_{clean}.flag")
+    if sub_id:
+        for ext in [".svg", ".webp", ".png", ".jpg", ".jpeg"]:
+            targets.add(f"custom_sub_{sub_id}{ext}")
+    for fname in targets:
+        try:
+            f = AVATAR_CACHE_DIR / fname
+            if f.exists():
+                f.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     """
     دریافت هوشمند تصویر پروفایل:
@@ -612,7 +639,7 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
             if bot_token and len(bot_token) > 10 and ":" in bot_token:
                 try:
                     url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={target_tg_id}&limit=1"
-                    with httpx.Client(timeout=4.0) as client:
+                    with httpx.Client(timeout=10.0) as client:
                         resp = client.get(url)
                         if resp.status_code == 200:
                             data = resp.json()
@@ -645,10 +672,6 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
                                 pass
                 except Exception as e:
                     logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
-                    try:
-                        cache_file_neg.write_text("temp_error")
-                    except Exception:
-                        pass
 
     # ۳. در صورت نداشتن آیدی تلگرام یا عدم وجود عکس در تلگرام: تولید آواتار تصادفی/مدرن محلی
     hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
@@ -3744,49 +3767,15 @@ def _extract_github_version(data: dict) -> str:
     return tag_name or release_name
 
 def get_store_version() -> str:
-    """دریافت نسخه فروشگاه به صورت دستی یا هوشمند از گیت‌هاب"""
-    source = db.get_setting("store_version_source", "manual")
-    manual_version = db.get_setting("store_version", "v0.0.1 Beta") or "v0.0.1 Beta"
-    if source != "github":
-        return manual_version
-
-    now = time.time()
-    if _store_version_cache.get("version") and (now - _store_version_cache.get("timestamp", 0) < 900):
-        return _store_version_cache["version"]
-
-    raw_repo = (db.get_setting("store_github_repo", "") or "").strip()
-    repo = _normalize_github_repo(raw_repo)
-    if not repo:
-        return manual_version
-
+    """دریافت نسخه واقعی و نصب‌شده نرم‌افزار روی این سرور"""
     try:
-        url = f"https://api.github.com/repos/{repo}/releases/latest"
-        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            ver = _extract_github_version(data)
-            if ver:
-                _store_version_cache["version"] = ver
-                _store_version_cache["timestamp"] = now
-                return ver
-    except Exception as e:
-        logger.debug(f"Could not fetch github latest release for {repo}: {e}")
-
-    try:
-        url = f"https://api.github.com/repos/{repo}/tags"
-        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            if data and isinstance(data, list) and len(data) > 0:
-                tag = data[0].get("name")
-                if tag:
-                    _store_version_cache["version"] = tag
-                    _store_version_cache["timestamp"] = now
-                    return tag
+        from version import get_version
+        return get_version()
     except Exception:
         pass
-
+    manual_version = db.get_setting("store_version", "v3.28.0") or "v3.28.0"
     return manual_version
+
 
 
 @app.context_processor
@@ -3905,10 +3894,18 @@ def inject_global_branding():
     palette_config = get_active_palette_config(db, context="system", reseller_id=active_reseller_id)
     palette_css = generate_palette_css(palette_config)
 
+    # وضعیت به‌روزرسانی OTA
+    try:
+        from license_guard import LicenseGuard
+        ota_update_info = LicenseGuard().get_update_info()
+    except Exception:
+        ota_update_info = {"available": False}
+
     return dict(
         has_permission=has_permission,
         branding=branding,
         store_version=store_version,
+        ota_update=ota_update_info,
         get_plan_icon=get_plan_icon,
         get_plan_telegram_emoji=get_plan_telegram_emoji,
         get_bundle_icon=get_bundle_icon,
@@ -3930,6 +3927,7 @@ def inject_global_branding():
         get_login_url=get_login_url,
         generate_renew_token=RenewalGuard.generate_token
     )
+
 
 
 # ─── مسیرهای احراز هویت (Authentication) ───
@@ -4275,6 +4273,12 @@ def setup_wizard():
                     db.save_setting("panel_port", p_int)
                     update_env_file({"PORT": str(p_int), "PANEL_PORT": str(p_int)})
 
+            system_lang = request.form.get("system_lang", "fa").strip()
+            if system_lang in ("fa", "en", "ru", "zh"):
+                db.save_setting("system_lang", system_lang)
+                db.save_setting("default_language", system_lang)
+                update_env_file({"SYSTEM_LANG": system_lang, "DEFAULT_LANGUAGE": system_lang})
+
             # ثبت یا بروزرسانی حساب مدیر ارشد در دیتابیس
             effective_tid = int(admin_tid) if (admin_tid and admin_tid.isdigit()) else None
             existing_super = None
@@ -4328,7 +4332,8 @@ def setup_wizard():
         "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
         "panel_port": get_panel_port(),
         "server_public_ip": server_public_ip,
-        "ssl_status": db.get_setting("ssl_status") or "تنظیم نشده"
+        "ssl_status": db.get_setting("ssl_status") or "تنظیم نشده",
+        "system_lang": db.get_setting("system_lang") or os.environ.get("SYSTEM_LANG") or "fa"
     }
     return render_template("setup_wizard.html", config=current_config, force=force)
 
@@ -8492,6 +8497,12 @@ def admin_subscription_edit(sub_id):
 
         conn.commit()
         conn.close()
+
+        # ابطال کش آواتار جهت بروزرسانی فوری
+        try:
+            invalidate_avatar_cache(identifier=account_name, telegram_id=telegram_id, sub_id=sub_id)
+        except Exception:
+            pass
 
         # همگام‌سازی فوری
         try:
@@ -14845,8 +14856,43 @@ def admin_sms_test():
         return jsonify({"success": False, "error": msg})
 
 
+@app.route("/api/admin/ota/check", methods=["POST"])
+@admin_required
+def api_admin_ota_check():
+    """بررسی دستی وجود نسخه جدید نرم‌افزار از مرکز لایسنس‌هاب"""
+    try:
+        from license_guard import LicenseGuard
+        res = LicenseGuard().verify(force_online=True)
+        update_info = LicenseGuard().get_update_info()
+        return jsonify({
+            "success": True,
+            "license_status": res.get("status"),
+            "update": update_info
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"خطا در ارتباط با مرکز آپدیت: {str(e)}"})
+
+
+@app.route("/api/admin/ota/apply", methods=["POST"])
+@admin_required
+def api_admin_ota_apply():
+    """درخواست شروع عملیات به‌روزرسانی OTA توسط ادمین"""
+    try:
+        from license_guard import LicenseGuard
+        from updater import OTAUpdater
+        update_info = LicenseGuard().get_update_info()
+        if not update_info or not update_info.get("available"):
+            return jsonify({"success": False, "message": "هیچ به‌روزرسانی فعالی برای این نسخه یافت نشد."})
+
+        res = OTAUpdater.execute_update(update_info)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"خطا در اجرای فرآیند آپدیت: {str(e)}"})
+
+
 @app.route("/api/admin/test-ai-connection", methods=["POST"])
 @admin_required
+
 def api_admin_test_ai_connection():
     """تست اختصاصی و زنده ارتباط با مدل هوش مصنوعی (Gemini / OpenAI / مدل دلخواه)"""
     data = request.get_json(force=True, silent=True) or {}
@@ -14910,22 +14956,36 @@ def download_backup():
 @app.route("/admin/backup/upload", methods=["POST"])
 @super_admin_required
 def upload_backup():
-    """آپلود و بازیابی فایل دیتابیس SQLite"""
+    """آپلود و بازیابی فایل دیتابیس SQLite (.db یا .zip)"""
     file = request.files.get("backup_file")
-    if not file or not file.filename.endswith(".db"):
-        flash("لطفاً یک فایل دیتابیس با پسوند .db انتخاب کنید.", "warning")
+    if not file or not file.filename:
+        flash("لطفاً یک فایل پشتیبان معتبر انتخاب کنید.", "warning")
+        return redirect(url_for("settings"))
+
+    fname = file.filename.lower()
+    valid_exts = (".db", ".zip", ".sqlite", ".sqlite3")
+    if not any(fname.endswith(ext) for ext in valid_exts):
+        flash("فرمت فایل نامعتبر است! فقط فایل‌های با پسوند .db یا .zip پشتیبانی می‌شوند.", "warning")
         return redirect(url_for("settings"))
 
     try:
         from backup import BackupManager
         bm = BackupManager()
-        temp_path = db.db_dir / f"uploaded_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in valid_exts:
+            file_ext = ".db"
+        temp_path = db.db_dir / f"uploaded_{get_now_naive().strftime('%Y%m%d_%H%M%S')}{file_ext}"
         file.save(temp_path)
         res = bm.restore_backup(str(temp_path))
         if res.get("success"):
             flash("دیتابیس با موفقیت از فایل آپلود شده بازیابی شد!", "success")
         else:
             flash(f"خطا در بازیابی دیتابیس: {res.get('error')}", "danger")
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
     except Exception as e:
         flash(f"خطا در پردازش فایل: {str(e)}", "danger")
 
@@ -14949,8 +15009,33 @@ def admin_auto_backup():
 
     backup_stats = db.get_backup_stats()
     system_metrics = db.get_system_backup_metrics()
-    main_logs = db.get_backup_logs(backup_type="main_panel", limit=50)
-    hiddify_logs = db.get_backup_logs(backup_type="hiddify", limit=50)
+
+    try:
+        main_page = max(1, int(request.args.get("main_page", 1)))
+    except (ValueError, TypeError):
+        main_page = 1
+
+    try:
+        hiddify_page = max(1, int(request.args.get("hiddify_page", 1)))
+    except (ValueError, TypeError):
+        hiddify_page = 1
+
+    per_page = 15
+    active_tab = request.args.get("tab", "main")
+
+    main_total = db.get_backup_logs_count(backup_type="main_panel")
+    main_total_pages = max(1, (main_total + per_page - 1) // per_page)
+    if main_page > main_total_pages and main_total_pages > 0:
+        main_page = main_total_pages
+    main_offset = (main_page - 1) * per_page
+    main_logs = db.get_backup_logs(backup_type="main_panel", limit=per_page, offset=main_offset)
+
+    hiddify_total = db.get_backup_logs_count(backup_type="hiddify")
+    hiddify_total_pages = max(1, (hiddify_total + per_page - 1) // per_page)
+    if hiddify_page > hiddify_total_pages and hiddify_total_pages > 0:
+        hiddify_page = hiddify_total_pages
+    hiddify_offset = (hiddify_page - 1) * per_page
+    hiddify_logs = db.get_backup_logs(backup_type="hiddify", limit=per_page, offset=hiddify_offset)
 
     for row in main_logs:
         try:
@@ -14983,7 +15068,15 @@ def admin_auto_backup():
         backup_stats=backup_stats,
         system_metrics=system_metrics,
         main_logs=main_logs,
-        hiddify_logs=hiddify_logs
+        hiddify_logs=hiddify_logs,
+        main_page=main_page,
+        main_total_pages=main_total_pages,
+        main_total=main_total,
+        hiddify_page=hiddify_page,
+        hiddify_total_pages=hiddify_total_pages,
+        hiddify_total=hiddify_total,
+        per_page=per_page,
+        active_tab=active_tab
     )
 
 
@@ -15071,6 +15164,114 @@ def download_auto_backup(backup_id):
         as_attachment=True,
         download_name=row["backup_file"]
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# سامانه هوشمند مرکز به‌روزرسانی (Smart OTA Update Center)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/ota", methods=["GET"])
+@super_admin_required
+def admin_ota_update():
+    """صفحه اختصاصی مرکز به‌روزرسانی هوشمند سیستم"""
+    try:
+        from version import __version__ as current_version, __build__ as build_date
+    except ImportError:
+        current_version = "3.28.0"
+        build_date = "2026.09.25"
+
+    from license_guard import LicenseGuard
+    guard = LicenseGuard()
+
+    ota_channel = db.get_setting("ota_channel", "stable")
+    ota_auto_update = db.is_setting_enabled("ota_auto_update", default=True)
+    ota_preferred_hour = str(db.get_setting("ota_preferred_hour", "04")).zfill(2)
+
+    available_update = guard.get_update_info()
+
+    return render_template(
+        "admin_ota_update.html",
+        current_version=current_version,
+        build_date=build_date,
+        ota_channel=ota_channel,
+        ota_auto_update=ota_auto_update,
+        ota_preferred_hour=ota_preferred_hour,
+        server_url=guard.server_url,
+        license_status=guard.status,
+        is_valid_license=guard.is_valid,
+        available_update=available_update if (available_update and available_update.get("available")) else None,
+    )
+
+
+@app.route("/api/admin/ota/check", methods=["GET"])
+@super_admin_required
+def api_ota_check():
+    """بررسی آنلاین نسخه جدید از لایسنس‌هاب بر اساس کانال انتخابی"""
+    from license_guard import LicenseGuard
+    guard = LicenseGuard()
+    channel = request.args.get("channel") or db.get_setting("ota_channel", "stable")
+    update_info = guard.check_for_updates(channel=channel)
+    return jsonify({"success": True, "update": update_info})
+
+
+@app.route("/api/admin/ota/settings", methods=["POST"])
+@super_admin_required
+def api_ota_save_settings():
+    """ذخیره تنظیمات کانال و زمان‌بندی آپدیت خودکار"""
+    data = request.get_json(silent=True) or request.form
+    channel = str(data.get("ota_channel", "stable")).lower()
+    if channel not in ["stable", "beta"]:
+        channel = "stable"
+
+    auto_update = data.get("ota_auto_update")
+    if isinstance(auto_update, str):
+        auto_update = auto_update.lower() in ["1", "true", "on"]
+    else:
+        auto_update = bool(auto_update)
+
+    preferred_hour = str(data.get("ota_preferred_hour", "04")).zfill(2)
+
+    db.set_setting("ota_channel", channel)
+    db.set_setting("ota_auto_update", "1" if auto_update else "0")
+    db.set_setting("ota_preferred_hour", preferred_hour)
+
+    return jsonify({"success": True, "message": "تنظیمات مرکز به‌روزرسانی با موفقیت ذخیره شد."})
+
+
+@app.route("/api/admin/ota/notify-telegram", methods=["POST"])
+@super_admin_required
+def api_ota_notify_telegram():
+    """ارسال دستی پیام اعلان نسخه جدید به تلگرام مدیران ارشد"""
+    data = request.get_json(silent=True) or {}
+    update_info = data.get("update_info")
+    if not update_info:
+        from license_guard import LicenseGuard
+        update_info = LicenseGuard().get_update_info()
+
+    if not update_info or not update_info.get("available"):
+        return jsonify({"success": False, "message": "اطلاعات نسخه جدید موجود نیست."}), 400
+
+    from updater import send_update_notification_to_admins
+    res = send_update_notification_to_admins(update_info)
+    return jsonify(res)
+
+
+@app.route("/api/admin/ota/apply", methods=["POST"])
+@super_admin_required
+def api_ota_apply():
+    """شروع فرآیند اتمیک و امن به‌روزرسانی سیستم"""
+    data = request.get_json(silent=True) or {}
+    update_info = data.get("update_info")
+    if not update_info:
+        from license_guard import LicenseGuard
+        update_info = LicenseGuard().get_update_info()
+
+    if not update_info or not update_info.get("download_path"):
+        return jsonify({"success": False, "message": "اطلاعات پکیج آپدیت یافت نشد."}), 400
+
+    from updater import OTAUpdater
+    res = OTAUpdater.execute_update(update_info)
+    return jsonify(res)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -15682,7 +15883,8 @@ def reseller_users():
         cards=db.get_reseller_cards(reseller_id),
         accounts=db.get_financial_accounts_summary("reseller", reseller_id).get("accounts", []),
         default_account=db.get_customer_default_account("reseller", reseller_id),
-        custom_sms_templates=db.get_custom_sms_templates(reseller_id)
+        custom_sms_templates=db.get_custom_sms_templates(reseller_id),
+        reseller=db.get_reseller(reseller_id)
     )
 
 
@@ -15792,6 +15994,12 @@ def reseller_edit_user(sub_id: int):
                     if phone_number:
                         (AVATAR_CACHE_DIR / f"custom_{phone_number}{ext}").write_bytes(file_bytes)
                     db.update_subscription_avatar(sub_id, custom_fn)
+
+    # ابطال کش آواتار جهت بروزرسانی فوری
+    try:
+        invalidate_avatar_cache(identifier=account_name, telegram_id=telegram_id, sub_id=sub_id)
+    except Exception:
+        pass
 
     # ۳. بروزرسانی مستقیم و بلادرنگ در سرور هیدیفای
     h_uuid = sub.get("hidify_uuid")
@@ -18561,6 +18769,14 @@ def reseller_payment_revoke(payment_id):
         flash(f"خطا در ابطال فیش پرداخت: {res.get('error')}", "danger")
         return redirect(url_for("reseller_customer_payments"))
 
+    ref_amount = res.get("refund_amount", 0)
+    ref_percent = res.get("refund_percent", 0)
+    ref_msg = ""
+    if ref_amount > 0:
+        ref_msg = f" همچنین مبلغ {ref_amount:,} تومان ({ref_percent}٪ استرداد طبق قوانین زمانی) به حساب شما برگشت داده شد."
+    elif ref_percent == 0 and res.get("tx", {}).get("status") == "revoked":
+        ref_msg = " (به دلیل گذشت بیش از ۲۴ ساعت از صدور، استرداد هزینه تعلق نگرفت)."
+
     sub = res.get("sub")
     if sub and sub.get("hidify_uuid"):
         uuid = sub["hidify_uuid"]
@@ -18568,15 +18784,15 @@ def reseller_payment_revoke(payment_id):
         if rollback_sub_action == "disable":
             hidify_sync_update_user(uuid, enable=False)
             db.update_subscription(sub_id, status="disabled")
-            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» غیرفعال گردید.", "warning")
+            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» غیرفعال گردید.{ref_msg}", "warning")
         elif rollback_sub_action == "delete":
             hidify_sync_delete_user(uuid)
             db.delete_subscription(sub_id)
-            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» از سرور حذف شد.", "warning")
+            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» از سرور حذف شد.{ref_msg}", "warning")
         else:
-            flash(f"فیش #{payment_id} با موفقیت باطل شد (اشتراک بدون تغییر باقی ماند).", "success")
+            flash(f"فیش #{payment_id} با موفقیت باطل شد (اشتراک بدون تغییر باقی ماند).{ref_msg}", "success")
     else:
-        flash(f"فیش #{payment_id} با موفقیت باطل شد و وضعیت آن بروزرسانی گردید.", "success")
+        flash(f"فیش #{payment_id} با موفقیت باطل شد و وضعیت آن بروزرسانی گردید.{ref_msg}", "success")
 
     # به‌روزرسانی موجودی سشن نماینده در صورت استرداد وجه
     r_after = db.get_reseller(reseller_id)
@@ -19790,8 +20006,8 @@ def admin_create_customer():
         user_limit = int(request.form.get("user_limit", 1))
 
         if not account_name:
-            flash("لطفاً نام یا شناسه مشتری را وارد نمایید.", "warning")
-            return redirect(url_for("admin_create_customer"))
+            import secrets
+            account_name = f"user_{secrets.token_hex(3)}"
 
         # محاسبه حجم، مدت و قیمت پلن
         selected_plan = plans.get(plan_id)
@@ -23512,6 +23728,12 @@ def api_customer_profile_update(token: str = None):
 
     if not res.get("success"):
         return jsonify({"success": False, "error": res.get("error", "خطا در ثبت مشخصات")}), 500
+
+    # ابطال کش آواتار هنگام بروزرسانی مشخصات مشتری
+    try:
+        invalidate_avatar_cache(identifier=account_name or sub_dict.get("account_name"), telegram_id=effective_tg_id, sub_id=effective_sub_id)
+    except Exception:
+        pass
 
     new_avatar_id = str(effective_sub_id or effective_tg_id or account_name or "Customer")
     new_avatar_url = url_for("telegram_avatar", identifier=new_avatar_id)

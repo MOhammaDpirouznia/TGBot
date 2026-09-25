@@ -5150,6 +5150,7 @@ class Database:
 
             # ۵. در صورت تایید قبلی فیش، رول‌بک مالی و استرداد وجه به کیف پول نماینده:
             refund_amount = 0
+            refund_percent = 0
             if old_status in ("approved", "completed"):
                 # الف) یافتن تراکنش کسر از کیف‌پول نماینده برای این خرید
                 r_tx = None
@@ -5180,6 +5181,34 @@ class Database:
                 else:
                     disc_pct = r_row["discount_percent"] if r_row and r_row["discount_percent"] is not None else 20
                     refund_amount = int(amount * (100 - disc_pct) / 100) if amount > 0 else 0
+
+                # محاسبه درصد استرداد وجه بر اساس زمان طبق قوانین (<=12h: 100%, <=24h: 50%, >24h: 0%)
+                base_time_str = tx.get("created_at") or now_iso
+                try:
+                    clean_bt = str(base_time_str).strip().replace("Z", "")
+                    dt_b = datetime.fromisoformat(clean_bt)
+                    if dt_b.tzinfo is not None:
+                        dt_b = dt_b.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+                    elapsed_h = max(0.0, (get_now_naive() - dt_b).total_seconds() / 3600.0)
+                except Exception:
+                    elapsed_h = 0.0
+
+                settings = self.get_refund_settings()
+                refund_enabled = bool(settings.get("refund_enabled", True))
+                disabled_resellers = settings.get("disabled_resellers", [])
+                r12 = int(settings.get("rate_before_12h", 100))
+                r24 = int(settings.get("rate_before_24h", 50))
+
+                if (not refund_enabled) or (reseller_id in disabled_resellers):
+                    refund_percent = 0
+                elif elapsed_h <= 12.0:
+                    refund_percent = r12
+                elif elapsed_h <= 24.0:
+                    refund_percent = r24
+                else:
+                    refund_percent = 0
+
+                refund_amount = int(refund_amount * (refund_percent / 100.0))
 
                 # برگشت وجه به کیف پول نماینده یا کاهش بدهی اعتباری
                 if refund_wallet and refund_amount > 0:
@@ -5285,6 +5314,7 @@ class Database:
                 "tx": tx,
                 "sub": dict(associated_sub) if associated_sub else None,
                 "refund_amount": refund_amount,
+                "refund_percent": refund_percent,
                 "rollback_sub_action": rollback_sub_action
             }
         except Exception as e:
@@ -7173,7 +7203,7 @@ class Database:
             "refund_enabled": True,
             "disabled_resellers": [],
             "rate_before_12h": 100,
-            "rate_before_24h": 80,
+            "rate_before_24h": 50,
             "calc_from_creation": True,
             "daily_restore_limit": 10,
             "restore_window_days": 7,
@@ -7184,7 +7214,7 @@ class Database:
         
         enabled = bool(defaults.get("refund_enabled", defaults.get("enabled", True)))
         r12 = int(defaults.get("rate_before_12h", defaults.get("refund_rate_before_12h", defaults.get("before_12h_percent", 100))))
-        r24 = int(defaults.get("rate_before_24h", defaults.get("refund_rate_before_24h", defaults.get("before_24h_percent", 80))))
+        r24 = int(defaults.get("rate_before_24h", defaults.get("refund_rate_before_24h", defaults.get("before_24h_percent", 50))))
         calc_creation = bool(defaults.get("calc_from_creation", defaults.get("refund_calc_from_creation", True)))
         daily_restore_limit = int(defaults.get("daily_restore_limit", 10))
         restore_window_days = int(defaults.get("restore_window_days", 7))
@@ -7929,6 +7959,23 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting backup logs: {e}")
             return []
+        finally:
+            conn.close()
+
+    def get_backup_logs_count(self, backup_type=None):
+        """تعداد کل لاگ‌های پشتیبان‌گیری برای صفحه‌بندی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if backup_type:
+                cursor.execute("SELECT count(*) FROM backups WHERE backup_type = ?", (backup_type,))
+            else:
+                cursor.execute("SELECT count(*) FROM backups")
+            res = cursor.fetchone()
+            return res[0] if res else 0
+        except Exception as e:
+            logger.error(f"Error counting backup logs: {e}")
+            return 0
         finally:
             conn.close()
 
@@ -14806,7 +14853,7 @@ class Database:
             FROM reseller_transactions rt
             LEFT JOIN subscriptions s ON (rt.subscription_id = s.id OR (rt.subscription_id IS NULL AND rt.account_name IS NOT NULL AND rt.account_name != '' AND rt.account_name = s.account_name))
             LEFT JOIN reseller_cards rc ON (rt.card_id = rc.id)
-            WHERE rt.reseller_id = ?
+            WHERE rt.reseller_id = ? AND (rt.is_deleted = 0 OR rt.is_deleted IS NULL)
             ORDER BY rt.created_at DESC, rt.id DESC
         """
         params = [reseller_id]
@@ -16674,7 +16721,7 @@ class Database:
         refund_enabled = bool(settings.get("refund_enabled", True))
         disabled_resellers = settings.get("disabled_resellers", [])
         rate_12h = int(settings.get("rate_before_12h", 100))
-        rate_24h = int(settings.get("rate_before_24h", 80))
+        rate_24h = int(settings.get("rate_before_24h", 50))
         calc_from_creation = bool(settings.get("calc_from_creation", True))
 
         is_disallowed = (not refund_enabled) or (reseller_id in disabled_resellers)
@@ -17040,7 +17087,7 @@ class Database:
             "customer_receipt": customer_receipt
         }
 
-    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None, void_customer_receipt: bool = False):
+    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None, void_customer_receipt: bool = True):
         """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (تفکیک کیف پول و اعتبار)، لغو صف تمدید و امکان ابطال رسید پرداخت مشتری"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
@@ -17107,9 +17154,9 @@ class Database:
                 WHERE id = ? AND reseller_id = ?
             """, (now, reason, by_user, now, sub_id, reseller_id))
 
-            # ۴.۵. در صورت درخواست نماینده، ابطال آخرین رسید پرداخت مشتری و رول‌بک موجودی کارت بانکی (بدون تاثیر بر اعتبار عمده)
+            # ۴.۵. ابطال همگام رسید پرداخت مشتری و رول‌بک موجودی کارت بانکی (همگام‌سازی دو طرفه)
             voided_receipt = None
-            if void_customer_receipt:
+            if void_customer_receipt is not False:
                 try:
                     tx_row = cursor.execute("""
                         SELECT * FROM transactions
@@ -17604,6 +17651,29 @@ class Database:
             params.append(sub_id)
 
             cursor.execute(update_sql, tuple(params))
+
+            # همگام‌سازی دوطرفه: فعال‌سازی مجدد فیش پرداخت باطل‌شده همزمان با بازگردانی اشتراک
+            try:
+                tx_revoked = cursor.execute("""
+                    SELECT id FROM transactions
+                    WHERE (subscription_id = ? OR renew_sub_id = ? OR (account_name IS NOT NULL AND account_name = ?))
+                      AND status = 'revoked'
+                    ORDER BY id DESC LIMIT 1
+                """, (sub_id, sub_id, account_name)).fetchone()
+                if tx_revoked:
+                    cursor.execute("""
+                        UPDATE transactions
+                        SET status='approved', updated_at=?
+                        WHERE id=?
+                    """, (now, tx_revoked[0]))
+                    cursor.execute("""
+                        INSERT INTO transaction_audit_logs 
+                        (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                        VALUES (?, ?, ?, 'approve', 'status', 'revoked', 'approved', 'تایید خودکار همزمان با بازگردانی اشتراک از سطل زباله', ?)
+                    """, (tx_revoked[0], reseller_id if is_reseller else 0, f"نماینده #{reseller_id}" if is_reseller else "مدیریت", now))
+            except Exception as e_reapp:
+                logger.warning(f"Error re-approving transaction on restore: {e_reapp}")
+
             conn.commit()
 
             # ثبت لاگ بازگردانی
@@ -23096,9 +23166,9 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT custom_avatar FROM subscriptions 
-                WHERE (id=? OR account_name=? OR phone_number=? OR hidify_uuid=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
+                WHERE (id=? OR account_name=? OR phone_number=? OR hidify_uuid=? OR telegram_id=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
                 ORDER BY id DESC LIMIT 1
-            """, (str(identifier), str(identifier), str(identifier), str(identifier)))
+            """, (str(identifier), str(identifier), str(identifier), str(identifier), str(identifier)))
             row = cursor.fetchone()
             if row and row["custom_avatar"]:
                 return row["custom_avatar"]

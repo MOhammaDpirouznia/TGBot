@@ -32,8 +32,10 @@ RELEASE_DIR = DIST_DIR / "tgbot_protected"
 
 # ماژول‌های حیاتی که باید به باینری ماشین تبدیل شوند
 CORE_MODULES = [
+    "version.py",
     "license_guard.py",
     "bot.py",
+
     "dashboard.py",
     "database.py",
     "multibot_manager.py",

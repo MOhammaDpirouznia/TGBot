@@ -2398,7 +2398,7 @@
                 {% endif %}
 
                 <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'admin_auto_backup', 'settings', 'admin_profile'] %}
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'admin_auto_backup', 'settings', 'admin_ota_update', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -2450,6 +2450,9 @@
                         {% if session.get('admin_role') == 'super_admin' %}
                         <a class="submenu-item {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                             <i class="fas fa-sliders text-secondary"></i> تنظیمات سیستم
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_ota_update' %}active{% endif %}" href="{{ url_for('admin_ota_update') }}">
+                            <i class="fas fa-cloud-arrow-down text-info"></i> مرکز به‌روزرسانی (OTA)
                         </a>
                         {% endif %}
                         <a class="submenu-item {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">

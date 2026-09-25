@@ -15,9 +15,9 @@
         <a href="{{ url_for('reseller_delinquent_settings') }}" class="btn btn-outline-danger fw-bold shadow-sm" title="تنظیمات چرخه‌ها و محدودیت‌های مشتریان بدحساب">
             <i class="fas fa-gear me-1"></i> تنظیمات بدحسابی ⚙️
         </a>
-        <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success fw-bold">
+        <button type="button" class="btn btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#resellerCreateUserModal">
             <i class="fas fa-user-plus me-1"></i> ساخت مشتری جدید
-        </a>
+        </button>
     </div>
 </div>
 
@@ -124,7 +124,7 @@
                         <i class="fas fa-trash-can me-1"></i> سطل زباله مشتریان ({{ subscriptions|length }})
                     </span>
                     <small class="text-secondary d-none d-md-inline">
-                        <i class="fas fa-info-circle me-1 text-info"></i> اشتراک‌ها پس از ۷ روز به صورت خودکار و کامل از هیدیفای و سیستم پاکسازی می‌شوند.
+                        <i class="fas fa-info-circle me-1 text-info"></i> اشتراک‌ها پس از ۷ روز به صورت خودکار و کامل از سرور و سیستم پاکسازی می‌شوند.
                     </small>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -153,7 +153,7 @@
                         <th>علت حذف</th>
                         <th>حذف‌کننده</th>
                         <th>تاریخ انتقال به سطل</th>
-                        <th>مهلت پاکسازی هیدیفای</th>
+                        <th>مهلت پاکسازی سرور</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
@@ -193,7 +193,7 @@
                         </td>
                         <td>
                             {% if sub.get('purged_from_hiddify') %}
-                            <span class="badge bg-dark">از هیدیفای پاکسازی شد</span>
+                            <span class="badge bg-dark">از سرور پاکسازی شد</span>
                             {% else %}
                             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold px-2 py-1">
                                 <i class="fas fa-clock me-1"></i> {{ sub.get('days_left', 7) }} روز باقی‌مانده
@@ -210,7 +210,7 @@
                                     </button>
                                 </form>
                                 <!-- حذف دائمی -->
-                                <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1 d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#permanentDeleteModal{{ sub['id'] }}" title="حذف دائمی از سطل زباله و سرور هیدیفای">
+                                <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1 d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#permanentDeleteModal{{ sub['id'] }}" title="حذف دائمی از سطل زباله و سرور">
                                     <i class="fas fa-trash-can"></i>
                                     <span>حذف دائم</span>
                                 </button>
@@ -651,10 +651,10 @@
         <input type="hidden" name="bulk_action" value="">
         <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
         
-        <button type="button" class="btn btn-sm btn-success fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'restore', 'آیا از بازگردانی گروهی تمام موارد انتخاب‌شده و فعال‌سازی مجدد آن‌ها در هیدیفای اطمینان دارید؟ (هزینه هر اشتراک از اعتبار شما کسر خواهد شد)')">
+        <button type="button" class="btn btn-sm btn-success fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'restore', 'آیا از بازگردانی گروهی تمام موارد انتخاب‌شده و فعال‌سازی مجدد آن‌ها در سرور اطمینان دارید؟ (هزینه هر اشتراک از اعتبار شما کسر خواهد شد)')">
             <i class="fas fa-rotate-left me-1"></i> بازگردانی گروهی
         </button>
-        <button type="button" class="btn btn-sm btn-danger fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'purge', 'هشدار بسیار مهم: آیا از حذف دائمی و غیرقابل بازگشت اشتراک‌های انتخاب شده از سطل زباله و سرور هیدیفای اطمینان دارید؟')">
+        <button type="button" class="btn btn-sm btn-danger fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'purge', 'هشدار بسیار مهم: آیا از حذف دائمی و غیرقابل بازگشت اشتراک‌های انتخاب شده از سطل زباله و سرور اطمینان دارید؟')">
             <i class="fas fa-trash-can me-1"></i> حذف دائمی گروهی
         </button>
     </form>
@@ -1499,7 +1499,7 @@
                 <div class="modal-body p-4">
                     <div class="alert alert-info py-2 small mb-3">
                         <i class="fas fa-info-circle me-1"></i>
-                        پس از ثبت، تیکت درخواست برای مدیریت ارسال می‌شود و به محض تایید، تغییرات مستقیماً روی سرور هیدیفای و اشتراک مشتری اعمال خواهد شد.
+                        پس از ثبت، تیکت درخواست برای مدیریت ارسال می‌شود و به محض تایید، تغییرات مستقیماً روی سرور و اشتراک مشتری اعمال خواهد شد.
                     </div>
 
                     <div class="p-3 bg-light rounded-3 border mb-3">
@@ -1573,7 +1573,7 @@
                         <div class="col-md-6">
                             <label class="form-label fw-bold">نام یا شناسه مشتری: <span class="text-danger">*</span></label>
                             <input type="text" name="account_name" class="form-control font-monospace" value="{{ sub['account_name'] }}" required dir="ltr">
-                            <small class="text-muted" style="font-size: 0.75rem;">این نام مستقیماً در پنل هیدیفای نیز تغییر می‌کند.</small>
+                            <small class="text-muted" style="font-size: 0.75rem;">این نام مستقیماً در سرور نیز تغییر می‌کند.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">شماره تلفن همراه (اختیاری):</label>
@@ -1842,7 +1842,7 @@
                             <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="علت حذف را اینجا بنویسید...">
                         </div>
                         <div class="form-text text-muted small mt-2">
-                            <i class="fas fa-shield-alt text-primary me-1"></i> این اشتراک ابتدا به سطل زباله منتقل می‌شود و در صورت عدم بازگردانی، پس از ۷ روز خودکار از سرور هیدیفای حذف خواهد شد.
+                            <i class="fas fa-shield-alt text-primary me-1"></i> این اشتراک ابتدا به سطل زباله منتقل می‌شود و در صورت عدم بازگردانی، پس از ۷ روز خودکار از سرور حذف خواهد شد.
                         </div>
                     </div>
                 </div>
@@ -1870,7 +1870,7 @@
                 </div>
                 <div class="modal-body p-4">
                     <p class="text-secondary small mb-3">
-                        <i class="fas fa-info-circle text-primary me-1"></i> با غیرفعال‌سازی، اتصال کاربر در سرور هیدیفای موقتاً قطع می‌شود اما حجم و روزهای اشتراک حفظ خواهد شد. لطفاً علت غیرفعال‌سازی را مشخص فرمایید:
+                        <i class="fas fa-info-circle text-primary me-1"></i> با غیرفعال‌سازی، اتصال کاربر در سرور موقتاً قطع می‌شود اما حجم و روزهای اشتراک حفظ خواهد شد. لطفاً علت غیرفعال‌سازی را مشخص فرمایید:
                     </p>
                     <div class="p-3 bg-light rounded-3 border">
                         <label class="form-label fw-bold small text-dark mb-1">
@@ -1899,7 +1899,7 @@
     </div>
 </div>
 
-<!-- ─── Modal حذف دائمی از سطل زباله و سرور هیدیفای ─── -->
+<!-- ─── Modal حذف دائمی از سطل زباله و سرور ─── -->
 <div class="modal fade text-start" id="permanentDeleteModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="permDeleteLabel{{ sub['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-danger">
@@ -1912,7 +1912,7 @@
             <div class="modal-body p-4">
                 <p class="text-danger fw-bold fs-6 mb-2">آیا از حذف همیشگی و قطعی این مشتری اطمینان کامل دارید؟</p>
                 <div class="alert alert-warning small mb-0">
-                    <i class="fas fa-exclamation-circle me-1"></i> با این اقدام، کاربر به صورت قطعی از <strong>سرور هیدیفای</strong> و پایگاه داده حذف می‌گردد و لینک اتصال آن کاملاً باطل شده و به هیچ وجه قابل بازگردانی نخواهد بود.
+                    <i class="fas fa-exclamation-circle me-1"></i> با این اقدام، کاربر به صورت قطعی از <strong>سرور</strong> و پایگاه داده حذف می‌گردد و لینک اتصال آن کاملاً باطل شده و به هیچ وجه قابل بازگردانی نخواهد بود.
                 </div>
             </div>
             <div class="modal-footer">
@@ -2060,7 +2060,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
-                <p class="text-secondary small mb-3">اشتراک‌های انتخاب شده در هیدیفای موقتاً قطع خواهند شد. لطفاً علت غیرفعال‌سازی دسته جمعی را مشخص فرمایید:</p>
+                <p class="text-secondary small mb-3">اشتراک‌های انتخاب شده در سرور موقتاً قطع خواهند شد. لطفاً علت غیرفعال‌سازی دسته جمعی را مشخص فرمایید:</p>
                 <div class="p-3 bg-light rounded-3 border" id="bulkDisableForm">
                     <label class="form-label fw-bold small text-dark mb-1">علت غیرفعال‌سازی گروهی:</label>
                     <select name="reason" class="form-select form-select-sm mb-2" onchange="toggleCustomReason(this, 'bulkDisableCustomReason')">
@@ -2147,7 +2147,7 @@
             </div>
             <div class="modal-body p-4">
                 <div class="alert alert-warning small mb-3">
-                    <i class="fas fa-triangle-exclamation me-1"></i> اشتراک‌های انتخاب شده به سطل زباله منتقل شده و در هیدیفای غیرفعال می‌شوند و استرداد وجه طبق قوانین (تا ۱۲ ساعت ۱۰۰٪، تا ۲۴ ساعت ۸۰٪) به کیف پول شما بازمی‌گردد.
+                    <i class="fas fa-triangle-exclamation me-1"></i> اشتراک‌های انتخاب شده به سطل زباله منتقل شده و در سرور غیرفعال می‌شوند و استرداد وجه طبق قوانین (تا ۱۲ ساعت ۱۰۰٪، تا ۲۴ ساعت ۸۰٪) به کیف پول شما بازمی‌گردد.
                 </div>
                 <div class="p-3 bg-light rounded-3 border" id="bulkDeleteForm">
                     <label class="form-label fw-bold small text-dark mb-1">علت حذف گروهی:</label>
@@ -2276,7 +2276,7 @@
                                 ⚡ فعال‌سازی آنی تمدید برای همه (ریست کامل حجم و روز)
                             </label>
                             <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
-                                <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر فعال باشد:</strong> مصرف کاربر در هیدیفای بلافاصله صفر شده و بسته جدید آغاز می‌شود.</div>
+                                <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر فعال باشد:</strong> مصرف کاربر در سرور بلافاصله صفر شده و بسته جدید آغاز می‌شود.</div>
                                 <div class="mt-1"><i class="fas fa-clock text-primary me-1"></i> <strong>اگر خاموش باشد:</strong> هزینه کسر شده و بسته‌ها در <strong>صف رزرو</strong> قرار می‌گیرند تا پس از اتمام ۹۹٪ یا در روز پایانی، بدون قطعی فعال شوند.</div>
                             </div>
                         </div>
@@ -2696,7 +2696,7 @@
                 </div>
 
                 <div class="alert alert-warning py-2 px-3 small mb-0" style="font-size: 0.78rem;">
-                    <i class="fas fa-shield-alt text-warning me-1"></i> <strong>توجه مهم:</strong> در این فرم فقط بدهی و سابقه پلن در تاریخچه ثبت می‌شود و تحت هیچ شرایطی این پلن روی سرور هیدیفای فعال نخواهد شد.
+                    <i class="fas fa-shield-alt text-warning me-1"></i> <strong>توجه مهم:</strong> در این فرم فقط بدهی و سابقه پلن در تاریخچه ثبت می‌شود و تحت هیچ شرایطی این پلن روی سرور فعال نخواهد شد.
                 </div>
             </div>
             <div class="modal-footer bg-light py-2">
@@ -2729,6 +2729,371 @@
                     <div class="text-muted">در حال بارگذاری پرونده و سوابق مشتری...</div>
                 </div>
             </div>
+
+
+<!-- ─── Modal ساخت مشتری جدید ─── -->
+<div class="modal fade text-start" id="resellerCreateUserModal" tabindex="-1" aria-labelledby="resellerCreateUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-user-plus fs-4"></i>
+                    <h5 class="modal-title fw-bold mb-0" id="resellerCreateUserModalLabel">ساخت مشتری جدید</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-start">
+<form method="POST" action="{{ url_for('reseller_create_user') }}" id="createSubForm">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" name="account_name" class="form-control" placeholder="مثال: omid_01 یا خالی بگذارید">
+                            </div>
+                            <small class="text-muted">این نام در سرور ثبت می‌شود.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">شماره تلفن مشتری (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="text" name="phone_number" class="form-control font-monospace" placeholder="مثال: 09121234567">
+                            </div>
+                            <small class="text-muted">جهت ساخت تصویر و تماس.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">شناسه عددی تلگرام (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fab fa-telegram"></i></span>
+                                <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 123456789">
+                            </div>
+                            <small class="text-muted">جهت یادآوری پیامکی و بدهی.</small>
+                        </div>
+                    </div>
+
+                    <!-- بخش وضعیت تسویه حساب و بدهی مشتری -->
+                    <div class="p-3 bg-light rounded-3 border mb-4">
+                        <h6 class="fw-bold text-dark mb-3"><i class="fas fa-hand-holding-dollar text-primary me-2"></i>وضعیت پرداخت هزینه توسط مشتری:</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">وضعیت مالی مشتری:</label>
+                                <select name="payment_status" id="resellerPaymentStatus" class="form-select" onchange="toggleResellerDebtor(this)">
+                                    <option value="paid" selected>🟢 مشتری وجه را پرداخت / تسویه کرده است</option>
+                                    <option value="unpaid">🔴 مشتری هنوز پرداخت نکرده است (بدهکار)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6" id="resellerPaymentDestBox">
+                                <label class="form-label fw-bold">حساب / کارت مقصد واریز یا دریافت نقدی:</label>
+                                <select name="payment_destination" class="form-select border-success fw-bold">
+                                    {% if default_account %}
+                                    <option value="account_{{ default_account['id'] }}" selected>
+                                        ⭐ [پیش‌فرض مشتریان] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} (مانده: {{ "{:,}".format(default_account.get('balance', 0)) }} ت)
+                                    </option>
+                                    {% endif %}
+                                    <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی جهت تسویه بعدی)</option>
+                                    {% for acc in (accounts or cards) %}
+                                        {% if not default_account or acc['id'] != default_account['id'] %}
+                                        <option value="account_{{ acc['id'] }}">
+                                            {% if acc.get('account_type') == 'cash_desk' %}
+                                                🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }}) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% elif 'gateway' in acc.get('account_type', '') %}
+                                                ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }}) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                                💎 ولت کریپتو {{ acc.get('bank_name') }} - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% else %}
+                                                💳 کارت {{ acc.get('bank_name') }} - {{ acc.get('card_holder') }} ({{ acc.get('card_number', '')[-4:] }}****) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% endif %}
+                                        </option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">در صورت انتخاب کارت، به موجودی شناور کارت افزوده می‌شود.</small>
+                            </div>
+                            <div class="col-md-6" id="resellerDebtAmountBox" style="display: none;">
+                                <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری (تومان):</label>
+                                <input type="number" step="1000" name="debt_amount" id="resellerDebtAmountInput" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی دلخواه...">
+                                <small class="text-muted">پیش‌فرض: قیمت نهایی بسته (قابل تغییر دستی)</small>
+                            </div>
+                            <div class="col-12" id="resellerDebtNoteBox" style="display: none;">
+                                <label class="form-label small fw-bold text-danger"><i class="fas fa-file-invoice-dollar me-1"></i>شرایط یا مهلت تسویه بدهی (قابل مشاهده توسط مشتری در پورتال و ربات):</label>
+                                <input type="text" name="debt_notes" class="form-control form-control-sm border-danger" placeholder="مثلاً: مهلت تسویه تا آخر هفته - ارسال فیش در بخش تمدید">
+                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">توجه: این متن در صورت بدهکار بودن مشتری، در فاکتور بدهی پورتال به خود کاربر نمایش داده می‌شود.</small>
+                            </div>
+                            <div class="col-12" id="resellerDebtDueContainer" style="display: none;">
+                                <!-- کادر مهلت تسویه بدهی و قطع خودکار سرویس -->
+                                <div class="p-3 bg-white rounded-3 border border-danger border-opacity-50 mt-2 shadow-xs">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <label class="form-label fw-bold text-danger mb-0 small">
+                                            <i class="fas fa-user-clock text-danger me-1"></i>مهلت تسویه حساب و زمان قطع خودکار سرویس:
+                                        </label>
+                                        <div class="form-check form-switch m-0">
+                                            <input class="form-check-input ms-0 me-1" type="checkbox" role="switch" id="debtDueCalendarSwitch_resellerCreate" onchange="toggleDebtDueCalendar('resellerCreate')">
+                                            <label class="form-check-label small text-muted cursor-pointer" for="debtDueCalendarSwitch_resellerCreate" style="font-size: 0.78rem;">
+                                                <i class="fas fa-calendar-alt text-primary me-1"></i>انتخاب تاریخ دقیق شمسی
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <input type="hidden" name="debt_due_mode" id="debtDueMode_resellerCreate" value="days">
+                                    
+                                    <!-- ورودی حالت ۱: تعداد روز مهلت -->
+                                    <div id="debtDueDaysBox_resellerCreate" class="mb-2">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-light text-danger border-danger"><i class="fas fa-hourglass-half"></i></span>
+                                            <input type="number" min="1" max="365" name="debt_due_days" id="debtDueDaysInput_resellerCreate" class="form-control form-control-sm border-danger font-monospace text-center fw-bold" value="3" oninput="updateDebtDuePreview('resellerCreate')">
+                                            <span class="input-group-text bg-light text-muted">روز مهلت تسویه</span>
+                                        </div>
+                                        <div class="d-flex gap-1 mt-1 flex-wrap">
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="1" onclick="setDebtDueQuickDays('resellerCreate', 1)">۱ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="2" onclick="setDebtDueQuickDays('resellerCreate', 2)">۲ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-danger py-0 px-2 active fw-bold" style="font-size: 0.7rem;" data-days="3" onclick="setDebtDueQuickDays('resellerCreate', 3)">۳ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="5" onclick="setDebtDueQuickDays('resellerCreate', 5)">۵ روز</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="7" onclick="setDebtDueQuickDays('resellerCreate', 7)">۱ هفته</button>
+                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" data-days="14" onclick="setDebtDueQuickDays('resellerCreate', 14)">۲ هفته</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- ورودی حالت ۲: تقویم و تاریخ دقیق شمسی -->
+                                    <div id="debtDueCalendarBox_resellerCreate" class="mb-2" style="display: none;">
+                                        <div class="row g-1 align-items-center">
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">روز:</label>
+                                                <select id="debtDueDay_resellerCreate" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">ماه:</label>
+                                                <select id="debtDueMonth_resellerCreate" class="form-select form-select-sm border-primary text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                            <div class="col-4">
+                                                <label class="small text-muted mb-0" style="font-size: 0.7rem;">سال:</label>
+                                                <select id="debtDueYear_resellerCreate" class="form-select form-select-sm border-primary font-monospace text-center" onchange="syncDebtDueCalendar('resellerCreate')"></select>
+                                            </div>
+                                        </div>
+                                        <input type="hidden" name="debt_due_date_shamsi" id="debtDueDateShamsi_resellerCreate" value="">
+                                    </div>
+                                    
+                                    <!-- پیش‌نمایش زنده تاریخ و ساعت دقیق قطع -->
+                                    <div class="alert alert-danger bg-danger bg-opacity-10 border border-danger border-opacity-25 py-1.5 px-2 mb-0 rounded-2" style="font-size: 0.76rem;">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <div class="fw-bold">
+                                                <i class="fas fa-stopwatch text-danger me-1"></i>
+                                                <span>زمان قطع سرویس در صورت عدم تسویه:</span>
+                                            </div>
+                                            <span class="badge bg-danger text-white font-monospace" id="debtDueTimeBadge_resellerCreate">--:--</span>
+                                        </div>
+                                        <div class="mt-1 fw-bold text-danger text-start font-monospace" id="debtDuePreviewText_resellerCreate">
+                                            در حال محاسبه...
+                                        </div>
+                                        <div class="text-muted small mt-0.5" style="font-size: 0.68rem;">
+                                            * ساعت قطع خودکار دقیقاً منطبق بر ساعت ثبت این فرم خواهد بود. در صورت تسویه حساب، اشتراک هرگز غیرفعال نمی‌گردد.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بخش یادداشت داخلی و پیام پورتال مشتری -->
+                    <div class="card p-3 bg-light rounded-3 border mb-4">
+                        <h6 class="fw-bold text-dark mb-3"><i class="fas fa-clipboard-check text-primary me-2"></i>یادداشت‌های اختصاصی و پیام مشتری:</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-dark"><i class="fas fa-lock text-warning me-1"></i>یادداشت داخلی همکاران / پشتیبانی:</label>
+                                <textarea name="internal_note" class="form-control form-control-sm" rows="2" placeholder="اختیاری - فقط شما و همکاران پنل خودتان می‌بینید (کاملاً ایزوله و محرمانه)"></textarea>
+                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">این یادداشت کاملاً محرمانه است و به هیچ عنوان به مشتری نمایش داده نمی‌شود.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-dark"><i class="fas fa-bullhorn text-info me-1"></i>پیام به مشتری در پورتال (Customer Notice):</label>
+                                <textarea name="customer_note" class="form-control form-control-sm" rows="2" placeholder="اختیاری - نمایش به عنوان اطلاعیه قابل بستن در بالای پورتال مشتری"></textarea>
+                                <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">مشتری این پیام را در پورتال می‌بیند و با دکمه بستن (ضربدر) می‌تواند آن را ببندد.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">انتخاب بسته مورد نظر:</label>
+                        <div class="row g-3">
+                            {% for p_key, p in plans.items() %}
+                            {% if p.get('is_active', True) and p.get('master_is_active', True) %}
+                            {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
+                            {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
+                            {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'بسته' %}
+                            {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
+                            {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
+                            <div class="col-md-6">
+                                <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price|default(0) }}, {{ p_wholesale_price|default(0) }})" {% if loop.first %}checked{% endif %}>
+                                        {% set icon_info = get_plan_icon(p, p_key) %}
+                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 mt-1 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.9rem;">
+                                            <i class="{{ icon_info.icon }}"></i>
+                                        </span>
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                                                <span class="fw-bold">{{ p_name }}</span>
+                                                {% if not p.get('show_in_reseller_bot', True) %}
+                                                <span class="badge bg-warning-subtle text-dark border border-warning px-2 py-1" style="font-size: 0.7rem;" title="این پلن در ربات تلگرام نمایش داده نمی‌شود و فقط مخصوص صدور دستی در پنل وب شماست">
+                                                    <i class="fas fa-gem text-warning me-1"></i>بسته اختصاصی دستی
+                                                </span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="text-muted small">حجم: {{ p_limit }} گیگ | مدت: {{ p_duration }} روز</div>
+                                            <div class="mt-2">
+                                                <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p_orig_price) }} ت</span>
+                                                <strong class="text-success ms-1">{{ "{:,}".format(p_wholesale_price) }} تومان</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- انتخاب منبع کسر هزینه (کیف پول / اعتبار خرید) -->
+                    {% if has_credit %}
+                    <div class="p-3 bg-white rounded-3 border mb-4 shadow-sm" id="paymentSourceContainer">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold text-dark mb-0">
+                                <i class="fas fa-money-bill-transfer text-primary me-1"></i> انتخاب روش پرداخت هزینه اشتراک:
+                            </label>
+                            <span class="badge bg-light text-primary border px-2 py-1 small">
+                                <i class="fas fa-scale-balanced me-1"></i> توان کل خرید: {{ "{:,}".format(total_purchasing_power) }} تومان
+                            </span>
+                        </div>
+                        <div class="row g-2">
+                            <!-- ۱. کیف پول نقدی -->
+                            <div class="col-md-4">
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardWallet" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcWallet" value="wallet" class="form-check-input mx-auto mb-2" {% if balance > 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-success mb-1">
+                                        <i class="fas fa-wallet fs-5"></i>
+                                        <span class="fw-bold">کیف پول نقدی</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(balance) }} <small class="text-muted">تومان</small></div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">کسر مستقیم بدون بدهی</div>
+                                </label>
+                            </div>
+
+                            <!-- ۲. اعتبار خرید (نسیه) -->
+                            <div class="col-md-4">
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardCredit" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcCredit" value="credit" class="form-check-input mx-auto mb-2" {% if balance <= 0 and available_credit > 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-info mb-1">
+                                        <i class="fas fa-credit-card fs-5"></i>
+                                        <span class="fw-bold">اعتبار خرید (نسیه)</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(available_credit) }} <small class="text-muted">تومان</small></div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">سقف اعتبار: {{ "{:,}".format(credit_limit) }} ت</div>
+                                </label>
+                            </div>
+
+                            <!-- ۳. خودکار / ترکیبی -->
+                            <div class="col-md-4">
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardAuto" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcAuto" value="auto" class="form-check-input mx-auto mb-2" {% if balance <= 0 and available_credit <= 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-primary mb-1">
+                                        <i class="fas fa-wand-magic-sparkles fs-5"></i>
+                                        <span class="fw-bold">پرداخت خودکار</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-primary font-monospace mb-1">هوشمند ترکیبی</div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">ابتدا کیف پول، سپس اعتبار</div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- پیغام و بازخورد لحظه‌ای انتخاب روش پرداخت -->
+                        <div id="paymentSourceNotice" class="mt-3 p-2 rounded small" style="display: none;"></div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="payment_source" value="wallet">
+                    {% endif %}
+
+                    {% if reseller.get('can_gift_traffic') %}
+                    {% set gift_balance = reseller.get('gift_traffic_balance', 0) | float %}
+                    <!-- بخش اهدای حجم هدیه رایگان به مشتری -->
+                    <div class="p-3 {% if gift_balance > 0 %}bg-success bg-opacity-10 border border-success{% else %}bg-secondary bg-opacity-10 border border-secondary{% endif %} rounded-3 mb-4">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <label class="form-label fw-bold {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %} mb-0">
+                                <i class="fas fa-gift me-1"></i> اهدای حجم هدیه رایگان به مشتری (GB):
+                            </label>
+                            {% if gift_balance > 0 %}
+                            <span class="badge bg-success text-white"><i class="fas fa-coins me-1"></i>سهمیه باقیمانده شما: {{ gift_balance }} گیگابایت</span>
+                            {% else %}
+                            <span class="badge bg-danger text-white"><i class="fas fa-ban me-1"></i>سهمیه هدیه تمام شده است</span>
+                            {% endif %}
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="fas fa-plus {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %}"></i></span>
+                            <input type="number" step="0.5" min="0" {% if gift_balance > 0 %}max="{{ gift_balance }}"{% else %}disabled{% endif %} name="gift_traffic_gb" id="giftTrafficInput" class="form-control font-monospace" placeholder="حجم هدیه اضافی به گیگابایت (اختیاری - مثلاً: 5)" value="0">
+                            <span class="input-group-text bg-white">گیگابایت</span>
+                        </div>
+                        <div class="form-text small {% if gift_balance > 0 %}text-muted{% else %}text-danger fw-bold{% endif %} mt-1">
+                            {% if gift_balance > 0 %}
+                            این حجم هدیه از سهمیه هدیه شما ({{ gift_balance }} GB) کسر می‌شود و بدون کسر وجه از کیف پول شما، به حجم اولیه اشتراک مشتری اضافه می‌گردد.
+                            {% else %}
+                            سهمیه حجم هدیه شما تمام شده است و امکان افزودن هدیه ندارید تا مدیریت مجدداً سهمیه هدیه شما را شارژ نماید.
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- بخش تخفیف به مشتری و نمایش همجوار مبلغ نهایی دریافتی -->
+                    <div class="card bg-warning bg-opacity-10 border border-warning rounded-3 mb-4 shadow-sm">
+                        <div class="card-body p-3">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label fw-bold text-dark mb-1 d-flex align-items-center justify-content-between">
+                                        <span><i class="fas fa-tag text-warning me-1"></i>مبلغ تخفیف به مشتری (تومان):</span>
+                                    </label>
+                                    <div class="input-group">
+                                        <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('customerDiscountInput', -10000)" title="کاهش ۱۰ هزار تومان">-</button>
+                                        <input type="number" step="10000" min="0" name="discount_amount" id="customerDiscountInput" class="form-control font-monospace text-center fw-bold fs-6" placeholder="0" value="" oninput="updateCustomerDiscount()">
+                                        <button type="button" class="btn btn-outline-warning text-dark fw-bold px-3" onclick="stepDiscountInput('customerDiscountInput', 10000)" title="افزایش ۱۰ هزار تومان">+</button>
+                                    </div>
+                                    <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">اختیاری - کسر از مبلغ پرداختی یا بدهی مشتری</small>
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <label class="form-label fw-bold text-success mb-1 d-flex align-items-center justify-content-between">
+                                        <span><i class="fas fa-coins text-success me-1"></i>مبلغ نهایی دریافتی از مشتری:</span>
+                                    </label>
+                                    <div class="p-2 bg-white border border-success rounded text-center shadow-sm">
+                                        <div class="fs-5 fw-bold text-success font-monospace" id="displayResellerCustomerPayable">۰ تومان</div>
+                                        <div class="text-muted small" style="font-size: 0.7rem;" id="displayResellerDiscountBreakdown">قیمت مصوب بسته: ۰ ت (بدون تخفیف)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- خلاصه فاکتور و پرداخت -->
+                    <div class="p-3 bg-light rounded-3 mb-4">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>قیمت مصوب بسته:</span>
+                            <span id="origPriceText">0 تومان</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2 text-primary">
+                            <span>تخفیف نمایندگی شما ({{ discount }}%):</span>
+                            <span id="discountAmountText">0 تومان</span>
+                        </div>
+                        <hr class="my-2">
+                        <div class="d-flex justify-content-between fs-5 fw-bold text-success">
+                            <span>مبلغ نهایی پرداختی شما:</span>
+                            <span id="finalPriceText">0 تومان</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitCreateSubBtn" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و صدور اکانت مطمئن هستید؟')">
+                        <i class="fas fa-bolt me-2"></i> پرداخت هزینه و صدور آنی اکانت
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
             <div class="modal-footer bg-light py-2">
                 <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">بستن</button>
             </div>
@@ -2862,6 +3227,189 @@
 </style>
 
 <script>
+
+// --- اسکریپت‌های مدال ساخت مشتری جدید نمایندگی ---
+const discountPercent = {{ discount|default(0) }};
+const userBalance = {{ balance|default(0) }};
+const userAvailableCredit = {{ available_credit|default(0) }};
+const creditEnabled = {{ 'true' if has_reseller_credit else 'false' }};
+let currentFinalPrice = 0;
+let currentRetailPrice = 0;
+
+function toggleResellerDebtor(sel) {
+    const isDebtor = (sel.value === 'unpaid');
+    const dBox = document.getElementById('resellerDebtAmountBox');
+    if (dBox) dBox.style.display = isDebtor ? 'block' : 'none';
+    const nBox = document.getElementById('resellerDebtNoteBox');
+    if (nBox) nBox.style.display = isDebtor ? 'block' : 'none';
+    const debtDueBox = document.getElementById('resellerDebtDueContainer');
+    if (debtDueBox) debtDueBox.style.display = isDebtor ? 'block' : 'none';
+    const destBox = document.getElementById('resellerPaymentDestBox');
+    if (destBox) destBox.style.display = isDebtor ? 'none' : 'block';
+    const debtInput = document.getElementById('resellerDebtAmountInput');
+    if (debtInput && isDebtor && (!debtInput.value || debtInput.value === '0')) {
+        debtInput.value = currentRetailPrice || currentFinalPrice;
+    }
+    if (isDebtor && typeof initDebtDuePicker === 'function') {
+        initDebtDuePicker('resellerCreate', 3);
+    }
+}
+
+function updatePaymentSourceUI() {
+    if (!creditEnabled) return;
+    const payWallet = document.getElementById('paySrcWallet');
+    const payCredit = document.getElementById('paySrcCredit');
+    const payAuto = document.getElementById('paySrcAuto');
+    const cardWallet = document.getElementById('cardWallet');
+    const cardCredit = document.getElementById('cardCredit');
+    const cardAuto = document.getElementById('cardAuto');
+    const notice = document.getElementById('paymentSourceNotice');
+    const submitBtn = document.getElementById('submitCreateSubBtn');
+
+    [cardWallet, cardCredit, cardAuto].forEach(c => {
+        if (c) {
+            c.classList.remove('border-success', 'border-info', 'border-primary', 'bg-success', 'bg-info', 'bg-primary', 'bg-opacity-10', 'shadow');
+            c.style.borderColor = '#e2e8f0';
+        }
+    });
+
+    let selected = 'wallet';
+    if (payCredit && payCredit.checked) selected = 'credit';
+    else if (payAuto && payAuto.checked) selected = 'auto';
+
+    if (selected === 'wallet' && cardWallet) {
+        cardWallet.classList.add('border-success', 'bg-success', 'bg-opacity-10', 'shadow-sm');
+        cardWallet.style.borderColor = '#10b981';
+    } else if (selected === 'credit' && cardCredit) {
+        cardCredit.classList.add('border-info', 'bg-info', 'bg-opacity-10', 'shadow-sm');
+        cardCredit.style.borderColor = '#0284c7';
+    } else if (selected === 'auto' && cardAuto) {
+        cardAuto.classList.add('border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+        cardAuto.style.borderColor = '#6366f1';
+    }
+
+    if (!notice) return;
+
+    if (currentFinalPrice > 0) {
+        const totalPower = userBalance + userAvailableCredit;
+        if (totalPower < currentFinalPrice) {
+            notice.style.display = 'block';
+            notice.className = 'mt-3 p-2 rounded small alert alert-danger mb-0';
+            notice.innerHTML = `<i class="fas fa-circle-xmark me-1"></i> مجموع موجودی کیف پول و اعتبار شما (${totalPower.toLocaleString('fa-IR')} ت) برای خرید این پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) کافی نیست. لطفاً کیف پول خود را شارژ کنید.`;
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+        } else {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+
+        if (selected === 'wallet') {
+            if (userBalance < currentFinalPrice) {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-warning mb-0';
+                notice.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i> موجودی نقدی شما (${userBalance.toLocaleString('fa-IR')} ت) کمتر از مبلغ پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) است. برای تکمیل خرید، روش را به <strong>«اعتبار خرید»</strong> یا <strong>«پرداخت خودکار»</strong> تغییر دهید.`;
+            } else {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-success mb-0';
+                notice.innerHTML = `<i class="fas fa-circle-check me-1"></i> مبلغ <strong>${currentFinalPrice.toLocaleString('fa-IR')} تومان</strong> مستقیماً از کیف پول نقدی کسر می‌شود و هیچ‌گونه بدهی اعتباری ایجاد نخواهد شد.`;
+            }
+        } else if (selected === 'credit') {
+            if (userAvailableCredit < currentFinalPrice) {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-warning mb-0';
+                notice.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i> سقف اعتبار در دسترس شما (${userAvailableCredit.toLocaleString('fa-IR')} ت) برای پرداخت کامل این پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) کافی نیست.`;
+            } else {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-info mb-0';
+                notice.innerHTML = `<i class="fas fa-info-circle me-1"></i> مبلغ <strong>${currentFinalPrice.toLocaleString('fa-IR')} تومان</strong> از خط اعتباری شما کسر شده و به عنوان بدهی جاری شما ثبت می‌گردد.`;
+            }
+        } else if (selected === 'auto') {
+            notice.style.display = 'block';
+            notice.className = 'mt-3 p-2 rounded small alert alert-primary mb-0';
+            if (userBalance >= currentFinalPrice) {
+                notice.innerHTML = `<i class="fas fa-wand-magic-sparkles me-1"></i> چون موجودی نقدی شما کافی است، کل مبلغ (${currentFinalPrice.toLocaleString('fa-IR')} ت) از کیف پول نقدی کسر می‌شود.`;
+            } else {
+                const diff = currentFinalPrice - userBalance;
+                notice.innerHTML = `<i class="fas fa-wand-magic-sparkles me-1"></i> ابتدا کل موجودی نقدی (${userBalance.toLocaleString('fa-IR')} ت) کسر شده و مابقی (${diff.toLocaleString('fa-IR')} ت) از اعتبار خرید کسر و به بدهی اضافه می‌گردد.`;
+            }
+        }
+    }
+}
+
+function stepDiscountInput(inputId, delta) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    let val = parseInt(el.value || '0', 10);
+    if (isNaN(val)) val = 0;
+    val += delta;
+    if (val <= 0) {
+        el.value = '';
+    } else {
+        el.value = val;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function updateCustomerDiscount() {
+    const discInput = document.getElementById('customerDiscountInput');
+    const discVal = discInput ? Math.max(0, parseInt(discInput.value) || 0) : 0;
+    const retail = currentRetailPrice || 0;
+    const custPayable = Math.max(0, retail - discVal);
+
+    const custPayableEl = document.getElementById('displayResellerCustomerPayable');
+    const custBreakdownEl = document.getElementById('displayResellerDiscountBreakdown');
+    if (custPayableEl) custPayableEl.innerText = custPayable.toLocaleString('fa-IR') + ' تومان';
+    if (custBreakdownEl) {
+        if (discVal > 0) {
+            custBreakdownEl.innerText = `قیمت مصوب: ${retail.toLocaleString('fa-IR')} ت - تخفیف: ${discVal.toLocaleString('fa-IR')} ت`;
+        } else {
+            custBreakdownEl.innerText = `قیمت مصوب بسته: ${retail.toLocaleString('fa-IR')} ت (بدون تخفیف)`;
+        }
+    }
+
+    const debtInput = document.getElementById('resellerDebtAmountInput');
+    if (debtInput && currentRetailPrice > 0) {
+        debtInput.value = custPayable;
+    }
+}
+
+function calculatePrice(price, wholesalePrice) {
+    const finalPrice = (wholesalePrice !== undefined && wholesalePrice !== null) ? wholesalePrice : Math.floor((price * (100 - discountPercent)) / 100);
+    const discountAmount = Math.max(0, price - finalPrice);
+    currentFinalPrice = finalPrice;
+    currentRetailPrice = price;
+    const origEl = document.getElementById('origPriceText');
+    const discEl = document.getElementById('discountAmountText');
+    const finEl = document.getElementById('finalPriceText');
+    if (origEl) origEl.innerText = price.toLocaleString('fa-IR') + ' تومان';
+    if (discEl) discEl.innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';
+    if (finEl) finEl.innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
+    
+    updateCustomerDiscount();
+
+    document.querySelectorAll('#createSubForm .plan-option').forEach(card => {
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio && radio.checked) {
+            card.classList.add('border-primary', 'bg-primary', 'bg-opacity-10');
+        } else {
+            card.classList.remove('border-primary', 'bg-primary', 'bg-opacity-10');
+        }
+    });
+
+    updatePaymentSourceUI();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const resellerModal = document.getElementById('resellerCreateUserModal');
+    if (resellerModal) {
+        resellerModal.addEventListener('shown.bs.modal', function () {
+            const checked = resellerModal.querySelector('input[name="plan_id"]:checked');
+            if (checked) checked.dispatchEvent(new Event('change'));
+            updatePaymentSourceUI();
+        });
+    }
+});
+
+
 function updateResellerInstantNotice(subId) {
     const chk = document.getElementById('resellerInstantActivate' + subId);
     const badge = document.getElementById('resellerInstantBadge' + subId);

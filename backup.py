@@ -48,8 +48,8 @@ def format_file_size(size_bytes: int) -> str:
 class BackupManager:
     """کلاس مدیریت ایجاد و بازیابی فایل‌های پشتیبان"""
 
-    def __init__(self):
-        pass
+    def __init__(self, db_instance=None):
+        self.db = db_instance or db
 
     def create_database_backup(self, compress=True):
         """
@@ -61,7 +61,7 @@ class BackupManager:
             raw_db_filename = f"backup_main_{timestamp}.db"
             raw_db_path = BACKUP_DIR / raw_db_filename
 
-            source_path = db.db_path
+            source_path = Path(self.db.db_path)
             if not source_path.exists():
                 logger.error("Database file not found for backup")
                 return {"success": False, "error": "فایل دیتابیس اصلی یافت نشد."}
@@ -73,7 +73,7 @@ class BackupManager:
             dst_conn.close()
             src_conn.close()
 
-            metrics = db.get_system_backup_metrics()
+            metrics = self.db.get_system_backup_metrics()
             final_file = raw_db_path
             final_filename = raw_db_filename
 
@@ -196,7 +196,7 @@ class BackupManager:
             return {"success": False, "error": str(e)}
 
     def restore_backup(self, backup_path):
-        """بازیابی دیتابیس از فایل پشتیبان"""
+        """بازیابی دیتابیس از فایل پشتیبان (.db یا .zip)"""
         try:
             backup_path = Path(backup_path)
             if not backup_path.exists():
@@ -205,25 +205,62 @@ class BackupManager:
             # در صورتی که فایل ارسالی zip باشد، ابتدا فایل .db را استخراج می‌کنیم
             actual_db_file = backup_path
             temp_extracted = None
-            if backup_path.suffix.lower() == ".zip":
+            is_zip = False
+            try:
+                is_zip = backup_path.suffix.lower() == ".zip" or zipfile.is_zipfile(backup_path)
+            except Exception:
+                is_zip = False
+
+            if is_zip:
                 with zipfile.ZipFile(backup_path, "r") as zf:
-                    for name in zf.namelist():
-                        if name.endswith(".db"):
-                            temp_extracted = BACKUP_DIR / f"extracted_{name}"
-                            with open(temp_extracted, "wb") as f_out:
-                                f_out.write(zf.read(name))
-                            actual_db_file = temp_extracted
-                            break
+                    db_names = [n for n in zf.namelist() if n.endswith(".db") or n.endswith(".sqlite") or n.endswith(".sqlite3")]
+                    if not db_names:
+                        return {"success": False, "error": "هیچ فایل دیتابیسی (.db) درون این فایل فشرده یافت نشد."}
+                    target_name = db_names[0]
+                    temp_extracted = BACKUP_DIR / f"extracted_{Path(target_name).name}"
+                    with open(temp_extracted, "wb") as f_out:
+                        f_out.write(zf.read(target_name))
+                    actual_db_file = temp_extracted
+
+            # تست اعتبارسنجی اولیه ساختار SQLite قبل از بازنویسی
+            try:
+                test_conn = sqlite3.connect(f"file:{Path(actual_db_file).resolve()}?mode=ro", uri=True)
+                test_cur = test_conn.cursor()
+                test_cur.execute("PRAGMA integrity_check")
+                row = test_cur.fetchone()
+                test_conn.close()
+                if not row or row[0] != "ok":
+                    if temp_extracted and temp_extracted.exists():
+                        try:
+                            temp_extracted.unlink()
+                        except Exception:
+                            pass
+                    return {"success": False, "error": f"فایل انتخابی یک دیتابیس معتبر و سالم SQLite نیست (integrity_check: {row})."}
+            except Exception as e_check:
+                if temp_extracted and temp_extracted.exists():
+                    try:
+                        temp_extracted.unlink()
+                    except Exception:
+                        pass
+                return {"success": False, "error": f"فایل انتخابی یک دیتابیس معتبر نیست یا آسیب دیده است: {e_check}"}
 
             # کپی امنیتی از وضعیت فعلی قبل از بازنویسی
             current_backup = BACKUP_DIR / f"pre_restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
-            if db.db_path.exists():
-                shutil.copy2(db.db_path, current_backup)
+            target_db = Path(self.db.db_path)
+            if target_db.exists():
+                shutil.copy2(target_db, current_backup)
 
             # کپی فایل دیتابیس
-            shutil.copy2(actual_db_file, db.db_path)
+            shutil.copy2(actual_db_file, target_db)
+
+            # اجرای مایگریشن ستون‌های احتمالی جدید
             try:
-                db.sync_configs_from_settings()
+                self.db.migrate_add_columns()
+            except Exception as e_mig:
+                logger.warning(f"Could not run migrate_add_columns after restore: {e_mig}")
+
+            try:
+                self.db.sync_configs_from_settings()
             except Exception as e_sync:
                 logger.warning(f"Could not auto-sync configs after restore: {e_sync}")
 
@@ -264,32 +301,34 @@ class BackupManager:
                 })
         return backups
 
-    def delete_old_backups(self, keep_count=25, backup_type=None):
-        """پاک‌سازی خودکار فایل‌های پشتیبان قدیمی جهت جلوگیری از اشغال دیسک"""
+    def delete_old_backups(self, keep_count=15, backup_type=None):
+        """پاک‌سازی خودکار فایل‌های پشتیبان قدیمی جهت جلوگیری از اشغال دیسک (حفظ ۱۵ فایل اخیر)"""
         try:
-            main_files = sorted(
-                list(BACKUP_DIR.glob("backup_main_*.zip")) + list(BACKUP_DIR.glob("backup_main_*.db")),
-                key=lambda x: x.stat().st_mtime
-            )
-            if len(main_files) > keep_count:
-                for f in main_files[:-keep_count]:
-                    try:
-                        f.unlink()
-                        logger.info(f"Deleted old main backup: {f.name}")
-                    except Exception:
-                        pass
+            if backup_type in (None, "main_panel"):
+                main_files = sorted(
+                    list(BACKUP_DIR.glob("backup_main_*.zip")) + list(BACKUP_DIR.glob("backup_main_*.db")),
+                    key=lambda x: x.stat().st_mtime
+                )
+                if len(main_files) > keep_count:
+                    for f in main_files[:-keep_count]:
+                        try:
+                            f.unlink()
+                            logger.info(f"Deleted old main backup: {f.name}")
+                        except Exception:
+                            pass
 
-            hiddify_files = sorted(
-                list(BACKUP_DIR.glob("backup_hiddify_*.json")),
-                key=lambda x: x.stat().st_mtime
-            )
-            if len(hiddify_files) > keep_count:
-                for f in hiddify_files[:-keep_count]:
-                    try:
-                        f.unlink()
-                        logger.info(f"Deleted old hiddify backup: {f.name}")
-                    except Exception:
-                        pass
+            if backup_type in (None, "hiddify"):
+                hiddify_files = sorted(
+                    list(BACKUP_DIR.glob("backup_hiddify_*.json")),
+                    key=lambda x: x.stat().st_mtime
+                )
+                if len(hiddify_files) > keep_count:
+                    for f in hiddify_files[:-keep_count]:
+                        try:
+                            f.unlink()
+                            logger.info(f"Deleted old hiddify backup: {f.name}")
+                        except Exception:
+                            pass
         except Exception as e:
             logger.warning(f"Error cleaning old backups: {e}")
 
@@ -422,7 +461,8 @@ def test_telegram_connection(target_chat: str) -> dict:
 
 def trigger_main_panel_backup(trigger_type: str = "auto", target_chat: str = None) -> dict:
     """اجرای پشتیبان‌گیری از پنل اصلی، ارسال به تلگرام و ثبت گزارش در دیتابیس"""
-    dest_chat = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
+    raw_dest = target_chat if target_chat is not None else (db.get_setting("backup_telegram_target") or db.get_setting("hiddify_backup_channel_id") or "")
+    dest_chat = normalize_telegram_chat_id(str(raw_dest or "").strip())
     
     # ۱. ایجاد فایل پشتیبان دیتابیس
     b_res = backup_manager.create_database_backup(compress=True)
@@ -484,8 +524,8 @@ def trigger_main_panel_backup(trigger_type: str = "auto", target_chat: str = Non
         trigger_type=trigger_type
     )
 
-    # ۴. پاک‌سازی فایل‌های قدیمی
-    backup_manager.delete_old_backups(keep_count=25)
+    # ۴. پاک‌سازی فایل‌های قدیمی (حفظ ۱۵ بکاپ آخر)
+    backup_manager.delete_old_backups(keep_count=15, backup_type="main_panel")
 
     if not send_res.get("success"):
         return {"success": False, "error": f"فایل ایجاد شد ولی ارسال به تلگرام با خطا مواجه گردید: {err_msg}", "filename": f_name}
@@ -495,8 +535,8 @@ def trigger_main_panel_backup(trigger_type: str = "auto", target_chat: str = Non
 
 async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_chat: str = None) -> dict:
     """اجرای ناهمگام پشتیبان‌گیری هیدیفای"""
-    raw_dest = (target_chat or db.get_setting("backup_telegram_target", "") or db.get_setting("hiddify_backup_channel_id", "")).strip()
-    dest_chat = normalize_telegram_chat_id(raw_dest)
+    raw_dest = target_chat if target_chat is not None else (db.get_setting("backup_telegram_target") or db.get_setting("hiddify_backup_channel_id") or "")
+    dest_chat = normalize_telegram_chat_id(str(raw_dest or "").strip())
 
     # ۱. دریافت بکاپ هیدیفای
     h_res = await backup_manager.create_hiddify_backup()
@@ -561,7 +601,7 @@ async def trigger_hiddify_panel_backup_async(trigger_type: str = "auto", target_
         trigger_type=trigger_type
     )
 
-    backup_manager.delete_old_backups(keep_count=25)
+    backup_manager.delete_old_backups(keep_count=15, backup_type="hiddify")
 
     if not send_res.get("success"):
         return {"success": False, "error": f"بکاپ هیدیفای دریافت شد اما ارسال به تلگرام با خطا مواجه شد: {err_msg}", "filename": f_name}
@@ -700,8 +740,7 @@ class AutoBackupScheduler:
             if (now - last_run).total_seconds() < 1800:
                 return False
 
-        # پنجره باز اجرای مطمئن در ۱۵ دقیقه اول ساعت
-        return now.minute < 15
+        return True
 
     async def _main_scheduler_loop(self):
         """حلقه اصلی بررسی هر ۶۰ ثانیه به وقت تهران"""

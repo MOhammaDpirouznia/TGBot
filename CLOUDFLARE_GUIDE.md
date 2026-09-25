@@ -1,93 +1,132 @@
-# ☁️ راهنمای اتصال و استقرار با کلودفلر (Cloudflare Integration & Tunneling)
+# ☁️ راهنمای جامع و تضمینی اتصال با کلودفلر و تانل (Cloudflare Tunnel Guide)
 
-استفاده از کلودفلر (Cloudflare) چندین مزیت فوق‌العاده برای سامانه HiddiBot به همراه دارد:
-1. **پنهان‌سازی کامل IP اصلی سرور (Anti-DDoS & IP Masking)**
-2. **اتصال بدون نیاز به پورت باز با Cloudflare Tunnel (دور زدن فیلترینگ و NAT)**
-3. **SSL رایگان و خودکار (Full Strict)**
-4. **توزیع ترافیک جهانی با تاخیر کم (Global Edge Caching & CDN)**
+استفاده از **کلودفلر تانل (`cloudflared`)** بهترین، امن‌ترین و مطمئن‌ترین روش برای اتصال دامنه به پنل وب HiddiBot است، به ویژه زمانی که پنل را **در کنار هیدیفای (Hiddify)، مرزبان (Marzban) یا Nginx** روی یک سرور مشترک نصب کرده‌اید.
+
+### 🌟 چرا کلودفلر تانل بهترین راهکار همزیستی است؟
+1. **بدون نیاز به باز کردن پورت ۸۰ یا ۴۴۳:** پورت‌های اصلی وب سرور کاملاً در اختیار هیدیفای یا هسته Xray باقی می‌مانند.
+2. **پنهان‌سازی ۱۰۰٪ آی‌پی سرور (Anti-DDoS & IP Masking):** هیچ‌کس نمی‌تواند آی‌پی واقعی سرور شما را از طریق پنل شناسایی یا فیلتر کند.
+3. **گواهی SSL خودکار، معتبر و بدون دردسر:** نیازی به اجرای Certbot یا درگیری با چالش تداخل پورت ۸۰ نیست.
+4. **عدم نیاز به IP ثابت یا پورت فورواردینگ:** حتی روی سرورهای پشت NAT یا شبکه‌های داخلی نیز بدون مشکل کار می‌کند.
+5. **راه‌اندازی خودکار پس از ریبوت سرور:** سرویس `cloudflared` توسط `systemd` مدیریت شده و با هر بار ریست سرور فعال می‌گردد.
 
 ---
 
-## 🚀 روش ۱: اتصال از طریق Cloudflare Tunnel (توصیه شده و فوق امن)
+## 🚀 روش ۱ (پیشنهادی و ۱۰۰٪ بدون خطا): اتصال با توکن کلودفلر Zero Trust
 
-با استفاده از **Cloudflare Tunnel (`cloudflared`)**، بدون نیاز به باز کردن پورت‌های ۸۰ یا ۴۴۳ روی سرور و حتی بدون داشتن IP اختصاصی/ثابت، پنل وب به دامنه شما متصل می‌شود.
+این روش مدرن‌ترین و پایدارترین شیوه کلودفلر است که تمام مراحل ساخت سرویس، گواهی‌ها و ارتباط امن را تنها با **یک دستور** انجام می‌دهد و هیچ نیازی به ساخت دستی فایل‌های کانفیگ YAML ندارد.
 
-### ۱. نصب `cloudflared` روی سرور لینوکس:
+### گام ۱: دریافت دستور نصب تانل از داشبورد کلودفلر
+1. وارد پنل [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) شوید.
+2. از منوی سمت چپ به مسیر **Networks > Tunnels** بروید.
+3. روی دکمه **Add a tunnel** کلیک کرده و گزینه **Cloudflared** را انتخاب کنید.
+4. یک نام دلخواه برای تانل وارد کنید (مثلاً `tgbot-tunnel`) و دکمه **Save tunnel** را بزنید.
+5. در صفحه بعد، سیستم‌عامل **Debian** یا **Ubuntu** (معماری 64-bit) را انتخاب کنید.
+6. کلودفلر یک دستور آماده حاوی توکن به شما نمایش می‌دهد که مشابه زیر است:
 
 ```bash
 # دانلود و نصب پکیج deb کلودفلر
-curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared.deb
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && sudo dpkg -i cloudflared.deb
+
+# نصب و استارت سرویس تانل به صورت خودکار (توکن اختصاصی خود را از داشبورد کپی کنید)
+sudo cloudflared service install <YOUR_TUNNEL_TOKEN>
 ```
 
-### ۲. لاگین در اکانت کلودفلر:
+دستور بالا را در ترمینال سرور اوبونتو اجرا کنید. سرویس `cloudflared` به صورت خودکار ساخته شده، فعال (`enabled`) شده و استارت می‌خورد.
 
+### گام ۲: متصل کردن دامنه به پنل وب
+1. در همان صفحه کلودفلر، تب **Public Hostnames** را انتخاب کنید.
+2. روی دکمه **Add a public hostname** کلیک کنید:
+   - **Subdomain:** ساب‌دامین مورد نظر (مثلاً `bot` یا `panel`)
+   - **Domain:** دامنه ثبت‌شده شما در کلودفلر (مثلاً `yourdomain.com`)
+   - **Type:** گزینه `HTTP` را انتخاب نمایید.
+   - **URL:** مقدار `127.0.0.1:5000` (یا پورتی که در فایل `.env` پروژه برای پنل تنظیم کرده‌اید).
+3. روی **Save hostname** کلیک کنید.
+
+تمام! اکنون با باز کردن آدرس `https://panel.yourdomain.com` پنل مدیریت با SSL امن و معتبر در دسترس است.
+
+---
+
+## 🛠️ روش ۲: راه‌اندازی دستی تانل از طریق ترمینال (CLI - نسخه کاملاً اصلاح‌شده)
+
+> [!WARNING]
+> در راهنماهای قدیمی اینترنت، به دلیل ارجاع مسیر `credentials-file` به پوشه کاربر روت (`/root/.cloudflared/`)، سرویس سیستمی کلودفلر هنگام بوت با خطای **Permission Denied** مواجه شده و پس از ریبوت سرور متوقف می‌شد. دستورات زیر کاملاً استانداردسازی شده و بدون هیچ خطایی کار می‌کنند.
+
+### ۱. نصب پکیج `cloudflared` روی اوبونتو:
+```bash
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+rm -f cloudflared.deb
+```
+
+### ۲. ورود به حساب کلودفلر:
 ```bash
 cloudflared tunnel login
 ```
-یک لینک در خروجی ترمینال نمایش داده می‌شود؛ آن را در مرورگر باز کرده و دامنه خود را تایید کنید.
+لینکی در ترمینال نمایش داده می‌شود؛ آن را در مرورگر باز کرده و دامنه خود را تایید نمایید. فایل گواهی لاگین در `/root/.cloudflared/cert.pem` ذخیره می‌شود.
 
 ### ۳. ساخت تانل جدید:
-
 ```bash
-cloudflared tunnel create hiddibot-tunnel
+cloudflared tunnel create tgbot-tunnel
 ```
-این دستور یک فایل اعتبارنامه (`Credentials JSON`) و یک شناسه تانل (`Tunnel ID`) تولید می‌کند.
+خروجی این دستور شامل **Tunnel ID** (یک رشته ۳۶ کاراکتری مانند `a1b2c3d4-e5f6-...`) است.
 
-### ۴. ساخت فایل کانفیگ تانل (`/etc/cloudflared/config.yml`):
-
+### ۴. انتقال ایمن فایل مشخصات به دایرکتوری سیستمی:
+برای اینکه سرویس سیستمی بدون خطای پرمیشن در زمان ریبوت اجرا شود، دایرکتوری `/etc/cloudflared` را ایجاد کرده و فایل اعتبارنامه را به آنجا کپی کنید:
 ```bash
 sudo mkdir -p /etc/cloudflared
-sudo nano /etc/cloudflared/config.yml
+sudo cp ~/.cloudflared/*.json /etc/cloudflared/
 ```
 
-محتوای زیر را وارد کنید (شناسه تانل و دامنه خود را جایگزین کنید):
+### ۵. ساخت فایل پیکربندی استاندارد (`/etc/cloudflared/config.yml`):
+فایل کانفیگ را با ادیتور باز کنید:
+```bash
+sudo nano /etc/cloudflared/config.yml
+```
+محتوای زیر را قرار دهید (شناسه تانل و نام دامنه را با مقادیر خودتان جایگزین کنید):
 
 ```yaml
 tunnel: YOUR_TUNNEL_ID_HERE
-credentials-file: /root/.cloudflared/YOUR_TUNNEL_ID_HERE.json
+credentials-file: /etc/cloudflared/YOUR_TUNNEL_ID_HERE.json
 
 ingress:
   - hostname: panel.yourdomain.com
     service: http://127.0.0.1:5000
   - service: http_status:404
 ```
+*(نکته: اگر پورت پنل را در پروژه تغییر داده‌اید، به جای ۵۰۰۰ پورت جدید را قرار دهید).*
 
-### ۵. مسیردهی DNS و اجرای سرویس دائمی:
-
+### ۶. ایجاد خودکار رکورد DNS در کلودفلر:
 ```bash
-cloudflared tunnel route dns hiddibot-tunnel panel.yourdomain.com
-sudo cloudflared service install
-sudo systemctl start cloudflared
-sudo systemctl enable cloudflared
+cloudflared tunnel route dns tgbot-tunnel panel.yourdomain.com
 ```
 
-اکنون دامنه `panel.yourdomain.com` به صورت آنی و با امنیت کامل کلودفلر متصل شده است!
+### ۷. نصب و فعال‌سازی سرویس دائمی در استارت‌آپ بوت سیستم:
+```bash
+sudo cloudflared service install
+sudo systemctl daemon-reload
+sudo systemctl enable cloudflared
+sudo systemctl restart cloudflared
+```
+
+### ۸. بررسی وضعیت اجرای تانل:
+```bash
+sudo systemctl status cloudflared
+```
+اگر وضعیت `active (running)` بود، تانل فعال است و پس از هر بار ریبوت سرور نیز به صورت خودکار اجرا خواهد شد.
 
 ---
 
-## ⚡ روش ۲: اتصال به عنوان پروکسی معکوس (Cloudflare Reverse Proxy & DNS)
+## 🛡️ بهینه‌سازی تنظیمات فایروال کلودفلر (WAF & Bot Fight)
 
-اگر سرور شما دارای IP ثابت است و از Nginx استفاده می‌کنید:
+برای اینکه درخواست‌های تلگرام، وب‌اپ و وب‌سرویس‌ها بدون قطعی از فایروال کلودفلر عبور کنند:
 
-1. در پنل کلودفلر به تب **DNS > Records** بروید.
-2. یک رکورد `A` برای زیردامنه خود ایجاد کنید:
-   - **Type:** `A`
-   - **Name:** `panel`
-   - **IPv4 Address:** `آدرس IP سرور شما`
-   - **Proxy status:** 🟧 **Proxied (ابری روشن)**
-3. به تب **SSL/TLS** بروید و حالت رمزنگاری را روی **Full** یا **Full (strict)** قرار دهید.
-4. در تب **SSL/TLS > Edge Certificates** گزینه **Always Use HTTPS** را فعال کنید.
-
----
-
-## 🛡️ بهینه‌سازی تنظیمات امنیتی (WAF & Bot Fight)
-
-برای اینکه وب‌هوک‌های تلگرام یا درخواست‌های API مسدود نشوند:
-
-1. به تب **Security > WAF** بروید.
-2. در بخش **Custom Rules** یک قانون مجازسازی برای تلگرام بسازید:
-   - **Rule Name:** Allow Telegram
-   - **Field:** `User Agent` contains `TelegramBot`
-   - **Action:** `Skip / Bypass`
-3. بخش **Bot Fight Mode**: توصیه می‌شود در صورت استفاده از تلگرام مینی‌اپ در حالت پیش‌فرض باقی بماند تا سشن‌های وب‌اپ دچار مسدودی نگردند.
+1. **معاف‌سازی ربات‌های تلگرام در WAF:**
+   - در پنل کلودفلر به تب **Security > WAF** بروید.
+   - یک قانون جدید بسازید:
+     - **Rule name:** `Allow Telegram`
+     - **Field:** `User Agent` | **Operator:** `contains` | **Value:** `TelegramBot`
+     - **Action:** `Skip` (تمامی گزینه‌های امنیتی را رد کند).
+2. **وضعیت SSL/TLS:**
+   - در منوی **SSL/TLS** وضعیت را روی **Full** قرار دهید.
+3. **تنظیم Bot Fight Mode:**
+   - در تب **Security > Bots**، قابلیت **Bot Fight Mode** را در صورت بروز مشکل در باز شدن تلگرام مینی‌اپ غیرفعال کنید تا سشن‌های وب‌اپ با چالش کپچا مواجه نشوند.

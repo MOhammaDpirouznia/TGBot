@@ -9951,19 +9951,19 @@ async def admin_restore_handler(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
     text = (
-        "🔄 بازیابی پشتیبان\n\n"
-        "⚠️ نکته مهم:\n"
-        "• فایل پشتیبان (.db) را ارسال کنید\n"
-        "• اطلاعات فعلی بازنویسی خواهد شد\n"
-        "• یک پشتیبان از وضعیت فعلی ایجاد میشود\n\n"
-        "📎 فایل پشتیبان را ارسال کنید:"
+        "🔄 <b>بازیابی پشتیبان</b>\n\n"
+        "⚠️ <b>نکته مهم:</b>\n"
+        "• فایل پشتیبان دیتابیس (با پسوند <code>.zip</code> یا <code>.db</code>) را ارسال کنید\n"
+        "• اطلاعات فعلی با اطلاعات فایل بازنویسی خواهد شد\n"
+        "• یک نسخه پشتیبان امنیتی خودکار از وضعیت فعلی ذخیره می‌شود\n\n"
+        "📎 فایل پشتیبان را به صورت سند (Document) ارسال کنید:"
     )
 
     keyboard = [
         [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup)
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return ADMIN_RESTORE_FILE
 
 
@@ -9977,24 +9977,29 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     document = update.message.document
     if not document:
-        await update.message.reply_text("❌ لطفاً فایل پشتیبان (.db) را ارسال کنید.")
+        await update.message.reply_text("❌ لطفاً فایل پشتیبان (.zip یا .db) را ارسال کنید.")
         return ADMIN_RESTORE_FILE
 
     # بررسی پسوند فایل
-    if not document.file_name.endswith('.db'):
+    fname = (document.file_name or "").lower()
+    valid_exts = ('.db', '.zip', '.sqlite', '.sqlite3')
+    if not any(fname.endswith(ext) for ext in valid_exts):
         await update.message.reply_text(
             "❌ فایل نامعتبر است!\n\n"
-            "فقط فایل‌های با پسوند .db پذیرفته میشوند."
+            "فقط فایل‌های پشتیبان معتبر با پسوند .zip یا .db پذیرفته می‌شوند."
         )
         return ADMIN_RESTORE_FILE
 
-    await update.message.reply_text("⏳ در حال بازیابی پشتیبان...")
+    await update.message.reply_text("⏳ در حال دریافت و بازیابی پشتیبان...")
 
     try:
-        # دانلود فایل
+        # دانلود فایل با حفظ پسوند واقعی جهت استخراج صحیح زیپ
         file = await document.get_file()
-        backup_path = Path("backups") / f"restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
-        backup_path.parent.mkdir(exist_ok=True)
+        file_ext = Path(document.file_name).suffix.lower() if document.file_name else ".db"
+        if file_ext not in valid_exts:
+            file_ext = ".db"
+        backup_path = Path("backups") / f"restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}{file_ext}"
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
         await file.download_to_drive(str(backup_path))
 
         # بازیابی
@@ -10003,18 +10008,19 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if result.get("success"):
             await update.message.reply_text(
-                f"✅ بازیابی موفق!\n\n"
-                f"📁 فایل بازیابی شده: {document.file_name}\n"
-                f"💾 پشتیبان قبلی: {result.get('pre_restore_backup', 'نامشخص')}\n\n"
-                f"🔄 ربات با تنظیمات جدید شروع به کار کرد."
+                f"✅ **بازیابی با موفقیت انجام شد!**\n\n"
+                f"📁 فایل بازیابی شده: `{document.file_name}`\n"
+                f"💾 پشتیبان قبلی: `{result.get('pre_restore_backup', 'نامشخص')}`\n\n"
+                f"🔄 دیتابیس با موفقیت بروزرسانی و همگام گردید.",
+                parse_mode="Markdown"
             )
         else:
             await update.message.reply_text(
-                f"❌ خطا در بازیابی:\n{result.get('error', 'نامشخص')}"
+                f"❌ خطا در بازیابی دیتابیس:\n{result.get('error', 'نامشخص')}"
             )
 
     except Exception as e:
-        logger.error(f"Error restoring backup: {e}")
+        logger.error(f"Error restoring backup: {e}", exc_info=True)
         await update.message.reply_text(
             f"❌ خطا در پردازش فایل:\n{str(e)}"
         )
@@ -10687,6 +10693,13 @@ def main():
 
     # ویزارد تعاملی قدم‌به‌قدم عیب‌یابی و آموزش اتصال
     application.add_handler(CallbackQueryHandler(wizard_callback_handler, pattern="^wiz_"))
+
+    # هندلرهای مرکز به‌روزرسانی هوشمند (OTA Updates)
+    try:
+        from updater import handle_ota_callback
+        application.add_handler(CallbackQueryHandler(handle_ota_callback, pattern="^ota_"))
+    except Exception as e_ota_h:
+        logger.warning(f"Could not register OTA callback handler: {e_ota_h}")
 
     # هندلر پیام‌های متنی
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

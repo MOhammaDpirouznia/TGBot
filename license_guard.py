@@ -58,11 +58,14 @@ except ImportError:
 
 # تنظیمات پیش‌فرض
 PRODUCT_CODE = "TGBOT"
-CLIENT_VERSION = "v3.28"
+try:
+    from version import __version__ as CLIENT_VERSION
+except ImportError:
+    CLIENT_VERSION = "3.28.0"
+
 DEFAULT_SERVER_URL = "http://127.0.0.1:8890"  # آدرس سرور لایسنس شما
 GRACE_PERIOD_SECONDS = 72 * 3600  # ۷۲ ساعت مهلت در صورت قطعی اینترنت
 SHARED_SALT = b"NexusLicenseGuard_2026_SecureSalt"
-
 
 
 class LicenseGuard:
@@ -107,10 +110,12 @@ class LicenseGuard:
         self.enabled_features = []
         self.last_check_time = 0
         self.watchdog_thread = None
+        self.available_update: Optional[Dict[str, Any]] = None
 
         # بررسی اولیه حالت مستر
         if self._is_master_mode():
             self._activate_master_mode()
+
 
     # ─────────────────────────────────────────────────────────────────────────
     # ۱. تولید اثر انگشت یکتای سخت‌افزاری (Hardware Fingerprinting)
@@ -202,7 +207,16 @@ class LicenseGuard:
     # ─────────────────────────────────────────────────────────────────────────
     # ۳. استعلام و اعتبارسنجی آنلاین لایسنس (Online Verification)
     # ─────────────────────────────────────────────────────────────────────────
-    def verify(self, force_online: bool = False) -> Dict[str, Any]:
+    def get_update_channel(self) -> str:
+        """کانال ترجیحی دریافت آپدیت (stable یا beta)"""
+        try:
+            from database import db
+            ch = db.get_setting("ota_channel", "stable")
+            return str(ch).lower() if ch else "stable"
+        except Exception:
+            return "stable"
+
+    def verify(self, force_online: bool = False, update_channel: Optional[str] = None) -> Dict[str, Any]:
         """
         اعتبارسنجی وضعیت لایسنس:
         - در حالت مستر: فوراً تایید می‌شود.
@@ -217,12 +231,17 @@ class LicenseGuard:
             self.status = "MISSING_KEY"
             return self._build_status_dict(False, "کلید لایسنس در فایل .env تعریف نشده است.")
 
+        target_channel = update_channel or self.get_update_channel()
+
         # ارسال رکوئست آنلاین به سرور لایسنس
         payload = {
             "product_code": PRODUCT_CODE,
+            "product_slug": "tgbot",
             "license_key": self.license_key,
             "machine_id": self.machine_id,
             "client_version": CLIENT_VERSION,
+            "app_version": CLIENT_VERSION,
+            "update_channel": target_channel,
             "timestamp": int(time.time()),
             "system_info": {
                 "os": platform.system(),
@@ -232,11 +251,16 @@ class LicenseGuard:
         }
 
         try:
-            resp_data = self._send_request(f"{self.server_url}/api/v1/verify", payload)
+            resp_data = self._send_request(f"{self.server_url}/api/v1/client/verify", payload)
             return self._process_server_response(resp_data)
         except Exception as e:
-            # در صورت عدم دسترسی به سرور لایسنس (قطعی اینترنت یا فیلترینگ)
-            return self._handle_network_failure(str(e))
+            try:
+                # فالبک به مسیر ریشه در صورت نیاز
+                resp_data = self._send_request(f"{self.server_url}/api/v1/verify", payload)
+                return self._process_server_response(resp_data)
+            except Exception:
+                # در صورت عدم دسترسی به سرور لایسنس (قطعی اینترنت یا فیلترینگ)
+                return self._handle_network_failure(str(e))
 
     def _send_request(self, url: str, data: dict) -> dict:
         """ارسال درخواست HTTP امن با تایم‌اوت مشخص"""
@@ -259,26 +283,103 @@ class LicenseGuard:
                     raise Exception(f"Server returned HTTP {response.status}")
                 return json.loads(response.read().decode("utf-8"))
 
+    def _trigger_force_update(self, update_info: dict):
+        """اجرای خودکار و بدون تایید آپدیت اجباری (FORCE)"""
+        try:
+            from updater import OTAUpdater
+            print(f"[LicenseGuard-OTA] ⚡ اجرای خودکار آپدیت اجباری به نسخه {update_info.get('latest_version')}...")
+            OTAUpdater.execute_update(update_info)
+        except Exception as e:
+            print(f"[LicenseGuard-OTA] خطا در اجرای آپدیت خودکار: {e}")
+
+    def get_update_info(self) -> Dict[str, Any]:
+        """دریافت آخرین وضعیت آپدیت نرم‌افزار"""
+        if self.available_update and self.available_update.get("available"):
+            return self.available_update
+        return {"available": False}
+
+    def check_for_updates(self, channel: Optional[str] = None) -> Dict[str, Any]:
+        """استعلام مستقل آخرین نسخه موجود برای نرم‌افزار از سرور لایسنس"""
+        target_channel = channel or self.get_update_channel()
+        payload = {
+            "product_code": PRODUCT_CODE,
+            "product_slug": "tgbot",
+            "license_key": self.license_key,
+            "machine_id": self.machine_id,
+            "client_version": CLIENT_VERSION,
+            "app_version": CLIENT_VERSION,
+            "update_channel": target_channel,
+            "timestamp": int(time.time()),
+            "system_info": {
+                "os": platform.system(),
+                "node": platform.node(),
+                "python": platform.python_version()
+            }
+        }
+
+        try:
+            resp_data = self._send_request(f"{self.server_url}/api/v1/client/verify", payload)
+            payload_data = resp_data.get("payload", resp_data)
+            update_info = payload_data.get("update", {})
+            if update_info and update_info.get("available"):
+                self.available_update = update_info
+                return update_info
+            return {"available": False, "channel": target_channel, "current_version": CLIENT_VERSION}
+        except Exception:
+            try:
+                resp_data = self._send_request(f"{self.server_url}/api/v1/verify", payload)
+                payload_data = resp_data.get("payload", resp_data)
+                update_info = payload_data.get("update", {})
+                if update_info and update_info.get("available"):
+                    self.available_update = update_info
+                    return update_info
+                return {"available": False, "channel": target_channel, "current_version": CLIENT_VERSION}
+            except Exception as e2:
+                return {"available": False, "error": str(e2), "channel": target_channel}
+
     def _process_server_response(self, data: dict) -> Dict[str, Any]:
         """پردازش پاسخ دریافتی از لایسنس‌سرور"""
-        status = data.get("status", "INVALID").upper()
-        command = data.get("command", "").upper()
+        payload = data.get("payload", data)
+        status = payload.get("status", "INVALID").upper()
+        command = payload.get("command", "").upper()
 
         # ۱. بررسی فرمان اضطراری تخریب (Kill-Switch)
         if command in ["KILL", "SELF_DESTRUCT", "WIPE"]:
-            self._execute_kill_switch(data.get("command_reason", "دستور اضطراری لایسنس‌سرور"))
+            self._execute_kill_switch(payload.get("command_reason", "دستور اضطراری لایسنس‌سرور"))
             sys.exit(1)
 
-        # ۲. بررسی وضعیت لایسنس
-        if status == "ACTIVE":
+        # ۲. بررسی و مدیریت آپدیت OTA
+        update_info = payload.get("update")
+        if update_info and update_info.get("available"):
+            self.available_update = update_info
+
+            # اعلان خودکار به مدیران ارشد در صورت انتشار نسخه جدید
+            try:
+                from database import db
+                from updater import send_update_notification_to_admins
+                latest_ver = str(update_info.get("latest_version", "")).strip()
+                last_notified = str(db.get_setting("last_notified_update_version", "")).strip()
+                if latest_ver and latest_ver != last_notified:
+                    send_update_notification_to_admins(update_info)
+                    db.set_setting("last_notified_update_version", latest_ver)
+            except Exception:
+                pass
+
+            if update_info.get("severity") == "FORCE":
+                threading.Thread(target=self._trigger_force_update, args=(update_info,), daemon=True).start()
+
+        # ۳. بررسی وضعیت لایسنس
+        if status in ["ACTIVE", "VALID"]:
             self.is_valid = True
             self.status = "ACTIVE"
-            self.customer_name = data.get("customer_name", "مشتری رسمی")
-            self.expires_at = data.get("expires_at", "")
-            self.enabled_features = data.get("features", ["all"])
+            self.customer_name = payload.get("client_name") or payload.get("customer_name", "مشتری رسمی")
+            self.expires_at = payload.get("expires_at", "")
+            self.enabled_features = payload.get("features", ["all"])
             self.last_check_time = time.time()
-            self._save_cache(data)
-            return self._build_status_dict(True, "لایسنس با موفقیت فعال و تایید شد.")
+            self._save_cache(payload)
+            res = self._build_status_dict(True, "لایسنس با موفقیت فعال و تایید شد.")
+            res["update"] = self.get_update_info()
+            return res
 
         elif status in ["SUSPENDED", "EXPIRED", "REVOKED"]:
             self.is_valid = False
@@ -288,6 +389,7 @@ class LicenseGuard:
 
         else:
             self.is_valid = False
+
             self.status = "INVALID"
             return self._build_status_dict(False, data.get("message", "لایسنس نامعتبر است."))
 

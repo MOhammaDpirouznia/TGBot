@@ -418,7 +418,7 @@
                                 {% endif %}
                             </select>
                             <div class="form-text text-muted">
-                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب بسته صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور هیدیفای دست‌نخورده باقی می‌ماند.
+                                <i class="fas fa-info-circle text-primary me-1"></i> انتخاب بسته صرفاً جهت درج در سوابق و صدور فیش مالی است و کانفیگ سرور دست‌نخورده باقی می‌ماند.
                             </div>
                         </div>
                         
@@ -692,21 +692,20 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">عملیات روی اکانت/اشتراک کاربر در سرور هیدیفای:</label>
+                        <label class="form-label fw-bold">عملیات روی اکانت/اشتراک کاربر در سرور:</label>
                         <select name="rollback_sub_action" class="form-select">
-                            <option value="disable" selected>🔒 غیرفعال‌سازی اکانت کاربر در سرور هیدیفای (پیشنهادی)</option>
-                            <option value="delete">🗑 حذف کامل اکانت کاربر از سرور هیدیفای و دیتابیس</option>
+                            <option value="disable" selected>🔒 غیرفعال‌سازی اکانت کاربر در سرور (پیشنهادی)</option>
+                            <option value="delete">🗑 حذف کامل اکانت کاربر از سرور و دیتابیس</option>
                             <option value="keep">⚙️ بدون تغییر (اکانت کاربر فعال بماند)</option>
                         </select>
                     </div>
 
-                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
-                        <input class="form-check-input ms-2" type="checkbox" name="refund_wallet" value="1" id="refundWallet{{ tx['id'] }}" checked>
-                        <label class="form-check-label fw-bold small text-success" for="refundWallet{{ tx['id'] }}">
-                            <i class="fas fa-rotate-left me-1"></i> بازگشت هزینه خرید عمده به کیف پول من
-                        </label>
-                        <div class="small text-muted ps-4" style="font-size: 0.72rem;">
-                            مبلغی که از کیف پول شما برای صدور این بسته کسر شده بود، به موجودی کیف پول شما مسترد خواهد شد.
+                    <div class="p-2 border rounded-3 bg-light mb-2">
+                        <div class="small fw-bold text-primary mb-1">
+                            <i class="fas fa-shield-halved me-1"></i> استرداد خودکار وجه بر اساس زمان طبق قوانین:
+                        </div>
+                        <div class="small text-muted" style="font-size: 0.73rem; line-height: 1.5;">
+                            هزینه خرید عمده بر اساس زمان گذشته از صدور اشتراک به طور خودکار به حساب شما مسترد می‌گردد: <strong>تا ۱۲ ساعت (۱۰۰٪ کامل)</strong>، <strong>تا ۲۴ ساعت (۵۰٪)</strong> و بیش از ۲۴ ساعت بدون استرداد وجه.
                         </div>
                     </div>
                 </div>

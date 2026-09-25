@@ -334,13 +334,13 @@
             <!-- تب‌های تفکیک پنل اصلی و هیدیفای -->
             <ul class="nav nav-pills" id="backupReportTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active rounded-pill px-3 py-1 small fw-bold" id="main-tab" data-bs-toggle="pill" data-bs-target="#tab-main-backups" type="button" role="tab">
-                        <i class="fas fa-database me-1"></i> پنل اصلی و نمایندگان ({{ main_logs|length }})
+                    <button class="nav-link {% if active_tab != 'hiddify' %}active{% endif %} rounded-pill px-3 py-1 small fw-bold" id="main-tab" data-bs-toggle="pill" data-bs-target="#tab-main-backups" type="button" role="tab">
+                        <i class="fas fa-database me-1"></i> پنل اصلی و نمایندگان ({{ main_total }})
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link rounded-pill px-3 py-1 small fw-bold" id="hiddify-tab" data-bs-toggle="pill" data-bs-target="#tab-hiddify-backups" type="button" role="tab">
-                        <i class="fas fa-server me-1"></i> پنل هیدیفای ({{ hiddify_logs|length }})
+                    <button class="nav-link {% if active_tab == 'hiddify' %}active{% endif %} rounded-pill px-3 py-1 small fw-bold" id="hiddify-tab" data-bs-toggle="pill" data-bs-target="#tab-hiddify-backups" type="button" role="tab">
+                        <i class="fas fa-server me-1"></i> پنل هیدیفای ({{ hiddify_total }})
                     </button>
                 </li>
             </ul>
@@ -348,7 +348,7 @@
         <div class="card-body p-0">
             <div class="tab-content" id="backupTabContent">
                 <!-- تب ۱: گزارشات پنل اصلی -->
-                <div class="tab-pane fade show active" id="tab-main-backups" role="tabpanel">
+                <div class="tab-pane fade {% if active_tab != 'hiddify' %}show active{% endif %}" id="tab-main-backups" role="tabpanel">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light small">
@@ -419,10 +419,40 @@
                             </tbody>
                         </table>
                     </div>
+                    {% if main_total_pages > 1 %}
+                    <div class="d-flex justify-content-between align-items-center flex-wrap px-4 py-3 border-top bg-light-subtle">
+                        <div class="small text-muted mb-2 mb-md-0">
+                            نمایش صفحه <strong>{{ main_page }}</strong> از <strong>{{ main_total_pages }}</strong> (مجموع <strong>{{ main_total }}</strong> رکورد)
+                        </div>
+                        <nav aria-label="Main backup pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item {% if main_page <= 1 %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('admin_auto_backup', main_page=main_page-1, hiddify_page=hiddify_page, tab='main') }}">
+                                        <i class="fas fa-chevron-right small"></i> قبلی
+                                    </a>
+                                </li>
+                                {% for p in range(1, main_total_pages + 1) %}
+                                    {% if p == 1 or p == main_total_pages or (p >= main_page - 2 and p <= main_page + 2) %}
+                                        <li class="page-item {% if p == main_page %}active{% endif %}">
+                                            <a class="page-link" href="{{ url_for('admin_auto_backup', main_page=p, hiddify_page=hiddify_page, tab='main') }}">{{ p }}</a>
+                                        </li>
+                                    {% elif p == main_page - 3 or p == main_page + 3 %}
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    {% endif %}
+                                {% endfor %}
+                                <li class="page-item {% if main_page >= main_total_pages %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('admin_auto_backup', main_page=main_page+1, hiddify_page=hiddify_page, tab='main') }}">
+                                        بعدی <i class="fas fa-chevron-left small"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- تب ۲: گزارشات پنل هیدیفای -->
-                <div class="tab-pane fade" id="tab-hiddify-backups" role="tabpanel">
+                <div class="tab-pane fade {% if active_tab == 'hiddify' %}show active{% endif %}" id="tab-hiddify-backups" role="tabpanel">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light small">
@@ -491,6 +521,36 @@
                             </tbody>
                         </table>
                     </div>
+                    {% if hiddify_total_pages > 1 %}
+                    <div class="d-flex justify-content-between align-items-center flex-wrap px-4 py-3 border-top bg-light-subtle">
+                        <div class="small text-muted mb-2 mb-md-0">
+                            نمایش صفحه <strong>{{ hiddify_page }}</strong> از <strong>{{ hiddify_total_pages }}</strong> (مجموع <strong>{{ hiddify_total }}</strong> رکورد)
+                        </div>
+                        <nav aria-label="Hiddify backup pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item {% if hiddify_page <= 1 %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('admin_auto_backup', hiddify_page=hiddify_page-1, main_page=main_page, tab='hiddify') }}">
+                                        <i class="fas fa-chevron-right small"></i> قبلی
+                                    </a>
+                                </li>
+                                {% for p in range(1, hiddify_total_pages + 1) %}
+                                    {% if p == 1 or p == hiddify_total_pages or (p >= hiddify_page - 2 and p <= hiddify_page + 2) %}
+                                        <li class="page-item {% if p == hiddify_page %}active{% endif %}">
+                                            <a class="page-link" href="{{ url_for('admin_auto_backup', hiddify_page=p, main_page=main_page, tab='hiddify') }}">{{ p }}</a>
+                                        </li>
+                                    {% elif p == hiddify_page - 3 or p == hiddify_page + 3 %}
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    {% endif %}
+                                {% endfor %}
+                                <li class="page-item {% if hiddify_page >= hiddify_total_pages %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('admin_auto_backup', hiddify_page=hiddify_page+1, main_page=main_page, tab='hiddify') }}">
+                                        بعدی <i class="fas fa-chevron-left small"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

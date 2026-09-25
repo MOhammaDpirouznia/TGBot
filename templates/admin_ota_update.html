@@ -1,0 +1,640 @@
+{% extends "base.html" %}
+
+{% block title %}مرکز به‌روزرسانی (OTA) - پنل مدیریت{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0 px-md-3">
+    <!-- هدر صفحه -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h4 class="mb-1 text-dark fw-bold">
+                <i class="fas fa-cloud-arrow-down text-info me-2"></i> مرکز به‌روزرسانی هوشمند (OTA Update Center)
+            </h4>
+            <div class="text-muted small">
+                مدیریت دریافت و نصب خودکار آپدیت‌های امن، تفکیک کانال‌های پایدار (Stable) و بتا (Beta)، و پشتیبان‌گیری اتمیک
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-primary d-flex align-items-center gap-2" id="btnCheckNow" onclick="checkUpdatesNow()">
+                <i class="fas fa-rotate"></i>
+                <span id="btnCheckText">بررسی نسخه جدید</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- فلش‌مسیج‌ها -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm border-0" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- بنر راهنما و امنیت -->
+    <div class="alert alert-info border-0 shadow-sm d-flex align-items-center gap-3 mb-4 py-2 px-3">
+        <i class="fas fa-shield-halved fs-4 text-info flex-shrink-0"></i>
+        <div class="small">
+            <strong>به‌روزرسانی امن و بدون قطعی:</strong> تمامی پکیج‌های آپدیت مستقیماً و به صورت رمزنگاری‌شده از طریق مرکز لایسنس‌هاب دریافت شده و قبل از هرگونه تغییر، یک نسخه پشتیبان کامل از دیتابیس (<code class="text-primary font-monospace">database.db</code>) و فایل تنظیمات (<code class="text-primary font-monospace">.env</code>) به طور خودکار تهیه می‌شود.
+        </div>
+    </div>
+
+    <!-- کارت‌های وضعیت سیستم -->
+    <div class="row g-3 mb-4">
+        <!-- نسخه فعلی -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">نسخه نصب‌شده</span>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill font-monospace">
+                            v{{ current_version }}
+                        </span>
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark font-monospace">
+                        v{{ current_version }}
+                    </div>
+                    <div class="text-muted small">
+                        تاریخ بیلد: {{ build_date or '۲۰۲۶' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- کانال انتخابی -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">کانال انتشار</span>
+                        {% if ota_channel == 'beta' %}
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill">آزمایشی (Beta)</span>
+                        {% else %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">پایدار (Stable)</span>
+                        {% endif %}
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark">
+                        {% if ota_channel == 'beta' %}
+                            آزمایشی و بتا
+                        {% else %}
+                            رسمی و پایدار
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">
+                        {% if ota_channel == 'beta' %}
+                            دریافت ریلیزهای زودهنگام
+                        {% else %}
+                            بالاترین سطح پایداری و امنیت
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- آپدیت خودکار -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">آپدیت خودکار</span>
+                        {% if ota_auto_update %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">فعال</span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">غیرفعال</span>
+                        {% endif %}
+                    </div>
+                    <div class="h5 mb-1 fw-bold text-dark">
+                        {% if ota_auto_update %}
+                            ساعت {{ ota_preferred_hour }}:00 بامداد
+                        {% else %}
+                            فقط تایید دستی
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">
+                        ساعات کم‌ترافیک و خلوت
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- اتصال به لایسنس‌هاب -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 rounded-3">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small fw-bold">مرکز مجوز و آپدیت</span>
+                        {% if is_valid_license %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">متصل و مجاز</span>
+                        {% else %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">{{ license_status }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="h6 mb-1 fw-bold text-dark font-monospace text-truncate" title="{{ server_url }}">
+                        {{ server_url }}
+                    </div>
+                    <div class="text-muted small">
+                        احراز هویت با شناسه سخت‌افزاری
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- کارت اطلاعات آپدیت موجود (در صورت وجود) -->
+    <div id="updateResultCard" class="card border-0 shadow-sm rounded-3 mb-4 {% if not (available_update and available_update.get('available')) %}d-none{% endif %}">
+        <div class="card-header bg-transparent border-0 pt-3 pb-0 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <div class="p-2 bg-primary-subtle text-primary rounded-3">
+                    <i class="fas fa-gift fs-5"></i>
+                </div>
+                <div>
+                    <h5 class="mb-0 fw-bold text-dark">نسخه جدید برای ارتقا موجود است!</h5>
+                    <span class="text-muted small">یک بسته به‌روزرسانی رسمی در مرکز لایسنس‌هاب آماده دریافت است.</span>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span id="updateSeverityBadge" class="badge bg-info-subtle text-info border border-info-subtle rounded-pill px-3 py-1">
+                    {{ available_update.severity if available_update else 'RECOMMENDED' }}
+                </span>
+                <span id="updateChannelBadge" class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 font-monospace">
+                    {{ available_update.channel if available_update else 'stable' }}
+                </span>
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-4">
+                    <div class="p-3 bg-body-tertiary rounded-3 border border-light-subtle">
+                        <div class="text-muted small mb-1">نسخه جدید</div>
+                        <div class="h4 mb-0 fw-bold text-primary font-monospace" id="updateVersionText">
+                            v{{ available_update.latest_version if available_update else '' }}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="p-3 bg-body-tertiary rounded-3 border border-light-subtle">
+                        <div class="text-muted small mb-1">حجم پکیج</div>
+                        <div class="h5 mb-0 fw-bold text-dark font-monospace" id="updateSizeText">
+                            {% if available_update and available_update.file_size_bytes %}
+                                {{ (available_update.file_size_bytes / (1024 * 1024))|round(2) }} MB
+                            {% else %}
+                                محاسبه‌شده در دانلود
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="p-3 bg-body-tertiary rounded-3 border border-light-subtle">
+                        <div class="text-muted small mb-1">نیازمند ری‌استارت سرویس</div>
+                        <div class="h6 mb-0 fw-bold text-dark" id="updateRestartText">
+                            {% if available_update and available_update.requires_restart %}
+                                <i class="fas fa-check-circle text-warning me-1"></i> بله (خودکار انجام می‌شود)
+                            {% else %}
+                                <i class="fas fa-bolt text-success me-1"></i> بدون نیاز به ری‌استارت
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- لاگ تغییرات (Changelog) -->
+            <div class="mb-4">
+                <h6 class="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                    <i class="fas fa-clipboard-list text-primary"></i>
+                    <span>تغییرات و بهینه‌سازی‌های این نسخه (Release Notes):</span>
+                </h6>
+                <div class="p-3 bg-body-tertiary rounded-3 border border-light-subtle" style="max-height: 220px; overflow-y: auto;" id="updateChangelogText">
+                    {{ available_update.changelog_fa if available_update and available_update.changelog_fa else 'تغییراتی ثبت نشده است.' }}
+                </div>
+            </div>
+
+            <!-- دکمه‌های اقدام -->
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 pt-3 border-top">
+                <button type="button" class="btn btn-outline-info d-flex align-items-center gap-2" onclick="sendUpdateToTelegram()">
+                    <i class="fab fa-telegram"></i>
+                    <span>ارسال اعلان با دکمه‌های شیشه‌ای به تلگرام مدیر ارشد</span>
+                </button>
+
+                <button type="button" class="btn btn-success d-flex align-items-center gap-2 px-4 py-2" id="btnApplyUpdate" onclick="confirmApplyUpdate()">
+                    <i class="fas fa-bolt"></i>
+                    <span class="fw-bold">انجام و نصب آنی آپدیت (Safe Atomic Apply)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- کارت پیام به‌روز بودن (اگر نسخه جدید نباشد) -->
+    <div id="upToDateCard" class="card border-0 shadow-sm rounded-3 mb-4 {% if available_update and available_update.get('available') %}d-none{% endif %}">
+        <div class="card-body p-4 text-center">
+            <div class="py-3">
+                <i class="fas fa-circle-check text-success display-5 mb-3"></i>
+                <h5 class="fw-bold text-dark mb-1">سیستم شما کاملاً به‌روز است!</h5>
+                <p class="text-muted small mb-3">
+                    نسخه فعلی شما (<code class="font-monospace text-primary">v{{ current_version }}</code>) آخرین نسخه منتشر شده در کانال انتخابی (<b id="currentActiveChannelText">{{ 'آزمایشی (Beta)' if ota_channel == 'beta' else 'پایدار (Stable)' }}</b>) می‌باشد.
+                </p>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="checkUpdatesNow()">
+                    <i class="fas fa-rotate me-1"></i> بررسی مجدد
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- فرم تنظیمات کانال و زمان‌بندی آپدیت -->
+    <div class="row g-4">
+        <div class="col-12 col-lg-7">
+            <div class="card border-0 shadow-sm rounded-3">
+                <div class="card-header bg-transparent border-0 pt-3 pb-0 px-4">
+                    <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                        <i class="fas fa-sliders text-primary"></i>
+                        <span>پیکربندی کانال و ساعات آپدیت خودکار</span>
+                    </h5>
+                    <span class="text-muted small">تنظیمات ترجیحی برای زمان‌بندی و نوع نسخه‌های دریافتی</span>
+                </div>
+
+                <div class="card-body p-4">
+                    <form id="otaSettingsForm" onsubmit="saveOtaSettings(event)">
+                        <!-- انتخاب کانال -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold text-dark mb-2">کانال دریافت به‌روزرسانی (Update Channel)</label>
+                            
+                            <div class="row g-3">
+                                <!-- کانال پایدار -->
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check p-3 rounded-3 border h-100 channel-card {% if ota_channel != 'beta' %}border-primary bg-primary-subtle bg-opacity-10{% endif %}" onclick="selectChannel('stable')">
+                                        <input class="form-check-input ms-2" type="radio" name="ota_channel" id="channelStable" value="stable" {% if ota_channel != 'beta' %}checked{% endif %}>
+                                        <label class="form-check-label w-100 cursor-pointer" for="channelStable">
+                                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                                <strong class="text-dark">کانال پایدار (Stable)</strong>
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">پیشنهادی</span>
+                                            </div>
+                                            <div class="text-muted small" style="font-size: 0.8rem;">
+                                                نسخه‌های نهایی و رسمی که از نظر امنیت، عملکرد و تاب‌آوری به طور کامل آزمایش شده‌اند.
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- کانال بتا -->
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check p-3 rounded-3 border h-100 channel-card {% if ota_channel == 'beta' %}border-warning bg-warning-subtle bg-opacity-10{% endif %}" onclick="selectChannel('beta')">
+                                        <input class="form-check-input ms-2" type="radio" name="ota_channel" id="channelBeta" value="beta" {% if ota_channel == 'beta' %}checked{% endif %}>
+                                        <label class="form-check-label w-100 cursor-pointer" for="channelBeta">
+                                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                                <strong class="text-dark">کانال آزمایشی (Beta)</strong>
+                                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill">Early Access</span>
+                                            </div>
+                                            <div class="text-muted small" style="font-size: 0.8rem;">
+                                                دسترسی زودهنگام به آخرین تغییرات، ویژگی‌های نو و رفع باگ‌ها قبل از انتشار سراسری.
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- آپدیت خودکار -->
+                        <div class="mb-4">
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded-3 border bg-body-tertiary">
+                                <div>
+                                    <strong class="text-dark d-block">نصب و اعمال خودکار به‌روزرسانی‌ها</strong>
+                                    <span class="text-muted small">در صورت فعال بودن، نسخه‌های پیشنهادی و اجباری در ساعت ترجیحی بدون نیاز به دخالت اعمال می‌شوند.</span>
+                                </div>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input fs-5" type="checkbox" role="switch" id="otaAutoUpdate" {% if ota_auto_update %}checked{% endif %} onchange="toggleAutoUpdateUI()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ساعت ترجیحی -->
+                        <div class="mb-4" id="preferredHourContainer">
+                            <label class="form-label fw-bold text-dark mb-1" for="otaPreferredHour">
+                                ساعت ترجیحی اعمال آپدیت شبانه (Preferred Auto-Update Hour)
+                            </label>
+                            <div class="text-muted small mb-2">
+                                بهترین زمان ساعاتی است که نمایندگان و کاربران کمترین تراکنش را دارند (ساعات خلوت بامداد).
+                            </div>
+                            <div class="input-group" style="max-width: 280px;">
+                                <span class="input-group-text bg-transparent"><i class="fas fa-clock text-primary"></i></span>
+                                <select class="form-select font-monospace" id="otaPreferredHour">
+                                    {% for h in range(24) %}
+                                        {% set hour_str = "%02d"|format(h) %}
+                                        <option value="{{ hour_str }}" {% if ota_preferred_hour == hour_str %}selected{% endif %}>
+                                            {{ hour_str }}:00 ({{ 'بامداد' if h < 6 else ('صبح' if h < 12 else ('ظهر/عصر' if h < 19 else 'شب')) }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end pt-3 border-top">
+                            <button type="submit" class="btn btn-primary px-4 py-2 d-flex align-items-center gap-2" id="btnSaveSettings">
+                                <i class="fas fa-floppy-disk"></i>
+                                <span>ذخیره تنظیمات به‌روزرسانی</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- کارت توضیحات و قوانین امنیتی -->
+        <div class="col-12 col-lg-5">
+            <div class="card border-0 shadow-sm rounded-3 h-100">
+                <div class="card-header bg-transparent border-0 pt-3 pb-0 px-4">
+                    <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                        <i class="fas fa-circle-question text-info"></i>
+                        <span>چرخه به‌روزرسانی امن چگونه کار می‌کند؟</span>
+                    </h5>
+                </div>
+
+                <div class="card-body p-4 text-muted small leading-relaxed space-y-3">
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="flex-shrink-0 text-primary">
+                            <i class="fas fa-1 fs-5"></i>
+                        </div>
+                        <div>
+                            <strong class="text-dark d-block">استعلام مخزن خصوصی از طریق لایسنس‌هاب:</strong>
+                            سرور کلاینت هرگز مستقیماً به گیت‌هاب متصل نمی‌شود و آدرس توکن یا مخزن خصوصی افشا نمی‌گردد. تمام ارتباطات از طریق سرور لایسنس شما پراکسی و رمزنگاری می‌شود.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="flex-shrink-0 text-primary">
+                            <i class="fas fa-2 fs-5"></i>
+                        </div>
+                        <div>
+                            <strong class="text-dark d-block">بک‌آپ اتمیک قبل از هر دستکاری:</strong>
+                            پیش از جایگزینی هر فایل، سیستم بک‌آپ فشرده‌ای از دیتابیس در مسیر <code class="text-primary font-monospace">backups/ota_pre_update</code> ذخیره می‌کند تا در صورت نیاز به رول‌بک، کوچکترین خطری برای اطلاعات کاربران ایجاد نشود.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3 mb-3">
+                        <div class="flex-shrink-0 text-primary">
+                            <i class="fas fa-3 fs-5"></i>
+                        </div>
+                        <div>
+                            <strong class="text-dark d-block">اعلان مستقیم به ربات تلگرام:</strong>
+                            هنگام انتشار هر نسخه، ربات تلگرام پیام اختصاصی شامل شماره نسخه، تگ بتا/پایدار و لاگ تغییرات را برای مدیران ارشد ارسال کرده و مدیر می‌تواند از داخل تلگرام با یک کلیک آپدیت را تایید کند.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3">
+                        <div class="flex-shrink-0 text-primary">
+                            <i class="fas fa-4 fs-5"></i>
+                        </div>
+                        <div>
+                            <strong class="text-dark d-block">ری‌استارت مجزای پروسه (Detached Runner):</strong>
+                            در سرورهای لینوکس، عملیات ری‌استارت سرویس توسط یک اسکریپت پس‌زمینه مستقل انجام می‌شود تا اتصال کلاینت‌ها بدون وقفه مدیریت شود.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مودال پیشرفت نصب آپدیت -->
+<div class="modal fade" id="updateProgressModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-body p-4 text-center">
+                <div class="spinner-border text-primary mb-3" style="width: 3.5rem; height: 3.5rem;" role="status" id="modalSpinner">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5 class="fw-bold text-dark mb-2" id="modalProgressTitle">در حال اجرای فرآیند به‌روزرسانی...</h5>
+                <p class="text-muted small mb-4" id="modalProgressDesc">
+                    لطفاً تا اتمام کامل عملیات و راه‌اندازی مجدد سرویس منتظر بمانید و این صفحه را نبندید.
+                </p>
+
+                <div class="progress mb-3" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="modalProgressBar" style="width: 25%"></div>
+                </div>
+
+                <div class="text-start p-3 bg-body-tertiary rounded-3 small font-monospace" style="font-size: 0.75rem; max-height: 140px; overflow-y: auto;" id="modalLogBox">
+                    <div>[1/4] اتصال به لایسنس‌هاب و دریافت مجوز پکیج...</div>
+                </div>
+
+                <div class="mt-3 d-none" id="modalDoneBtnContainer">
+                    <button type="button" class="btn btn-primary px-4" onclick="window.location.reload()">
+                        بارگذاری مجدد صفحه
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let activeUpdateInfo = null;
+
+    function selectChannel(channel) {
+        if (channel === 'stable') {
+            document.getElementById('channelStable').checked = true;
+        } else {
+            document.getElementById('channelBeta').checked = true;
+        }
+        updateChannelStyles();
+    }
+
+    function updateChannelStyles() {
+        const isBeta = document.getElementById('channelBeta').checked;
+        const cards = document.querySelectorAll('.channel-card');
+        if (isBeta) {
+            cards[0].classList.remove('border-primary', 'bg-primary-subtle', 'bg-opacity-10');
+            cards[1].classList.add('border-warning', 'bg-warning-subtle', 'bg-opacity-10');
+        } else {
+            cards[0].classList.add('border-primary', 'bg-primary-subtle', 'bg-opacity-10');
+            cards[1].classList.remove('border-warning', 'bg-warning-subtle', 'bg-opacity-10');
+        }
+    }
+
+    function toggleAutoUpdateUI() {
+        const checked = document.getElementById('otaAutoUpdate').checked;
+        document.getElementById('preferredHourContainer').style.opacity = checked ? '1' : '0.4';
+        document.getElementById('otaPreferredHour').disabled = !checked;
+    }
+
+    async function checkUpdatesNow() {
+        const btn = document.getElementById('btnCheckNow');
+        const text = document.getElementById('btnCheckText');
+        const channel = document.querySelector('input[name="ota_channel"]:checked')?.value || 'stable';
+
+        btn.disabled = true;
+        text.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال بررسی...';
+
+        try {
+            const res = await fetch(`/api/admin/ota/check?channel=${channel}`);
+            const data = await res.json();
+
+            if (data.success && data.update && data.update.available) {
+                activeUpdateInfo = data.update;
+                renderUpdateAvailable(data.update);
+            } else {
+                activeUpdateInfo = null;
+                renderUpToDate(channel);
+            }
+        } catch (err) {
+            alert('خطا در برقراری ارتباط با سرور جهت بررسی آپدیت: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            text.innerText = 'بررسی نسخه جدید';
+        }
+    }
+
+    function renderUpdateAvailable(u) {
+        document.getElementById('upToDateCard').classList.add('d-none');
+        const card = document.getElementById('updateResultCard');
+        card.classList.remove('d-none');
+
+        document.getElementById('updateVersionText').innerText = `v${u.latest_version}`;
+        document.getElementById('updateSeverityBadge').innerText = u.severity || 'RECOMMENDED';
+        document.getElementById('updateChannelBadge').innerText = u.channel || 'stable';
+
+        if (u.file_size_bytes) {
+            document.getElementById('updateSizeText').innerText = `${(u.file_size_bytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        const restartElem = document.getElementById('updateRestartText');
+        if (u.requires_restart) {
+            restartElem.innerHTML = '<i class="fas fa-check-circle text-warning me-1"></i> بله (خودکار انجام می‌شود)';
+        } else {
+            restartElem.innerHTML = '<i class="fas fa-bolt text-success me-1"></i> بدون نیاز به ری‌استارت';
+        }
+
+        document.getElementById('updateChangelogText').innerText = u.changelog_fa || 'بهینه‌سازی‌های امنیتی و رفع باگ‌های گزارش‌شده';
+        card.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function renderUpToDate(channel) {
+        document.getElementById('updateResultCard').classList.add('d-none');
+        document.getElementById('upToDateCard').classList.remove('d-none');
+        document.getElementById('currentActiveChannelText').innerText = channel === 'beta' ? 'آزمایشی (Beta)' : 'پایدار (Stable)';
+    }
+
+    async function saveOtaSettings(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSaveSettings');
+        btn.disabled = true;
+
+        const channel = document.querySelector('input[name="ota_channel"]:checked')?.value || 'stable';
+        const autoUpdate = document.getElementById('otaAutoUpdate').checked;
+        const preferredHour = document.getElementById('otaPreferredHour').value;
+
+        try {
+            const res = await fetch('/api/admin/ota/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ota_channel: channel,
+                    ota_auto_update: autoUpdate,
+                    ota_preferred_hour: preferredHour
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('✅ تنظیمات به‌روزرسانی با موفقیت ذخیره شد.');
+                window.location.reload();
+            } else {
+                alert('خطا در ذخیره تنظیمات: ' + (data.message || 'مشکلی رخ داد'));
+            }
+        } catch (err) {
+            alert('خطای ارتباط با سرور: ' + err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function sendUpdateToTelegram() {
+        if (!activeUpdateInfo) {
+            return alert('اطلاعات نسخه جدید موجود نیست. لطفاً یکبار بررسی نسخه جدید را بزنید.');
+        }
+        try {
+            const res = await fetch('/api/admin/ota/notify-telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ update_info: activeUpdateInfo })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('✅ پیام اعلان به همراه دکمه‌های شیشه‌ای تایید آپدیت به تلگرام مدیران ارشد ارسال شد.');
+            } else {
+                alert('خطا در ارسال به تلگرام: ' + (data.message || 'عدم دسترسی به ربات'));
+            }
+        } catch (err) {
+            alert('خطای اتصال: ' + err.message);
+        }
+    }
+
+    function confirmApplyUpdate() {
+        if (!confirm('آیا از شروع فرآیند به‌روزرسانی سیستم اطمینان دارید؟\n\nیک نسخه پشتیبان کامل از دیتابیس و تنظیمات قبل از شروع تهیه خواهد شد و سرویس ظرف چند ثانیه با نسخه جدید راه‌اندازی می‌گردد.')) {
+            return;
+        }
+        startApplyUpdateProcess();
+    }
+
+    async function startApplyUpdateProcess() {
+        const modal = new bootstrap.Modal(document.getElementById('updateProgressModal'));
+        modal.show();
+
+        const bar = document.getElementById('modalProgressBar');
+        const logBox = document.getElementById('modalLogBox');
+        const title = document.getElementById('modalProgressTitle');
+        const desc = document.getElementById('modalProgressDesc');
+
+        const appendLog = (msg) => {
+            const div = document.createElement('div');
+            div.innerText = msg;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        };
+
+        bar.style.width = '35%';
+        appendLog('[2/4] ایجاد نسخه پشتیبان سریع از پایگاه داده و تنظیمات...');
+
+        try {
+            const res = await fetch('/api/admin/ota/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ update_info: activeUpdateInfo })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                bar.style.width = '85%';
+                bar.classList.replace('bg-primary', 'bg-warning');
+                appendLog('[3/4] ' + data.message);
+                appendLog('[4/4] سرویس در حال راه‌اندازی مجدد است...');
+
+                setTimeout(() => {
+                    bar.style.width = '100%';
+                    bar.classList.replace('bg-warning', 'bg-success');
+                    bar.classList.remove('progress-bar-animated');
+                    document.getElementById('modalSpinner').classList.add('d-none');
+                    title.innerText = '✅ به‌روزرسانی با موفقیت آغاز شد!';
+                    desc.innerText = 'سرویس ری‌استارت شده و تا چند ثانیه دیگر در دسترس خواهد بود.';
+                    document.getElementById('modalDoneBtnContainer').classList.remove('d-none');
+                }, 4000);
+            } else {
+                bar.classList.replace('bg-primary', 'bg-danger');
+                appendLog('[خطا] ' + data.message);
+                title.innerText = '❌ خطا در انجام به‌روزرسانی';
+                desc.innerText = data.message;
+                document.getElementById('modalDoneBtnContainer').classList.remove('d-none');
+            }
+        } catch (err) {
+            bar.classList.replace('bg-primary', 'bg-danger');
+            appendLog('[خطا] ' + err.message);
+            title.innerText = '❌ خطای شبکه در ارتباط با سرور';
+            document.getElementById('modalDoneBtnContainer').classList.remove('d-none');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        toggleAutoUpdateUI();
+    });
+</script>
+{% endblock %}

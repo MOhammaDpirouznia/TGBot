@@ -227,9 +227,11 @@ class TestAutoBackupSystem(unittest.TestCase):
         dt_day1_1206 = datetime(2026, 9, 23, 12, 6, tzinfo=TEHRAN_TZ)
         self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1206, slot_day1_12, last_run_recent))
 
-        # خارج از پنجره ۱۵ دقیقه (مثلاً ۱۲:۲۰) نباید اجرا شود
+        # اگر قبلاً در این اسلات اجرا شده، در دقایق بعدی (مثلاً ۱۲:۲۰) نباید مجدداً اجرا شود
         dt_day1_1220 = datetime(2026, 9, 23, 12, 20, tzinfo=TEHRAN_TZ)
-        self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1220, (2026, 9, 23, 6), None))
+        self.assertFalse(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1220, slot_day1_12, last_run_recent))
+        # اما اگر هنوز در این اسلات اجرا نشده بود، حتی بعد از دقیقه ۱۵ (مثلاً ۱۲:۲۰) باید اجرا شود
+        self.assertTrue(scheduler._should_run_fixed_hours("00,06,12,18", dt_day1_1220, (2026, 9, 23, 6), None))
 
         # در ساعت غیرمجاز (مثلاً ساعت ۱۳) نباید اجرا شود
         dt_day1_1305 = datetime(2026, 9, 23, 13, 5, tzinfo=TEHRAN_TZ)
@@ -265,6 +267,60 @@ class TestAutoBackupSystem(unittest.TestCase):
         self.assertIsNotNone(scheduler.last_main_run_time)
         self.assertIsNotNone(scheduler.last_main_slot)
 
+    def test_restore_backup_from_zip_and_db(self):
+        """تست جامع بازیابی دیتابیس از فایل Zip، فایل db و حفاظت در برابر فایل‌های معیوب"""
+        bm = BackupManager(db_instance=self.db)
+
+        # ۱. درج دیتای اولیه
+        conn = self.db.get_connection()
+        c = conn.cursor()
+        c.execute("INSERT INTO users (telegram_id, username, created_at, updated_at) VALUES (99999, 'user_to_backup', '2026-09-22', '2026-09-22')")
+        conn.commit()
+        conn.close()
+
+        # ۲. ایجاد بکاپ زیپ
+        backup_res = bm.create_database_backup(compress=True)
+        self.assertTrue(backup_res["success"])
+        zip_path = Path(backup_res["file"])
+        self.assertTrue(zip_path.exists())
+
+        # ۳. تغییر دیتای دیتابیس فعلی
+        conn = self.db.get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE telegram_id = 99999")
+        c.execute("INSERT INTO users (telegram_id, username, created_at, updated_at) VALUES (88888, 'temp_user', '2026-09-22', '2026-09-22')")
+        conn.commit()
+        conn.close()
+
+        # اطمینان از اینکه دیتای فعلی تغییر کرده
+        users = self.db.get_all_users()
+        self.assertTrue(any(u["telegram_id"] == 88888 for u in users))
+        self.assertFalse(any(u["telegram_id"] == 99999 for u in users))
+
+        # ۴. بازیابی از فایل زیپ
+        restore_res = bm.restore_backup(zip_path)
+        self.assertTrue(restore_res["success"])
+
+        # ۵. بررسی بازیابی موفقیت‌آمیز دیتای قبلی و عدم وجود دیتای تستی
+        restored_users = self.db.get_all_users()
+        self.assertTrue(any(u["telegram_id"] == 99999 for u in restored_users))
+        self.assertFalse(any(u["telegram_id"] == 88888 for u in restored_users))
+
+        # ۶. تست عدم پذیرش فایل خراب یا نامعتبر
+        corrupt_file = zip_path.parent / "corrupt_test.db"
+        corrupt_file.write_text("NOT A VALID SQLITE DATABASE CONTENT")
+        bad_res = bm.restore_backup(corrupt_file)
+        self.assertFalse(bad_res["success"])
+        self.assertIn("معتبر", bad_res["error"])
+
+        # پاک‌سازی فایل‌های موقت تست
+        try:
+            zip_path.unlink(missing_ok=True)
+            corrupt_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
     unittest.main()
+
