@@ -3045,60 +3045,156 @@ class Database:
                 pass
         return True
 
-    def get_user_loyalty_tier(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
+    def get_user_loyalty_tier(self, telegram_id: Optional[int] = None, reseller_id: Optional[int] = None,
+                              phone_number: Optional[str] = None, subscription_id: Optional[int] = None) -> dict:
         """
         محاسبه دقیق سطح وفاداری مشتری (عادی، برنزی، نقره‌ای، طلایی)
         بر اساس مجموع خریدهای تایید شده و مجموع ترافیک اشتراک‌ها
-        با اعمال خودکار ۵ تا ۱۵ درصد تخفیف همیشگی برای سطوح بالا و درصد کش‌بک
+        با اعمال خودکار ۵ تا ۱۵ درصد تخفیف همیشگی برای سطوح بالا، درصد کش‌بک و نشان‌ها/رنگ‌های بصری
         """
-        user = self.get_user(telegram_id)
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user = None
+        clean_tg_id = int(telegram_id) if (telegram_id and str(telegram_id).strip().isdigit() and int(telegram_id) > 0) else None
+        clean_phone = str(phone_number).strip() if (phone_number and str(phone_number).strip()) else None
+
+        if clean_tg_id:
+            user = self.get_user(clean_tg_id)
+        elif clean_phone:
+            try:
+                cursor.execute("SELECT * FROM users WHERE phone_number = ? AND telegram_id != 0 AND telegram_id IS NOT NULL ORDER BY id DESC LIMIT 1", (clean_phone,))
+                u_row = cursor.fetchone()
+                if u_row:
+                    user = dict(u_row)
+                    clean_tg_id = user.get("telegram_id")
+            except Exception:
+                pass
+
+        if not clean_tg_id and not user and subscription_id:
+            try:
+                cursor.execute("SELECT telegram_id, phone_number, reseller_id, data_limit FROM subscriptions WHERE id = ?", (subscription_id,))
+                s_row = cursor.fetchone()
+                if s_row:
+                    s_dict = dict(s_row)
+                    if s_dict.get("telegram_id") and int(s_dict["telegram_id"]) > 0:
+                        clean_tg_id = int(s_dict["telegram_id"])
+                        user = self.get_user(clean_tg_id)
+                    if not clean_phone and s_dict.get("phone_number"):
+                        clean_phone = str(s_dict["phone_number"]).strip()
+                    if reseller_id is None and s_dict.get("reseller_id"):
+                        reseller_id = s_dict.get("reseller_id")
+            except Exception:
+                pass
+
         if reseller_id is None and user:
             reseller_id = user.get("reseller_id")
         effective_r_id = int(reseller_id) if reseller_id else 0
 
-        is_vip_flag = self.is_user_vip(telegram_id) if user else False
+        is_vip_flag = self.is_user_vip(clean_tg_id) if (user and clean_tg_id) else False
         vip_tier_db = (user.get("vip_tier") or "none").lower() if user else "none"
 
-        conn = self.get_connection()
-        cursor = conn.cursor()
         total_spent = 0
         total_orders = 0
         total_gb = 0
         try:
-            if effective_r_id > 0:
-                cursor.execute("""
-                    SELECT COALESCE(SUM(amount), 0) as total_spent,
-                           COALESCE(COUNT(id), 0) as total_orders
-                    FROM transactions
-                    WHERE user_id = ? AND status = 'approved' AND reseller_id = ?
-                """, (telegram_id, effective_r_id))
-            else:
-                cursor.execute("""
-                    SELECT COALESCE(SUM(amount), 0) as total_spent,
-                           COALESCE(COUNT(id), 0) as total_orders
-                    FROM transactions
-                    WHERE user_id = ? AND status = 'approved' AND (reseller_id IS NULL OR reseller_id = 0)
-                """, (telegram_id,))
-            row = cursor.fetchone()
-            if row:
-                total_spent = int(row["total_spent"] or 0)
-                total_orders = int(row["total_orders"] or 0)
+            if clean_tg_id:
+                if effective_r_id > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE user_id = ? AND status = 'approved' AND reseller_id = ?
+                    """, (clean_tg_id, effective_r_id))
+                else:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE user_id = ? AND status = 'approved' AND (reseller_id IS NULL OR reseller_id = 0)
+                    """, (clean_tg_id,))
+                row = cursor.fetchone()
+                if row:
+                    total_spent = int(row["total_spent"] or 0)
+                    total_orders = int(row["total_orders"] or 0)
 
-            if effective_r_id > 0:
+                if effective_r_id > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                        FROM subscriptions
+                        WHERE telegram_id = ? AND reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                    """, (clean_tg_id, effective_r_id))
+                else:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                        FROM subscriptions
+                        WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL)
+                    """, (clean_tg_id,))
+                row_gb = cursor.fetchone()
+                if row_gb:
+                    total_gb = float(row_gb["total_gb"] or 0)
+            elif clean_phone:
+                if effective_r_id > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE phone_number = ? AND status = 'approved' AND reseller_id = ?
+                    """, (clean_phone, effective_r_id))
+                else:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE phone_number = ? AND status = 'approved' AND (reseller_id IS NULL OR reseller_id = 0)
+                    """, (clean_phone,))
+                row = cursor.fetchone()
+                if row:
+                    total_spent = int(row["total_spent"] or 0)
+                    total_orders = int(row["total_orders"] or 0)
+
+                if effective_r_id > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                        FROM subscriptions
+                        WHERE phone_number = ? AND reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                    """, (clean_phone, effective_r_id))
+                else:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(data_limit), 0) as total_gb
+                        FROM subscriptions
+                        WHERE phone_number = ? AND (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL)
+                    """, (clean_phone,))
+                row_gb = cursor.fetchone()
+                if row_gb:
+                    total_gb = float(row_gb["total_gb"] or 0)
+            elif subscription_id:
+                if effective_r_id > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE (subscription_id = ? OR renew_sub_id = ?) AND status = 'approved' AND reseller_id = ?
+                    """, (subscription_id, subscription_id, effective_r_id))
+                else:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0) as total_spent,
+                               COALESCE(COUNT(id), 0) as total_orders
+                        FROM transactions
+                        WHERE (subscription_id = ? OR renew_sub_id = ?) AND status = 'approved' AND (reseller_id IS NULL OR reseller_id = 0)
+                    """, (subscription_id, subscription_id))
+                row = cursor.fetchone()
+                if row:
+                    total_spent = int(row["total_spent"] or 0)
+                    total_orders = int(row["total_orders"] or 0)
+
                 cursor.execute("""
                     SELECT COALESCE(SUM(data_limit), 0) as total_gb
                     FROM subscriptions
-                    WHERE telegram_id = ? AND reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
-                """, (telegram_id, effective_r_id))
-            else:
-                cursor.execute("""
-                    SELECT COALESCE(SUM(data_limit), 0) as total_gb
-                    FROM subscriptions
-                    WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL)
-                """, (telegram_id,))
-            row_gb = cursor.fetchone()
-            if row_gb:
-                total_gb = float(row_gb["total_gb"] or 0)
+                    WHERE id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                """, (subscription_id,))
+                row_gb = cursor.fetchone()
+                if row_gb:
+                    total_gb = float(row_gb["total_gb"] or 0)
         except Exception as e:
             logger.error(f"Error calculating stats for loyalty tier {telegram_id}: {e}")
         finally:
@@ -3126,6 +3222,10 @@ class Database:
         title = "عادی"
         badge = "عضو عادی"
         badge_html = '<span class="badge bg-secondary">عادی</span>'
+        color = "#64748b"
+        border_color = "#cbd5e1"
+        glow = "transparent"
+        badge_class = "badge-normal"
         discount_percent = 0
         cashback_percent = 0
         next_tier = "bronze"
@@ -3139,6 +3239,10 @@ class Database:
             title = "طلایی"
             badge = "🥇 طلایی"
             badge_html = '<span class="badge bg-warning text-dark border border-warning shadow-sm"><i class="fas fa-crown me-1"></i>سطح طلایی (VIP)</span>'
+            color = "#f59e0b"
+            border_color = "#f59e0b"
+            glow = "rgba(245, 158, 11, 0.4)"
+            badge_class = "badge-vip"
             discount_percent = g_disc
             cashback_percent = g_cb
             next_tier = None
@@ -3151,6 +3255,10 @@ class Database:
             title = "نقره‌ای"
             badge = "🥈 نقره‌ای"
             badge_html = '<span class="badge bg-light text-dark border border-secondary shadow-sm"><i class="fas fa-star text-secondary me-1"></i>سطح نقره‌ای</span>'
+            color = "#94a3b8"
+            border_color = "#94a3b8"
+            glow = "rgba(148, 163, 184, 0.3)"
+            badge_class = "badge-silver"
             discount_percent = s_disc
             cashback_percent = s_cb
             next_tier = "gold"
@@ -3163,7 +3271,11 @@ class Database:
             tier = "bronze"
             title = "برنزی"
             badge = "🥉 برنزی"
-            badge_html = '<span class="badge text-white border shadow-sm" style="background: #cd7f32;"><i class="fas fa-medal me-1"></i>سطح برنزی</span>'
+            badge_html = '<span class="badge text-white border shadow-sm" style="background: #cd7f32; border-color: #b45309;"><i class="fas fa-medal me-1"></i>سطح برنزی</span>'
+            color = "#cd7f32"
+            border_color = "#cd7f32"
+            glow = "rgba(205, 127, 50, 0.4)"
+            badge_class = "badge-bronze"
             discount_percent = b_disc
             cashback_percent = b_cb
             next_tier = "silver"
@@ -3182,6 +3294,10 @@ class Database:
             "title": title,
             "badge": badge,
             "badge_html": badge_html,
+            "color": color,
+            "border_color": border_color,
+            "glow": glow,
+            "badge_class": badge_class,
             "discount_percent": discount_percent,
             "cashback_percent": cashback_percent,
             "total_spent": total_spent,
@@ -3573,18 +3689,47 @@ class Database:
             "anniversary_reward_val": _get_val("anniversary_reward_val", "5")
         }
 
+    def sync_all_users_vip_tiers(self, reseller_id: int = 0) -> int:
+        """همگام‌سازی و به‌روزرسانی آنی سطح وفاداری تمام کاربران بر اساس تنظیمات فعلی VIP"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        updated_count = 0
+        try:
+            effective_r_id = int(reseller_id) if reseller_id else 0
+            if effective_r_id > 0:
+                cursor.execute("SELECT telegram_id FROM users WHERE reseller_id = ?", (effective_r_id,))
+            else:
+                cursor.execute("SELECT telegram_id FROM users WHERE (reseller_id IS NULL OR reseller_id = 0)")
+            rows = cursor.fetchall()
+            tg_ids = [r["telegram_id"] for r in rows if r["telegram_id"] and int(r["telegram_id"]) > 0]
+            conn.close()
+            for tg_id in tg_ids:
+                try:
+                    self.evaluate_and_update_user_vip_tier(tg_id, reseller_id=effective_r_id)
+                    updated_count += 1
+                except Exception as e_u:
+                    logger.error(f"Error syncing VIP tier for {tg_id}: {e_u}")
+        except Exception as e:
+            logger.error(f"Error in sync_all_users_vip_tiers: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return updated_count
+
     def save_vip_settings(self, *args, reseller_id: int = 0, **kwargs) -> bool:
         """ذخیره تنظیمات باشگاه وفاداری و سطوح VIP (پشتیبانی از هر دو حالت دیکشنری، آرگومان‌های مجزا و تفکیک نماینده)"""
         try:
             r_id = kwargs.pop("reseller_id", reseller_id)
             prefix = f"vip_r_{r_id}_" if r_id and int(r_id) > 0 else "vip_"
+            saved = False
             if args and isinstance(args[0], dict):
                 data = args[0]
                 for k, v in data.items():
                     val_str = "1" if v is True else ("0" if v is False else str(v))
                     clean_k = k[4:] if k.startswith("vip_") else k
                     self.set_setting(f"{prefix}{clean_k}", val_str)
-                return True
+                saved = True
             elif len(args) >= 1:
                 # فراخوانی با آرگومان‌های پوزیشنی قدیمی (enabled, threshold, cashback)
                 enabled = args[0]
@@ -3593,12 +3738,19 @@ class Database:
                 self.set_setting(f"{prefix}auto_enabled", "1" if enabled else "0")
                 self.set_setting(f"{prefix}auto_threshold", str(threshold))
                 self.set_setting(f"{prefix}cashback_percent", str(cashback))
-                return True
+                saved = True
             elif kwargs:
                 for k, v in kwargs.items():
                     val_str = "1" if v is True else ("0" if v is False else str(v))
                     clean_k = k[4:] if k.startswith("vip_") else k
                     self.set_setting(f"{prefix}{clean_k}", val_str)
+                saved = True
+
+            if saved:
+                try:
+                    self.sync_all_users_vip_tiers(reseller_id=r_id)
+                except Exception as e_sync:
+                    logger.error(f"Error syncing users VIP tiers after saving settings: {e_sync}")
                 return True
             return True
         except Exception as e:
@@ -11170,6 +11322,25 @@ class Database:
             else:
                 user_dict["created_at_shamsi"] = "-"
 
+            # محاسبه دقیق سطح وفاداری مشتری
+            effective_tg = user_dict.get("telegram_id")
+            loyalty = self.get_user_loyalty_tier(
+                telegram_id=int(effective_tg) if (effective_tg and int(effective_tg) > 0) else None,
+                reseller_id=effective_r_id,
+                phone_number=user_dict.get("phone_number") or phone,
+                subscription_id=sub_id
+            )
+            user_dict["loyalty"] = loyalty
+            user_dict["loyalty_tier"] = loyalty.get("tier", "none")
+            user_dict["loyalty_title"] = loyalty.get("title", "عادی")
+            user_dict["loyalty_badge"] = loyalty.get("badge", "عضو عادی")
+            user_dict["loyalty_badge_html"] = loyalty.get("badge_html")
+            user_dict["loyalty_color"] = loyalty.get("color", "#64748b")
+            user_dict["loyalty_border"] = loyalty.get("border_color", "#cbd5e1")
+            user_dict["loyalty_glow"] = loyalty.get("glow", "transparent")
+            user_dict["loyalty_badge_class"] = loyalty.get("badge_class", "badge-normal")
+            user_dict["is_vip"] = bool(loyalty.get("is_vip")) or bool(user_dict.get("is_vip"))
+
             # ۲. دریافت تمام اشتراک‌های متصل به این مشتری با تفکیک کامل نماینده و مدیریت
             user_subs = []
             if tg_id and int(tg_id) > 0:
@@ -11350,6 +11521,7 @@ class Database:
                 "success": True,
                 "current": sub_dict,
                 "user": user_dict,
+                "loyalty": loyalty,
                 "user_subscriptions": user_subs,
                 "transactions": tx_rows,
                 "total_paid": total_paid,

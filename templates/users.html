@@ -76,13 +76,19 @@
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" 
                                      alt="{{ user['username'] or user['telegram_id'] }}" 
-                                     class="rounded-circle border shadow-sm flex-shrink-0" 
-                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     class="rounded-circle shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover; border: 2.5px solid {% if user.get('vip_tier') == 'gold' %}#f59e0b{% elif user.get('vip_tier') == 'silver' %}#94a3b8{% elif user.get('vip_tier') == 'bronze' %}#cd7f32{% else %}#cbd5e1{% endif %} !important;" 
                                      loading="lazy">
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1">
                                         <code>{{ user['telegram_id'] }}</code>
-                                        {% if user['is_vip'] %}
+                                        {% if user.get('vip_tier') == 'gold' %}
+                                            <span class="badge badge-vip py-0 px-1" title="سطح طلایی (VIP)"><i class="fas fa-crown"></i> طلایی</span>
+                                        {% elif user.get('vip_tier') == 'silver' %}
+                                            <span class="badge text-dark py-0 px-1 border border-secondary" style="background: #e2e8f0; font-size: 0.7rem;" title="سطح نقره‌ای"><i class="fas fa-star text-secondary"></i> نقره‌ای</span>
+                                        {% elif user.get('vip_tier') == 'bronze' %}
+                                            <span class="badge text-white py-0 px-1" style="background: #cd7f32; font-size: 0.7rem;" title="سطح برنزی"><i class="fas fa-medal"></i> برنزی</span>
+                                        {% elif user['is_vip'] %}
                                             <span class="badge badge-vip py-0 px-1" title="کاربر ویژه (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
                                     </div>

@@ -30,7 +30,11 @@
                 <h4 class="fw-bold mb-1">{{ (user['username'] if user else None) or 'کاربر هیدیفای' }}</h4>
                 <p class="text-muted mb-2"><code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
                 
-                {% if vip_info.get('is_vip') %}
+                {% if vip_info and vip_info.get('tier_badge_html') %}
+                    <div class="mb-3">
+                        {{ vip_info['tier_badge_html'] | safe }}
+                    </div>
+                {% elif vip_info and vip_info.get('is_vip') %}
                     <div class="badge badge-vip fs-6 py-2 px-3 mb-3 d-inline-flex align-items-center gap-1 shadow-sm">
                         <i class="fas fa-crown"></i> مشتری پریمیوم (VIP)
                     </div>
@@ -430,6 +434,11 @@ function openSubscriptionHistory(subId, accountName) {
             }
             const cur = data.current || {};
             const user = data.user || {};
+            const loyalty = data.loyalty || user.loyalty || {};
+            const loyaltyColor = loyalty.color || (user.is_vip ? '#f59e0b' : '#64748b');
+            const loyaltyBorder = loyalty.border_color || loyaltyColor;
+            const loyaltyGlow = loyalty.glow || 'transparent';
+            const loyaltyBadge = loyalty.badge_html || (user.is_vip ? '<span class="badge badge-vip"><i class="fas fa-crown me-1"></i>VIP</span>' : '<span class="badge bg-secondary">مشتری عادی</span>');
             const history = data.history || [];
             const txList = data.transactions || [];
             const userSubs = data.user_subscriptions || [];
@@ -444,7 +453,7 @@ function openSubscriptionHistory(subId, accountName) {
                         <div class="row g-3 align-items-center">
                             <div class="col-auto text-center">
                                 <div class="position-relative d-inline-block">
-                                    <div class="avatar-circle rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style="width: 64px; height: 64px; font-size: 26px;">
+                                    <div class="avatar-circle rounded-circle text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style="width: 64px; height: 64px; font-size: 26px; background-color: ${loyaltyColor}; border: 3px solid ${loyaltyBorder}; ${loyaltyGlow && loyalty.tier !== 'none' ? `box-shadow: 0 0 10px ${loyaltyGlow} !important;` : ''}">
                                         ${(accountName || 'U').charAt(0).toUpperCase()}
                                     </div>
                                     ${cur.is_online ? '<span class="position-absolute bottom-0 end-0 p-1 bg-success border border-2 border-white rounded-circle" title="آنلاین"></span>' : ''}
@@ -453,7 +462,9 @@ function openSubscriptionHistory(subId, accountName) {
                             <div class="col">
                                 <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
                                     <h4 class="fw-bold mb-0 text-dark">${accountName || 'بدون نام'}</h4>
-                                    ${user.is_vip ? '<span class="badge badge-vip"><i class="fas fa-crown me-1"></i>VIP</span>' : '<span class="badge bg-secondary">مشتری عادی</span>'}
+                                    ${loyaltyBadge}
+                                    ${loyalty.discount_percent > 0 ? `<span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-tags me-1"></i>${loyalty.discount_percent}٪ تخفیف دائم</span>` : ''}
+                                    ${loyalty.cashback_percent > 0 ? `<span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-coins me-1"></i>${loyalty.cashback_percent}٪ کش‌بک</span>` : ''}
                                     ${cur.status === 'active' ? '<span class="badge bg-success">اشتراک فعال</span>' : (cur.status === 'expired' ? '<span class="badge bg-danger">منقضی شده</span>' : '<span class="badge bg-secondary">' + (cur.status || '-') + '</span>')}
                                     ${cur.is_online ? '<span class="badge bg-success-subtle text-success border border-success font-monospace"><i class="fas fa-circle-dot me-1"></i>آنلاین</span>' : '<span class="badge bg-light text-secondary border font-monospace">آفلاین</span>'}
                                 </div>

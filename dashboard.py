@@ -3249,7 +3249,8 @@ def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_m
 
 
 def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_map: dict = None,
-                                vip_users_set: set = None, queue_map: dict = None) -> dict:
+                                vip_users_set: set = None, queue_map: dict = None,
+                                loyalty_cache: dict = None, db_instance = None) -> dict:
     """
     محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف و تشخیص صادرکننده
     نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
@@ -3351,16 +3352,46 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
             pass
 
     tg_id = item.get("telegram_id")
-    if tg_id:
-        if vip_users_set is not None:
-            item["is_vip"] = (int(tg_id) in vip_users_set)
-        else:
-            try:
-                item["is_vip"] = db.is_user_vip(int(tg_id))
-            except Exception:
-                item["is_vip"] = False
+    clean_tg = int(tg_id) if (tg_id and str(tg_id).strip().isdigit() and int(tg_id) > 0) else None
+    reseller_id = item.get("reseller_id")
+    effective_r_id = int(reseller_id) if (reseller_id and str(reseller_id).strip().isdigit()) else 0
+    phone = item.get("phone_number")
+    sub_id = item.get("id")
+
+    cache_key = (clean_tg, effective_r_id, phone or "", sub_id if not clean_tg else None)
+    loyalty = None
+    if loyalty_cache is not None and cache_key in loyalty_cache:
+        loyalty = loyalty_cache[cache_key]
     else:
-        item["is_vip"] = False
+        active_db = db_instance or db
+        try:
+            loyalty = active_db.get_user_loyalty_tier(
+                telegram_id=clean_tg,
+                reseller_id=effective_r_id,
+                phone_number=phone if not clean_tg else None,
+                subscription_id=sub_id if not clean_tg and not phone else None
+            )
+        except Exception as e_lt:
+            logger.error(f"Error calculating loyalty tier in enrich_subscription_details: {e_lt}")
+            loyalty = {
+                "tier": "none", "title": "عادی", "badge": "عضو عادی",
+                "badge_html": '<span class="badge bg-secondary">عادی</span>',
+                "color": "#64748b", "border_color": "#cbd5e1", "glow": "transparent",
+                "badge_class": "badge-normal", "discount_percent": 0, "cashback_percent": 0, "is_vip": False
+            }
+        if loyalty_cache is not None:
+            loyalty_cache[cache_key] = loyalty
+
+    item["loyalty"] = loyalty
+    item["loyalty_tier"] = loyalty.get("tier", "none")
+    item["loyalty_title"] = loyalty.get("title", "عادی")
+    item["loyalty_badge"] = loyalty.get("badge", "عضو عادی")
+    item["loyalty_badge_html"] = loyalty.get("badge_html")
+    item["loyalty_color"] = loyalty.get("color", "#64748b")
+    item["loyalty_border"] = loyalty.get("border_color", "#cbd5e1")
+    item["loyalty_glow"] = loyalty.get("glow", "transparent")
+    item["loyalty_badge_class"] = loyalty.get("badge_class", "badge-normal")
+    item["is_vip"] = bool(loyalty.get("is_vip")) or (vip_users_set is not None and clean_tg in vip_users_set)
 
     if queue_map is not None:
         raw_id = item.get("id")
@@ -7599,13 +7630,15 @@ def subscriptions():
                 except Exception:
                     pass
 
+    loyalty_cache = {}
     for s in sub_list:
         s_dict = enrich_subscription_details(
             s,
             resellers_map=resellers_map,
             admins_map=admins_map,
             vip_users_set=vip_users_set,
-            queue_map=queue_map
+            queue_map=queue_map,
+            loyalty_cache=loyalty_cache
         )
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
 
@@ -15569,8 +15602,9 @@ def reseller_users():
                         pass
 
         subs = []
+        loyalty_cache = {}
         for s in raw_subs:
-            item = enrich_subscription_details(s, vip_users_set=vip_users_set, queue_map=queue_map)
+            item = enrich_subscription_details(s, vip_users_set=vip_users_set, queue_map=queue_map, loyalty_cache=loyalty_cache)
             if status_filter == "online" and not item.get("is_online"):
                 continue
             elif status_filter == "active" and item.get("status") != "active":

@@ -310,19 +310,26 @@
                         </td>
                         <td class="ps-2" data-value="{{ (sub['account_name'] or sub.get('telegram_id') or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2">
-                                <div class="position-relative cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">
+                                <div class="position-relative cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل (سطح: {{ sub.get('loyalty_title') or 'عادی' }})">
                                     <img src="{{ avatar_url(sub.get('telegram_id') or sub.get('phone_number') or sub.get('account_name') or 'Customer') }}" 
                                          alt="{{ sub['account_name'] or sub.get('telegram_id') }}" 
-                                         class="rounded-circle border shadow-sm flex-shrink-0" 
-                                         style="width: 38px; height: 38px; object-fit: cover;" 
+                                         class="rounded-circle shadow-sm flex-shrink-0" 
+                                         style="width: 38px; height: 38px; object-fit: cover; border: 2.5px solid {{ sub.get('loyalty_border') or '#cbd5e1' }} !important; {% if sub.get('loyalty_tier') in ('gold', 'silver', 'bronze') %}box-shadow: 0 0 6px {{ sub.get('loyalty_glow') }} !important;{% endif %}" 
                                          loading="lazy">
                                     {% if sub.get('is_online') %}
                                         <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
                                     {% endif %}
+                                    {% if sub.get('loyalty_tier') == 'gold' %}
+                                        <span class="position-absolute top-0 start-0 translate-middle badge rounded-pill bg-warning text-dark border border-white shadow-sm p-1" style="font-size: 8px; line-height: 1;" title="سطح طلایی"><i class="fas fa-crown"></i></span>
+                                    {% elif sub.get('loyalty_tier') == 'silver' %}
+                                        <span class="position-absolute top-0 start-0 translate-middle badge rounded-pill bg-secondary text-white border border-white shadow-sm p-1" style="font-size: 8px; line-height: 1;" title="سطح نقره‌ای"><i class="fas fa-star"></i></span>
+                                    {% elif sub.get('loyalty_tier') == 'bronze' %}
+                                        <span class="position-absolute top-0 start-0 translate-middle badge rounded-pill text-white border border-white shadow-sm p-1" style="background: #cd7f32; font-size: 8px; line-height: 1;" title="سطح برنزی"><i class="fas fa-medal"></i></span>
+                                    {% endif %}
                                 </div>
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
-                                        <span class="text-primary text-decoration-underline-hover cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        <span class="text-primary text-decoration-underline-hover cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل (سطح: {{ sub.get('loyalty_title') or 'عادی' }})">{{ sub['account_name'] or 'بدون نام' }}</span>
                                         {% set has_sub_note = true if (sub.get('admin_note') or sub.get('customer_note')) else false %}
                                         <button type="button" 
                                                 class="btn btn-link p-0 text-decoration-none sub-note-btn ms-1 {% if has_sub_note %}text-warning{% else %}text-muted opacity-50{% endif %}" 
@@ -330,7 +337,13 @@
                                                 title="{% if sub.get('admin_note') %}یادداشت: {{ sub['admin_note']|striptags|truncate(50) }}{% elif sub.get('customer_note') %}پیام به مشتری: {{ sub['customer_note']|striptags|truncate(50) }}{% else %}افزودن یادداشت / پیام به مشتری{% endif %}">
                                             <i class="fas {% if has_sub_note %}fa-note-sticky text-warning{% else %}fa-note-sticky{% endif %}" style="font-size: 0.85rem;"></i>
                                         </button>
-                                        {% if sub.get('is_vip') %}
+                                        {% if sub.get('loyalty_tier') == 'gold' %}
+                                             <span class="badge badge-vip py-0 px-1 shadow-sm" style="font-size: 0.7rem;" title="سطح طلایی (VIP)"><i class="fas fa-crown me-1"></i>طلایی</span>
+                                        {% elif sub.get('loyalty_tier') == 'silver' %}
+                                             <span class="badge text-dark py-0 px-1 shadow-sm border border-secondary" style="background: #e2e8f0; font-size: 0.7rem;" title="سطح نقره‌ای"><i class="fas fa-star text-secondary me-1"></i>نقره‌ای</span>
+                                        {% elif sub.get('loyalty_tier') == 'bronze' %}
+                                             <span class="badge text-white py-0 px-1 shadow-sm" style="background: #cd7f32; border-color: #b45309; font-size: 0.7rem;" title="سطح برنزی"><i class="fas fa-medal me-1"></i>برنزی</span>
+                                        {% elif sub.get('is_vip') %}
                                              <span class="badge badge-vip py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
                                         {% if sub.get('has_queue') %}
@@ -4044,6 +4057,11 @@ function openSubscriptionHistory(subId, accountName) {
             }
             const cur = data.current || {};
             const user = data.user || {};
+            const loyalty = data.loyalty || user.loyalty || {};
+            const loyaltyColor = loyalty.color || (user.is_vip ? '#f59e0b' : '#64748b');
+            const loyaltyBorder = loyalty.border_color || loyaltyColor;
+            const loyaltyGlow = loyalty.glow || 'transparent';
+            const loyaltyBadge = loyalty.badge_html || (user.is_vip ? '<span class="badge badge-vip"><i class="fas fa-crown me-1"></i>VIP</span>' : '<span class="badge bg-secondary">مشتری عادی</span>');
             const history = data.history || [];
             const txList = data.transactions || [];
             const userSubs = data.user_subscriptions || [];
@@ -4058,7 +4076,7 @@ function openSubscriptionHistory(subId, accountName) {
                         <div class="row g-3 align-items-center">
                             <div class="col-auto text-center">
                                 <div class="position-relative d-inline-block">
-                                    <div class="avatar-circle rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style="width: 64px; height: 64px; font-size: 26px;">
+                                    <div class="avatar-circle rounded-circle text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style="width: 64px; height: 64px; font-size: 26px; background-color: ${loyaltyColor}; border: 3px solid ${loyaltyBorder}; ${loyaltyGlow && loyalty.tier !== 'none' ? `box-shadow: 0 0 10px ${loyaltyGlow} !important;` : ''}">
                                         ${(accountName || 'U').charAt(0).toUpperCase()}
                                     </div>
                                     ${cur.is_online ? '<span class="position-absolute bottom-0 end-0 p-1 bg-success border border-2 border-white rounded-circle" title="آنلاین"></span>' : ''}
@@ -4067,7 +4085,9 @@ function openSubscriptionHistory(subId, accountName) {
                             <div class="col">
                                 <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
                                     <h4 class="fw-bold mb-0 text-dark">${accountName || 'بدون نام'}</h4>
-                                    ${user.is_vip ? '<span class="badge badge-vip"><i class="fas fa-crown me-1"></i>VIP</span>' : '<span class="badge bg-secondary">مشتری عادی</span>'}
+                                    ${loyaltyBadge}
+                                    ${loyalty.discount_percent > 0 ? `<span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-tags me-1"></i>${loyalty.discount_percent}٪ تخفیف دائم</span>` : ''}
+                                    ${loyalty.cashback_percent > 0 ? `<span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-coins me-1"></i>${loyalty.cashback_percent}٪ کش‌بک</span>` : ''}
                                     ${cur.status === 'active' ? '<span class="badge bg-success">اشتراک فعال</span>' : (cur.status === 'expired' ? '<span class="badge bg-danger">منقضی شده</span>' : '<span class="badge bg-secondary">' + (cur.status || '-') + '</span>')}
                                     ${cur.is_online ? '<span class="badge bg-success-subtle text-success border border-success font-monospace"><i class="fas fa-circle-dot me-1"></i>آنلاین</span>' : '<span class="badge bg-light text-secondary border font-monospace">آفلاین</span>'}
                                 </div>
