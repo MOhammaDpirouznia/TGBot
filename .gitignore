@@ -3,6 +3,9 @@
 *.env
 .env.local
 .env.production
+cards.json
+data/cards.json
+first_user.json
 
 # ─── فایل‌های موقت دیتابیس، کش رسیدها و لاگ ───
 data/*.db
@@ -16,6 +19,18 @@ data/.write_test
 *.db-shm
 *.key
 *.crt
+
+# ─── خروجی‌های موقت و فایل‌های جستجو ───
+output*.txt
+search_output*.txt
+tmp_*.py
+*.tmp
+
+# ─── آواتارهای کش و تولید شده خودکار ───
+data/avatars/custom_*
+data/avatars/smart3d_*
+data/avatars/reseller_*
+cache_avatars/
 
 # ─── تنظیمات، پلن‌ها و فایل بک‌آپ برای ماندگاری در دیپلوی گیت ───
 !data/plans.json

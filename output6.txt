@@ -1,1 +1,0 @@
-1948: {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
