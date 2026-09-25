@@ -86,6 +86,16 @@ class LicenseGuard:
         self.server_url = os.getenv("LICENSE_SERVER_URL", DEFAULT_SERVER_URL).rstrip("/")
         self.master_key = os.getenv("LICENSE_MASTER_OVERRIDE", "").strip().upper()
 
+        # بازیابی از دیتابیس در صورت عدم تعریف در متغیرهای محیطی
+        if not self.license_key:
+            try:
+                from database import db
+                db_key = db.get_setting("license_key")
+                if db_key and str(db_key).strip():
+                    self.license_key = str(db_key).strip()
+            except Exception:
+                pass
+
         # اثر انگشت اختصاصی سخت‌افزار
         self.machine_id = self._generate_machine_id()
 
@@ -160,11 +170,23 @@ class LicenseGuard:
     # ─────────────────────────────────────────────────────────────────────────
     def _is_master_mode(self) -> bool:
         """بررسی آیا این سرور متعلق به مدیر اصلی است یا خیر"""
-        # اگر کلید مستر در محیط تنظیم شده باشد یا لایسنس ویژه مستر باشد
+        # ۱. اگر متغیر مستر در محیط تنظیم شده باشد یا لایسنس ویژه مستر باشد
         if self.master_key in ["TRUE", "YES", "1", "ENABLE", "ENABLED"]:
             return True
         if self.license_key and "MASTER_UNLIMITED" in self.license_key.upper():
             return True
+
+        # ۲. سرور کلود شخصی ریلوی، داکر یا متغیر توسعه‌دهنده
+        if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID") or os.getenv("DEVELOPER_MODE") == "1":
+            return True
+
+        # ۳. در صورتی که فایل پایتون به صورت سورس کد آزاد (غیر باینری کامپایل‌شده Nuitka) اجرا می‌شود
+        # کامپایل به باینری Native با build_nuitka.py برای توزیع تجاری به مشتریان طراحی شده است
+        is_compiled = hasattr(sys, "__compiled__") or getattr(sys, "frozen", False) or not __file__.endswith(".py")
+        strict_mode = os.getenv("LICENSE_GUARD_STRICT", "0").lower() in ("1", "true")
+        if not is_compiled and not strict_mode:
+            return True
+
         return False
 
     def _activate_master_mode(self):

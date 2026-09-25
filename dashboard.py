@@ -173,7 +173,16 @@ def get_user_proxy() -> str:
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
 
 def get_panel_port(default: int = 5000) -> int:
-    """دریافت پورت وب‌پنل از دیتابیس یا متغیرهای محیطی با پیش‌فرض 5000"""
+    """دریافت پورت وب‌پنل از محیط، دیتابیس یا متغیرهای محیطی با پیش‌فرض 5000"""
+    env_val = os.getenv("PORT") or os.getenv("PANEL_PORT")
+    # در محیط Railway یا کلود/داکر، پورت تعیین شده توسط ریلوی اولویت قطعی دارد
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID") or os.getenv("DYNO"):
+        if env_val and str(env_val).strip().isdigit():
+            p = int(str(env_val).strip())
+            if 1 <= p <= 65535:
+                return p
+
+    # در سرورهای شخصی لینوکس/ویندوز: بررسی دیتابیس
     try:
         val = db.get_setting("panel_port")
         if val is not None and str(val).strip().isdigit():
@@ -182,19 +191,21 @@ def get_panel_port(default: int = 5000) -> int:
                 return p
     except Exception:
         pass
-    try:
-        env_val = os.getenv("PORT") or os.getenv("PANEL_PORT")
-        if env_val and str(env_val).strip().isdigit():
-            p = int(str(env_val).strip())
-            if 1 <= p <= 65535:
-                return p
-    except Exception:
-        pass
+
+    # بررسی متغیر محیطی PORT از فایل .env
+    if env_val and str(env_val).strip().isdigit():
+        p = int(str(env_val).strip())
+        if 1 <= p <= 65535:
+            return p
+
     return default
 
 
 def get_panel_host(default: str = "0.0.0.0") -> str:
     """دریافت آدرس Bind هاست وب‌پنل (0.0.0.0 یا 127.0.0.1)"""
+    # در محیط Railway و داکر حتماً باید 0.0.0.0 باشد تا پروکسی ریلوی بتواند ترافیک را روت کند
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"):
+        return "0.0.0.0"
     try:
         val = db.get_setting("panel_host")
         if val and str(val).strip():
