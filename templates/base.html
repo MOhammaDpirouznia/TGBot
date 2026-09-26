@@ -484,14 +484,14 @@
             overflow-x: hidden;
             padding: 6px;
             border-radius: 18px !important;
-            z-index: 1090;
+            z-index: 999999 !important;
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
             transform: translateY(-8px) scale(0.97);
-            transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
-                        transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
-                        visibility 0.2s;
+            transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+                        transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+                        visibility 0.18s;
         }
 
         .liquid-select-dropdown.open-up {
@@ -500,11 +500,36 @@
             transform: translateY(8px) scale(0.97);
         }
 
+        .liquid-select-dropdown.is-open,
         .liquid-select-wrapper.is-open .liquid-select-dropdown {
-            opacity: 1;
-            visibility: visible;
-            pointer-events: auto;
-            transform: translateY(0) scale(1);
+            opacity: 1 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+            transform: translateY(0) scale(1) !important;
+        }
+
+        /* ارتقای لایه بصری کارت‌ها و المان‌های والد هنگام باز بودن منوی کشویی */
+        .card:has(.liquid-select-wrapper.is-open),
+        .card.liquid-select-parent-elevated,
+        .card-header:has(.liquid-select-wrapper.is-open),
+        .card-header.liquid-select-parent-elevated,
+        .card-body:has(.liquid-select-wrapper.is-open),
+        .card-body.liquid-select-parent-elevated,
+        .row:has(.liquid-select-wrapper.is-open),
+        .row.liquid-select-parent-elevated,
+        [class*="col-"]:has(.liquid-select-wrapper.is-open),
+        [class*="col-"].liquid-select-parent-elevated,
+        tr:has(.liquid-select-wrapper.is-open),
+        tr.liquid-select-parent-elevated,
+        .table-responsive:has(.liquid-select-wrapper.is-open),
+        .table-responsive.liquid-select-parent-elevated {
+            z-index: 1060 !important;
+            position: relative !important;
+        }
+
+        .table-responsive:has(.liquid-select-wrapper.is-open),
+        .table-responsive.liquid-select-parent-elevated {
+            overflow: visible !important;
         }
 
         [data-bs-theme="dark"] .liquid-select-dropdown {
@@ -4894,32 +4919,107 @@
 
                     buildOptions();
 
+                    // اتصال دوطرفه متدها و رفرنس‌ها به wrapper
+                    wrapper._liquidDropdown = dropdown;
+                    wrapper._closeDropdown = closeDropdown;
+                    dropdown._liquidWrapper = wrapper;
+
                     function openDropdown() {
+                        // بستن سایر منوهای باز
                         document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
-                            if (w !== wrapper) {
-                                w.classList.remove('is-open');
-                                const tr = w.querySelector('.liquid-select-trigger');
-                                if (tr) tr.setAttribute('aria-expanded', 'false');
+                            if (w !== wrapper && w._closeDropdown) {
+                                w._closeDropdown();
                             }
                         });
 
-                        wrapper.classList.add('is-open');
-                        trigger.setAttribute('aria-expanded', 'true');
+                        // اطمینان از وجود کانتینر پرتال سراسری روی body
+                        let portal = document.getElementById('liquid-select-portal');
+                        if (!portal) {
+                            portal = document.createElement('div');
+                            portal.id = 'liquid-select-portal';
+                            portal.style.position = 'fixed';
+                            portal.style.top = '0';
+                            portal.style.left = '0';
+                            portal.style.width = '100vw';
+                            portal.style.height = '0';
+                            portal.style.zIndex = '999999';
+                            portal.style.pointerEvents = 'none';
+                            document.body.appendChild(portal);
+                        }
 
-                        // بررسی مرزهای صفحه جهت جلوگیری از بیرون زدن منو
-                        const rect = dropdown.getBoundingClientRect();
-                        if (rect.bottom > window.innerHeight - 20) {
+                        // ارتقای لایه والدین در DOM
+                        let p = wrapper.parentElement;
+                        while (p && p !== document.body && p !== document.documentElement) {
+                            if (p.classList.contains('card') || 
+                                p.classList.contains('card-body') || 
+                                p.classList.contains('card-header') || 
+                                p.classList.contains('row') || 
+                                p.classList.contains('table-responsive') || 
+                                p.classList.contains('input-group') || 
+                                p.tagName === 'TR') {
+                                p.classList.add('liquid-select-parent-elevated');
+                            }
+                            p = p.parentElement;
+                        }
+
+                        // انتقال دراپ‌داون به پرتال سراسری تا از هرگونه Context و Overflow والد رها شود
+                        portal.appendChild(dropdown);
+
+                        // محاسبه مختصات دقیق تریگر نسبت به Viewport
+                        const rect = trigger.getBoundingClientRect();
+                        const winWidth = window.innerWidth;
+                        const winHeight = window.innerHeight;
+                        const isRtl = document.documentElement.dir === 'rtl' || document.body.dir === 'rtl';
+
+                        // تعیین جهت باز شدن (رو به بالا یا پایین)
+                        const spaceBelow = winHeight - rect.bottom;
+                        const spaceAbove = rect.top;
+                        const openUp = (spaceBelow < 260 && spaceAbove > spaceBelow);
+
+                        dropdown.style.position = 'fixed';
+                        dropdown.style.zIndex = '999999';
+                        dropdown.style.pointerEvents = 'auto';
+
+                        if (openUp) {
+                            dropdown.style.top = 'auto';
+                            dropdown.style.bottom = Math.round(winHeight - rect.top + 6) + 'px';
+                            dropdown.style.maxHeight = Math.min(290, spaceAbove - 20) + 'px';
                             dropdown.classList.add('open-up');
                         } else {
+                            dropdown.style.bottom = 'auto';
+                            dropdown.style.top = Math.round(rect.bottom + 6) + 'px';
+                            dropdown.style.maxHeight = Math.min(290, spaceBelow - 20) + 'px';
                             dropdown.classList.remove('open-up');
                         }
-                        if (rect.left < 10) {
-                            dropdown.style.right = 'auto';
-                            dropdown.style.left = '0';
+
+                        // تنظیم افقی و عرض
+                        const minW = Math.max(rect.width, 130);
+                        const maxW = Math.min(winWidth - 16, 440);
+                        dropdown.style.minWidth = minW + 'px';
+                        dropdown.style.maxWidth = maxW + 'px';
+
+                        if (isRtl) {
+                            const rightOffset = winWidth - rect.right;
+                            if (rect.right - maxW < 8) {
+                                dropdown.style.left = '8px';
+                                dropdown.style.right = 'auto';
+                            } else {
+                                dropdown.style.right = Math.max(8, Math.round(rightOffset)) + 'px';
+                                dropdown.style.left = 'auto';
+                            }
                         } else {
-                            dropdown.style.right = '0';
-                            dropdown.style.left = 'auto';
+                            if (rect.left + maxW > winWidth - 8) {
+                                dropdown.style.right = '8px';
+                                dropdown.style.left = 'auto';
+                            } else {
+                                dropdown.style.left = Math.max(8, Math.round(rect.left)) + 'px';
+                                dropdown.style.right = 'auto';
+                            }
                         }
+
+                        wrapper.classList.add('is-open');
+                        dropdown.classList.add('is-open');
+                        trigger.setAttribute('aria-expanded', 'true');
 
                         // اسکرول گزینه فعال در مرکز دید
                         const active = dropdown.querySelector('.liquid-select-option.is-selected');
@@ -4928,7 +5028,30 @@
 
                     function closeDropdown() {
                         wrapper.classList.remove('is-open');
+                        dropdown.classList.remove('is-open');
                         trigger.setAttribute('aria-expanded', 'false');
+
+                        // پاکسازی ارتقای لایه والدین
+                        document.querySelectorAll('.liquid-select-parent-elevated').forEach(el => {
+                            if (!el.querySelector('.liquid-select-wrapper.is-open')) {
+                                el.classList.remove('liquid-select-parent-elevated');
+                            }
+                        });
+
+                        // بازگرداندن دراپ‌داون به داخل wrapper اصلی جهت حفظ سلامت درخت DOM
+                        if (dropdown.parentElement !== wrapper) {
+                            wrapper.appendChild(dropdown);
+                            dropdown.style.position = '';
+                            dropdown.style.top = '';
+                            dropdown.style.bottom = '';
+                            dropdown.style.right = '';
+                            dropdown.style.left = '';
+                            dropdown.style.maxHeight = '';
+                            dropdown.style.minWidth = '';
+                            dropdown.style.maxWidth = '';
+                            dropdown.style.zIndex = '';
+                            dropdown.style.pointerEvents = '';
+                        }
                     }
 
                     trigger.addEventListener('click', (e) => {
@@ -5020,12 +5143,34 @@
             }
         }
 
-        // بستن با کلیک در خارج از منو
-        document.addEventListener('click', () => {
+        // بستن با کلیک در خارج از منو و تریگر
+        document.addEventListener('click', (e) => {
             document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
-                w.classList.remove('is-open');
-                const tr = w.querySelector('.liquid-select-trigger');
-                if (tr) tr.setAttribute('aria-expanded', 'false');
+                const dd = w._liquidDropdown;
+                if (!w.contains(e.target) && (!dd || !dd.contains(e.target))) {
+                    if (w._closeDropdown) w._closeDropdown();
+                }
+            });
+        });
+
+        // بستن آنی در هنگام اسکرول پنجره یا هر کانتینر والد
+        window.addEventListener('scroll', () => {
+            document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
+                if (w._closeDropdown) w._closeDropdown();
+            });
+        }, { passive: true, capture: true });
+
+        // بستن در زمان تغییر ابعاد پنجره
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
+                if (w._closeDropdown) w._closeDropdown();
+            });
+        }, { passive: true });
+
+        // بستن در زمان بسته شدن مودال
+        document.addEventListener('hide.bs.modal', () => {
+            document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
+                if (w._closeDropdown) w._closeDropdown();
             });
         });
 
