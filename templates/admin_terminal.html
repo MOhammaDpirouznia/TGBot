@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}خط فرمان سیستم (SSH / Local){% endblock %}
+
+{% block content %}
+<style>
+    .terminal-container {
+        background-color: #0c0c0c;
+        color: #00ff00;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        border-radius: 8px;
+        padding: 15px;
+        height: 500px;
+        overflow-y: auto;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+    }
+    .terminal-output {
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin-bottom: 10px;
+    }
+    .terminal-input-group {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+    }
+    .terminal-prompt {
+        color: #00ff00;
+        margin-right: 10px;
+        font-weight: bold;
+    }
+    .terminal-input {
+        background: transparent;
+        border: none;
+        color: #00ff00;
+        font-family: inherit;
+        flex-grow: 1;
+        outline: none;
+        font-size: 1rem;
+    }
+    .terminal-error { color: #ff3333; }
+    .terminal-success { color: #00ff00; }
+    .terminal-warning { color: #ffcc00; }
+</style>
+
+<div class="page-header d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="page-title"><i class="fas fa-terminal text-primary me-2"></i> خط فرمان سیستم (Command Runner)</h1>
+        <p class="text-muted mb-0">اجرای امن دستورات روی سرور فعلی یا اتصال به سرورهای ریموت با SSH</p>
+    </div>
+    {% if is_auth %}
+    <button class="btn btn-sm btn-outline-danger" onclick="logoutTerminal()">
+        <i class="fas fa-lock"></i> خروج از خط فرمان
+    </button>
+    {% endif %}
+</div>
+
+{% if not is_auth %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 text-center">
+                <i class="fas fa-shield-halved text-primary fs-1 mb-3"></i>
+                <h5 class="fw-bold mb-4">امنیت خط فرمان</h5>
+                
+                {% if not has_pin %}
+                <p class="small text-muted mb-3">برای اولین بار، یک پین کد (PIN) امنیتی حداقل ۴ رقمی برای دسترسی به ترمینال تنظیم کنید.</p>
+                <div class="input-group mb-3">
+                    <input type="password" id="newPin" class="form-control" placeholder="پین کد جدید" dir="ltr">
+                    <button class="btn btn-primary" onclick="setPin()">تنظیم و ورود</button>
+                </div>
+                {% else %}
+                <p class="small text-muted mb-3">لطفاً برای دسترسی به محیط اجرای دستورات، پین کد خود را وارد کنید.</p>
+                <div class="input-group mb-3">
+                    <input type="password" id="loginPin" class="form-control text-center" placeholder="****" dir="ltr">
+                    <button class="btn btn-primary" onclick="loginPin()">ورود</button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex gap-3 align-items-center">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="remoteModeSwitch" onchange="toggleRemoteMode()">
+                    <label class="form-check-label fw-bold small" for="remoteModeSwitch">اتصال به سرور دیگر (Remote SSH)</label>
+                </div>
+            </div>
+            <div class="card-body bg-light" id="remoteSettings" style="display: none;">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <input type="text" id="sshHost" class="form-control form-control-sm" placeholder="IP Address (e.g. 1.2.3.4)" dir="ltr">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="number" id="sshPort" class="form-control form-control-sm" placeholder="Port" value="22" dir="ltr">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" id="sshUser" class="form-control form-control-sm" placeholder="Username (e.g. root)" dir="ltr">
+                    </div>
+                    <div class="col-md-4">
+                        <input type="password" id="sshPass" class="form-control form-control-sm" placeholder="Password (موقت، ذخیره نمی‌شود)" dir="ltr">
+                    </div>
+                </div>
+                <small class="text-danger mt-2 d-block"><i class="fas fa-info-circle"></i> پسورد ریموت در دیتابیس ذخیره نمی‌شود و فقط برای همین سشن معتبر است.</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="terminal-container" id="termContainer" dir="ltr">
+    <div class="terminal-output" id="termOutput">TGBot Terminal Lite v1.0
+Type your command and press Enter. Interactive commands (top, nano) are restricted.
+-----------------------------------------------------------------------------------
+</div>
+    <div class="terminal-input-group">
+        <span class="terminal-prompt" id="termPrompt">root@local:~#</span>
+        <input type="text" class="terminal-input" id="termInput" autocomplete="off" spellcheck="false" autofocus>
+    </div>
+</div>
+
+<script>
+    function toggleRemoteMode() {
+        const isRemote = document.getElementById('remoteModeSwitch').checked;
+        document.getElementById('remoteSettings').style.display = isRemote ? 'block' : 'none';
+        document.getElementById('termPrompt').innerText = isRemote ? 'remote:~#' : 'root@local:~#';
+        document.getElementById('termInput').focus();
+    }
+
+    const termInput = document.getElementById('termInput');
+    const termOutput = document.getElementById('termOutput');
+    const termContainer = document.getElementById('termContainer');
+    
+    let isRunning = false;
+
+    if (termInput) {
+        termInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = this.value.trim();
+                if (cmd === '') return;
+                
+                if (cmd === 'clear') {
+                    termOutput.innerHTML = '';
+                    this.value = '';
+                    return;
+                }
+                
+                if (isRunning) return;
+                isRunning = true;
+                this.value = '';
+                
+                const prompt = document.getElementById('termPrompt').innerText;
+                termOutput.innerHTML += `\n<span class="text-white">${prompt} ${cmd}</span>\n<span class="terminal-warning">در حال اجرا...</span>`;
+                termContainer.scrollTop = termContainer.scrollHeight;
+                
+                runCommand(cmd);
+            }
+        });
+    }
+
+    async function runCommand(cmd) {
+        const isRemote = document.getElementById('remoteModeSwitch').checked;
+        const formData = new FormData();
+        formData.append('command', cmd);
+        
+        if (isRemote) {
+            formData.append('mode', 'remote');
+            formData.append('host', document.getElementById('sshHost').value);
+            formData.append('port', document.getElementById('sshPort').value);
+            formData.append('user', document.getElementById('sshUser').value);
+            formData.append('password', document.getElementById('sshPass').value);
+        } else {
+            formData.append('mode', 'local');
+        }
+
+        try {
+            const resp = await fetch("{{ url_for('admin_terminal_run') }}", {
+                method: "POST",
+                body: formData
+            });
+            const data = await resp.json();
+            
+            // Remove the 'در حال اجرا...' line
+            const lines = termOutput.innerHTML.split('\n');
+            lines.pop(); // remove last line which is the loading text
+            termOutput.innerHTML = lines.join('\n') + '\n';
+            
+            if (data.success) {
+                const safeOutput = data.output.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                termOutput.innerHTML += `<span class="terminal-success">${safeOutput}</span>\n`;
+            } else {
+                const safeError = (data.error || "Unknown Error").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                termOutput.innerHTML += `<span class="terminal-error">${safeError}</span>\n`;
+            }
+        } catch (e) {
+            const lines = termOutput.innerHTML.split('\n');
+            lines.pop();
+            termOutput.innerHTML = lines.join('\n') + '\n';
+            termOutput.innerHTML += `<span class="terminal-error">خطا در ارتباط با سرور: ${e}</span>\n`;
+        }
+        
+        isRunning = false;
+        termContainer.scrollTop = termContainer.scrollHeight;
+        document.getElementById('termInput').focus();
+    }
+
+    async function setPin() {
+        const pin = document.getElementById('newPin').value;
+        const formData = new FormData();
+        formData.append('action', 'set_pin');
+        formData.append('new_pin', pin);
+        
+        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) location.reload();
+        else alert(data.error);
+    }
+    
+    async function loginPin() {
+        const pin = document.getElementById('loginPin').value;
+        const formData = new FormData();
+        formData.append('action', 'login');
+        formData.append('pin', pin);
+        
+        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) location.reload();
+        else alert(data.error);
+    }
+
+    async function logoutTerminal() {
+        const formData = new FormData();
+        formData.append('action', 'logout');
+        await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        location.reload();
+    }
+</script>
+{% endif %}
+{% endblock %}

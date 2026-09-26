@@ -2842,6 +2842,9 @@
                         <a class="submenu-item {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                             <i class="fas fa-sliders text-secondary"></i> تنظیمات سیستم
                         </a>
+                          <a class="submenu-item {% if request.endpoint == \'admin_terminal\' %}active{% endif %}" href="{{ url_for(\'admin_terminal\') }}">
+                              <i class="fas fa-terminal text-primary"></i> خط فرمان (Terminal)
+                          </a>
                         <a class="submenu-item {% if request.endpoint == 'admin_ota_update' %}active{% endif %}" href="{{ url_for('admin_ota_update') }}">
                             <i class="fas fa-cloud-arrow-down text-info"></i> مرکز به‌روزرسانی (OTA)
                         </a>

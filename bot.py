@@ -39,6 +39,7 @@ from notifications import NotificationScheduler
 from i18n import (
     t, get_language_keyboard, get_main_keyboard, get_contact_keyboard, get_all_lang_regex, SUPPORTED_LANGUAGES
 )
+from terminal_bot_handlers import adm_terminal_menu, term_cmd_action, receive_custom_cmd, WAITING_FOR_TERMINAL_CMD
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -10552,7 +10553,13 @@ def main():
             CallbackQueryHandler(admin_reminder_action_callback, pattern="^remind_"),
         ] + main_menu_handlers,
         states={
+              WAITING_FOR_TERMINAL_CMD: [
+                  MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_cmd),
+                  CallbackQueryHandler(adm_terminal_menu, pattern="^adm_terminal_menu$")
+              ],
             CHOOSING: [
+                  CallbackQueryHandler(adm_terminal_menu, pattern="^adm_terminal_menu$"),
+                  CallbackQueryHandler(term_cmd_action, pattern="^term_cmd_"),
                 CallbackQueryHandler(select_language_callback, pattern="^lang_"),
                 CallbackQueryHandler(single_link_callback, pattern="^single_link_"),
                 CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
