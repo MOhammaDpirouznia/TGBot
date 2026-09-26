@@ -2002,25 +2002,35 @@ def _get_hiddify_executor():
                 _hiddify_sync_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="hiddify_sync")
     return _hiddify_sync_executor
 
-_unreachable_hosts_cache: Dict[str, float] = {}  # hostname -> timestamp of last network failure
+_unreachable_hosts_cache: Dict[str, Dict[str, Any]] = {}  # hostname -> {"failed_at": timestamp, "fail_count": int}
 _unreachable_hosts_lock = threading.Lock()
 
 def _check_host_recently_failed(host: str) -> bool:
     if not host:
         return False
     with _unreachable_hosts_lock:
-        failed_at = _unreachable_hosts_cache.get(host)
-        if failed_at and (time.time() - failed_at < 60.0):
+        info = _unreachable_hosts_cache.get(host)
+        if not info:
+            return False
+        failed_at = info.get("failed_at", 0.0)
+        fail_count = info.get("fail_count", 0)
+        # فقط در صورتی که حداقل ۲ بار متوالی خطا ثبت شده باشد و کمتر از ۱۲ ثانیه گذشته باشد
+        if fail_count >= 2 and (time.time() - failed_at < 12.0):
             return True
-        elif failed_at:
+        elif (time.time() - failed_at >= 12.0):
             _unreachable_hosts_cache.pop(host, None)
     return False
 
-def _mark_host_failed(host: str):
+def _mark_host_failed(host: str, is_hard_error: bool = False):
     if not host:
         return
     with _unreachable_hosts_lock:
-        _unreachable_hosts_cache[host] = time.time()
+        info = _unreachable_hosts_cache.get(host, {"failed_at": 0.0, "fail_count": 0})
+        increment = 2 if is_hard_error else 1
+        _unreachable_hosts_cache[host] = {
+            "failed_at": time.time(),
+            "fail_count": info.get("fail_count", 0) + increment
+        }
 
 def _mark_host_healthy(host: str):
     if not host:
@@ -2029,14 +2039,14 @@ def _mark_host_healthy(host: str):
         _unreachable_hosts_cache.pop(host, None)
 
 
-def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, api_key: str = None) -> dict:
+def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout: float = 12.0) -> dict:
     """اجرای مستقیم درخواست HTTP به سرور هیدیفای درون ترد جداگانه"""
     panel_url = get_hiddify_url()
     active_key = (api_key.strip() if api_key else None) or get_hiddify_key()
     proxy_path = get_hiddify_proxy()
 
     if not panel_url or not active_key:
-        return {"error": "اطلاعات پنل هیدیفای (HIDIFY_PANEL_URL / HIDIFY_API_KEY) تنظیم نشده است", "network_error": True}
+        return {"error": "اطلاعات پنل هیدیفای (HIDIFY_PANEL_URL / HIDIFY_API_KEY) تنظیم نشده است", "network_error": True, "is_hard_error": False}
 
     base_api = f"{panel_url}/{proxy_path}/api/v2"
     url = f"{base_api}{endpoint}"
@@ -2047,7 +2057,8 @@ def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, a
     }
 
     try:
-        sync_timeout = httpx.Timeout(4.0, connect=2.0)
+        connect_t = min(5.0, max(2.0, timeout / 3.0))
+        sync_timeout = httpx.Timeout(timeout, connect=connect_t)
         with httpx.Client(verify=False, follow_redirects=True, timeout=sync_timeout) as client:
             m = method.upper()
             if m == "GET":
@@ -2061,7 +2072,7 @@ def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, a
             elif m == "DELETE":
                 resp = client.delete(url, headers=headers)
             else:
-                return {"error": "Invalid HTTP method", "network_error": False}
+                return {"error": "Invalid HTTP method", "network_error": False, "is_hard_error": False}
 
             logger.info(f"Hidify sync API: {method} {url} (Key: {active_key[:8]}...) -> {resp.status_code}")
             if resp.status_code in (200, 201):
@@ -2072,20 +2083,26 @@ def _hidify_sync_request_worker(method: str, endpoint: str, data: dict = None, a
                 err_text = resp.text[:200]
                 logger.error(f"Hidify sync API error {resp.status_code}: {err_text}")
                 is_server_down = resp.status_code in (502, 503, 504)
-                return {"error": f"HTTP {resp.status_code}: {err_text}", "network_error": is_server_down}
+                return {"error": f"HTTP {resp.status_code}: {err_text}", "network_error": is_server_down, "is_hard_error": is_server_down}
     except httpx.TimeoutException:
-        logger.error(f"Hidify sync timeout: {url}")
-        return {"error": "Timeout: زمان پاسخگویی سرور هیدیفای بیش از حد طول کشید", "network_error": True}
+        logger.error(f"Hidify sync timeout ({timeout}s): {url}")
+        return {"error": "Timeout: زمان پاسخگویی سرور هیدیفای بیش از حد طول کشید", "network_error": True, "is_hard_error": False}
     except httpx.ConnectError as e:
         logger.error(f"Hidify sync connect error: {e}")
-        return {"error": f"خطا در برقراری اتصال به سرور: {e}", "network_error": True}
+        return {"error": f"خطا در برقراری اتصال به سرور: {e}", "network_error": True, "is_hard_error": True}
     except Exception as e:
         logger.error(f"Hidify sync request error: {e}")
-        return {"error": str(e), "network_error": True}
+        return {"error": str(e), "network_error": True, "is_hard_error": False}
 
 
-def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout_seconds: float = 2.5, reseller_id: int = None) -> dict:
+def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None, timeout_seconds: float = None, reseller_id: int = None) -> dict:
     """درخواست همگام به API پنل هیدیفای با محافظت کامل در برابر گیر کردن، بن‌بست DNS و قطع سرور"""
+    if timeout_seconds is None:
+        if method.upper() in ("POST", "PUT", "PATCH", "DELETE"):
+            timeout_seconds = 14.0
+        else:
+            timeout_seconds = 7.0
+
     if not api_key and reseller_id:
         try:
             api_key = db.get_reseller_hiddify_key(reseller_id)
@@ -2106,16 +2123,18 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
         return {"error": f"سرور هیدیفای ({host}) موقتاً در دسترس نیست", "network_error": True}
 
     try:
-        fut = _get_hiddify_executor().submit(_hidify_sync_request_worker, method, endpoint, data, api_key)
-        res = fut.result(timeout=timeout_seconds)
+        fut = _get_hiddify_executor().submit(_hidify_sync_request_worker, method, endpoint, data, api_key, timeout_seconds)
+        res = fut.result(timeout=timeout_seconds + 1.5)
         if isinstance(res, dict) and res.get("network_error"):
-            _mark_host_failed(host)
+            if timeout_seconds >= 4.0:
+                _mark_host_failed(host, is_hard_error=res.get("is_hard_error", False))
         elif isinstance(res, dict) and "error" not in res:
             _mark_host_healthy(host)
         return res
     except concurrent.futures.TimeoutError:
         logger.warning(f"Hiddify sync request hard deadline exceeded ({timeout_seconds}s) for {endpoint}")
-        _mark_host_failed(host)
+        if timeout_seconds >= 4.0:
+            _mark_host_failed(host, is_hard_error=False)
         return {"error": "Timeout: مهلت زمانی ارتباط با پنل هیدیفای به پایان رسید", "network_error": True}
     except Exception as e:
         logger.error(f"Error submitting Hiddify sync task: {e}")
@@ -2180,7 +2199,7 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
         payload["comment"] = str(full_comment)[:200]
 
     # ارسال درخواست ساخت به هیدیفای با کلید اختصاصی ادمین نماینده یا کلید اصلی
-    res = hidify_sync_request("POST", "/admin/user/", payload, api_key=active_api_key)
+    res = hidify_sync_request("POST", "/admin/user/", payload, api_key=active_api_key, timeout_seconds=15.0)
 
     # در صورت بروز خطای 400، 422 یا خطای فیلدها، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
     err_str = str(res.get("error", "")).lower()
@@ -2199,13 +2218,13 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
             minimal_payload["package_days"] = payload["package_days"]
         if "comment" in payload:
             minimal_payload["comment"] = payload["comment"]
-        res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key)
+        res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key, timeout_seconds=15.0)
 
         # اگر با وجود UUID دستی باز هم با خطا مواجه شد، تلاش برای ساخت بدون UUID
         if "error" in res and "uuid" in minimal_payload:
             logger.warning("Fallback with UUID failed, trying create without manual UUID...")
             del minimal_payload["uuid"]
-            res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key)
+            res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key, timeout_seconds=15.0)
 
     return res
 
@@ -20237,6 +20256,8 @@ def admin_create_customer():
         debt_notes = request.form.get("debt_notes", "").strip()
         internal_note = request.form.get("internal_note", "").strip()
         customer_note = request.form.get("customer_note", "").strip()
+        now = get_now_iso()
+        now_naive = get_now_naive()
         if payment_method == "debtor":
             payment_status = "unpaid"
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else price
@@ -20253,8 +20274,6 @@ def admin_create_customer():
             debt_amount = 0
             debt_auto_disable_at = None
 
-        now = get_now_iso()
-        now_naive = get_now_naive()
         expire_date = (now_naive + timedelta(days=int(duration))).isoformat()
         debt_created = now if debt_amount > 0 else None
 
