@@ -628,7 +628,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         db.add_customer_referral(referrer_id=int(ref_info["telegram_id"]), referred_id=user.id, reseller_id=0)
 
                 if not portal_url:
-                    web_dom = db.get_setting("custom_domain") or ""
+                    web_dom = db.get_effective_domain(reseller_id=0, target_type='client_portal') or db.get_setting("custom_domain") or ""
                     if web_dom and not web_dom.startswith("http"):
                         web_dom = f"https://{web_dom}"
                     portal_url = f"{web_dom.rstrip('/')}/webapp?tg_id={user.id}" if web_dom else ""
@@ -1572,7 +1572,7 @@ async def dashboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     port = get_panel_port()
-    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN")
+    domain = db.get_effective_domain(reseller_id=0, target_type='panel') or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN")
     panel_addr = f"https://{domain}" if domain else f"http://localhost:{port}"
     dashboard_text = f"""
 🌐 **پنل مدیریت وب**

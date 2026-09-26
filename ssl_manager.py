@@ -10,10 +10,12 @@
 import os
 import re
 import socket
+import ssl
 import logging
 import subprocess
 import urllib.request
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, Tuple
 
 from database import db
 
@@ -698,33 +700,99 @@ def find_certificate_path(domain: str) -> Optional[str]:
     return None
 
 
+def get_live_tls_certificate_info(domain: str, port: int = 443, timeout: float = 3.5) -> Optional[Dict[str, Any]]:
+    """
+    بررسی زنده انقضای گواهی امنیتی SSL از طریق سوکت امن TLS:
+    این متد در مواردی که سرتیفیکیت روی کلودفلر، Nginx یا لودبالانسر قرار دارد
+    یا صدور روی هاست بیرونی انجام شده است وضعیت و تاریخ دقیق انقضا را استخراج می‌کند.
+    """
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return None
+    try:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        with socket.create_connection((clean_d, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=clean_d) as ssock:
+                cert_bin = ssock.getpeercert(binary_form=True)
+                if cert_bin:
+                    from cryptography import x509
+                    cert = x509.load_der_x509_certificate(cert_bin)
+                    if hasattr(cert, "not_valid_after_utc"):
+                        expiry_dt = cert.not_valid_after_utc
+                    else:
+                        expiry_dt = cert.not_valid_after.replace(tzinfo=timezone.utc)
+                    now = datetime.now(timezone.utc)
+                    diff = (expiry_dt - now).total_seconds() / 86400.0
+                    return {
+                        "expiry_days": diff,
+                        "expiry_date": expiry_dt.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                        "expiry_dt": expiry_dt,
+                        "source": "live_tls"
+                    }
+    except Exception as e:
+        logger.debug(f"Live TLS check failed for {clean_d}: {e}")
+    return None
+
+
+def get_certificate_info(domain: str) -> Dict[str, Any]:
+    """
+    بررسی جامع و دقیق وضعیت سرتیفیکیت SSL (فایل محلی + ارتباط زنده TLS):
+    خروجی شامل روزهای باقیمانده، تاریخ انقضا و وضعیت (active, expiring, expired, pending, failed) است.
+    """
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return {"expiry_days": None, "expiry_date": None, "status": "failed"}
+
+    # ۱. بررسی فایل محلی سرتیفیکیت در سرور
+    cert_path = find_certificate_path(clean_d)
+    if cert_path and os.path.exists(cert_path):
+        try:
+            from cryptography import x509
+            with open(cert_path, "rb") as f:
+                cert = x509.load_pem_x509_certificate(f.read())
+            if hasattr(cert, "not_valid_after_utc"):
+                expiry_dt = cert.not_valid_after_utc
+            else:
+                expiry_dt = cert.not_valid_after.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            diff = (expiry_dt - now).total_seconds() / 86400.0
+            date_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            status = "active" if diff > 15 else ("expiring" if diff > 0 else "expired")
+            return {
+                "expiry_days": diff,
+                "expiry_date": date_str,
+                "status": status,
+                "source": "local_file",
+                "cert_path": cert_path
+            }
+        except Exception as e:
+            logger.warning(f"Error reading local cert for {clean_d} from {cert_path}: {e}")
+
+    # ۲. بررسی زنده TLS از طریق سوکت امن (مفید برای کلودفلر، Nginx، یا سرورهای ریموت)
+    live_res = get_live_tls_certificate_info(clean_d)
+    if live_res:
+        diff = live_res["expiry_days"]
+        date_str = live_res["expiry_date"]
+        status = "active" if diff > 15 else ("expiring" if diff > 0 else "expired")
+        return {
+            "expiry_days": diff,
+            "expiry_date": date_str,
+            "status": status,
+            "source": "live_tls"
+        }
+
+    return {"expiry_days": None, "expiry_date": None, "status": "pending"}
+
+
 def get_certificate_expiry_days(domain: str) -> Optional[float]:
     """
     محاسبه روزهای باقیمانده تا انقضای گواهی امنیتی SSL برای یک دامنه
-    اگر گواهی موجود نباشد None برمی‌گرداند.
+    اگر گواهی موجود نباشد یا قابل تشخیص نباشد None برمی‌گرداند.
     """
-    cert_path = find_certificate_path(domain)
-    if not cert_path or not os.path.exists(cert_path):
-        return None
-
-    try:
-        from cryptography import x509
-        import datetime
-
-        with open(cert_path, "rb") as f:
-            cert = x509.load_pem_x509_certificate(f.read())
-
-        if hasattr(cert, "not_valid_after_utc"):
-            expiry_dt = cert.not_valid_after_utc
-        else:
-            expiry_dt = cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
-
-        now = datetime.datetime.now(datetime.timezone.utc)
-        diff = (expiry_dt - now).total_seconds() / 86400.0
-        return diff
-    except Exception as e:
-        logger.warning(f"Error reading SSL certificate expiry for {domain} from {cert_path}: {e}")
-        return 0.0
+    info = get_certificate_info(domain)
+    return info.get("expiry_days")
 
 
 def get_all_configured_domains() -> list[str]:
@@ -840,12 +908,13 @@ def renew_domain_ssl_with_logs(domain_input: str) -> Dict[str, Any]:
         _log(f"📁 مسیر فایل سرتیفیکیت: {res.get('cert_path')}")
         _log(f"🔑 مسیر کلید خصوصی: {res.get('key_path')}")
 
-        # استخراج روزهای انقضا
-        expiry_days = get_certificate_expiry_days(clean_d)
-        expiry_date_str = ""
-        if expiry_days is not None and expiry_days > 0:
-            expiry_dt = datetime.now(timezone.utc) + timedelta(days=expiry_days)
-            expiry_date_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        # استخراج دقیق مشخصات و زمان انقضای سرتیفیکیت
+        cert_info = get_certificate_info(clean_d)
+        expiry_days = cert_info.get("expiry_days")
+        expiry_date_str = cert_info.get("expiry_date") or ""
+        status_text = cert_info.get("status") or "active"
+
+        if expiry_days is not None:
             _log(f"📅 مدت اعتبار سرتیفیکیت: {round(expiry_days, 1)} روز (تا تاریخ {expiry_date_str})")
         else:
             _log("📅 مدت اعتبار سرتیفیکیت فعال ثبت گردید.")
@@ -854,7 +923,6 @@ def renew_domain_ssl_with_logs(domain_input: str) -> Dict[str, Any]:
         try:
             dom_record = db.get_domain_by_name(clean_d)
             if dom_record:
-                status_text = "active" if (expiry_days is None or expiry_days > 15) else "expiring"
                 db.update_domain(
                     dom_record["id"],
                     ssl_status=status_text,
@@ -868,16 +936,42 @@ def renew_domain_ssl_with_logs(domain_input: str) -> Dict[str, Any]:
             "success": True,
             "domain": clean_d,
             "provider": provider_name,
-            "expiry_days": round(expiry_days, 1) if expiry_days else 90,
+            "expiry_days": round(expiry_days, 1) if expiry_days is not None else 90,
             "expiry_date": expiry_date_str,
             "logs": "\n".join(logs),
             "error": None
         }
     else:
         err_msg = res.get("error", "خطای ناشناخته در صدور SSL")
-        _log(f"❌ عدم موفقیت در دریافت گواهی SSL: {err_msg}")
+        _log(f"❌ عدم موفقیت در صدور خودکار گواهی جدید SSL: {err_msg}")
         if res.get("details"):
             _log(f"جزئیات خطا: {res.get('details')}")
+
+        # بررسی اینکه آیا دامنه از قبل گواهی فعال و ایمن دارد (مثلاً اتصال ابری Cloudflare یا سرتیفیکیت موجود)
+        cert_info = get_certificate_info(clean_d)
+        if cert_info.get("status") in ("active", "expiring"):
+            _log(f"✅ سرتیفیکیت جاری دامنه معتبر است (اعتبار: {round(cert_info['expiry_days'], 1)} روز تا تاریخ {cert_info.get('expiry_date')}).")
+            try:
+                dom_record = db.get_domain_by_name(clean_d)
+                if dom_record:
+                    db.update_domain(
+                        dom_record["id"],
+                        ssl_status=cert_info["status"],
+                        ssl_expiry_date=cert_info.get("expiry_date"),
+                        ssl_last_log="\n".join(logs)
+                    )
+            except Exception:
+                pass
+
+            return {
+                "success": True,
+                "domain": clean_d,
+                "provider": "active_existing_cert",
+                "expiry_days": round(cert_info["expiry_days"], 1) if cert_info.get("expiry_days") is not None else 90,
+                "expiry_date": cert_info.get("expiry_date"),
+                "logs": "\n".join(logs),
+                "error": None
+            }
 
         try:
             dom_record = db.get_domain_by_name(clean_d)

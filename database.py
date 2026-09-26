@@ -1184,6 +1184,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS domains (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     domain TEXT UNIQUE NOT NULL,
+                    display_name TEXT DEFAULT NULL,
                     target_type TEXT NOT NULL DEFAULT 'both',
                     scope TEXT NOT NULL DEFAULT 'reseller',
                     reseller_id INTEGER DEFAULT NULL,
@@ -13000,6 +13001,12 @@ class Database:
                 cursor.execute("ALTER TABLE reseller_discount_codes ADD COLUMN allowed_plans TEXT DEFAULT ''")
                 logger.info("Added allowed_plans to reseller_discount_codes")
 
+            cursor.execute("PRAGMA table_info(domains)")
+            dom_cols = [row[1] for row in cursor.fetchall()]
+            if dom_cols and "display_name" not in dom_cols:
+                cursor.execute("ALTER TABLE domains ADD COLUMN display_name TEXT DEFAULT NULL")
+                logger.info("Added display_name to domains")
+
             conn.commit()
             return {"success": True}
         except Exception as e:
@@ -18636,12 +18643,14 @@ class Database:
             conn.close()
 
     def add_domain(self, domain: str, target_type: str = 'both', scope: str = 'reseller', 
-                   reseller_id: Optional[int] = None, ssl_auto_renew: int = 1) -> dict:
+                   reseller_id: Optional[int] = None, ssl_auto_renew: int = 1,
+                   display_name: Optional[str] = None) -> dict:
         """ثبت دامنه جدید در سیستم با اعتبارسنجی یکتایی"""
         clean_d = self.clean_domain_string(domain)
         if not clean_d:
             return {"success": False, "error": "نام دامنه معتبر نیست یا خالی ارسال شده است."}
 
+        clean_display_name = str(display_name).strip() if display_name and str(display_name).strip() else None
         target_type = target_type if target_type in ('panel', 'client_portal', 'both') else 'both'
         scope = scope if scope in ('admin', 'all_resellers', 'reseller') else 'reseller'
         if scope != 'reseller':
@@ -18655,9 +18664,9 @@ class Database:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT INTO domains (domain, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 1, 'pending', ?, ?, ?)
-            """, (clean_d, target_type, scope, reseller_id, 1 if ssl_auto_renew else 0, now, now))
+                INSERT INTO domains (domain, display_name, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, 'pending', ?, ?, ?)
+            """, (clean_d, clean_display_name, target_type, scope, reseller_id, 1 if ssl_auto_renew else 0, now, now))
             domain_id = cursor.lastrowid
             conn.commit()
 
@@ -18693,7 +18702,7 @@ class Database:
         now = get_now_iso()
         try:
             allowed = [
-                "domain", "target_type", "scope", "reseller_id", 
+                "domain", "display_name", "target_type", "scope", "reseller_id", 
                 "is_active", "ssl_status", "ssl_expiry_date", 
                 "ssl_auto_renew", "ssl_last_log"
             ]
@@ -18705,6 +18714,10 @@ class Database:
                         clean_d = self.clean_domain_string(v)
                         fields.append(f"{k} = ?")
                         params.append(clean_d)
+                    elif k == "display_name":
+                        clean_disp = str(v).strip() if v and str(v).strip() else None
+                        fields.append(f"{k} = ?")
+                        params.append(clean_disp)
                     else:
                         fields.append(f"{k} = ?")
                         params.append(v)
@@ -18771,14 +18784,21 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            r_id = None
+            if reseller_id is not None:
+                try:
+                    r_id = int(reseller_id)
+                except (ValueError, TypeError):
+                    r_id = None
+
             # ۱. تطابق اختصاصی نماینده در جدول domains
-            if reseller_id and int(reseller_id) > 0:
+            if r_id and r_id > 0:
                 cursor.execute("""
                     SELECT domain FROM domains 
                     WHERE reseller_id = ? AND target_type IN (?, 'both') AND is_active = 1
                     ORDER BY CASE WHEN target_type = ? THEN 1 ELSE 2 END, id DESC
                     LIMIT 1
-                """, (int(reseller_id), target_type, target_type))
+                """, (r_id, target_type, target_type))
                 row = cursor.fetchone()
                 if row and row["domain"]:
                     return row["domain"].strip()

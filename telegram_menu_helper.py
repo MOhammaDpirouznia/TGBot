@@ -38,6 +38,15 @@ def get_miniapp_base_url(reseller_id: int = 0, host_url: Optional[str] = None) -
             return "https://" + val
         return val
 
+    # ۰. بررسی دامنه مؤثر و تفکیک‌شده از جدول متمرکز دامنه‌ها با تفکیک کامل نماینده/ادمین
+    try:
+        eff_domain = db.get_effective_domain(reseller_id=reseller_id, target_type='client_portal')
+        eff_clean = _clean_https(eff_domain)
+        if eff_clean:
+            return eff_clean
+    except Exception:
+        pass
+
     # ۱. آدرس سفارشی وب‌اپ ذخیره شده در تنظیمات پنل ادمین (mini_app_custom_url)
     custom_override = _clean_https(db.get_setting("mini_app_custom_url"))
     if custom_override:

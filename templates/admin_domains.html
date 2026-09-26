@@ -27,6 +27,24 @@
         </div>
     </div>
 
+    <!-- باکس نمایش آی‌پی سرور و دکمه کپی -->
+    <div class="alert alert-primary bg-primary-subtle border-primary-subtle p-3 rounded-4 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3 shadow-sm">
+        <div>
+            <div class="fw-bold mb-1 text-primary d-flex align-items-center gap-2">
+                <i class="fas fa-globe fs-5"></i>
+                <span>آی‌پی عمومی سرور شما (Public Server IP):</span>
+                <code class="fs-5 bg-white px-2 py-1 rounded border border-primary-subtle text-dark fw-bold font-monospace" id="serverPublicIpDisplay">{{ server_public_ip or 'در حال بررسی...' }}</code>
+            </div>
+            <div class="small text-muted">جهت اتصال دامنه یا ساب‌دامنه به سرور، در پنل مدیریت دامنه یا Cloudflare یک رکورد <code>A</code> به این آی‌پی تنظیم فرمایید.</div>
+        </div>
+        <div>
+            <button type="button" class="btn btn-sm btn-primary px-3 rounded-pill d-inline-flex align-items-center gap-1 shadow-sm" onclick="copyServerIpVal('{{ server_public_ip }}', this)">
+                <i class="fas fa-copy"></i>
+                <span>کپی آی‌پی سرور</span>
+            </button>
+        </div>
+    </div>
+
     <!-- کارت‌های آمار سریع دامنه‌ها -->
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
@@ -36,7 +54,7 @@
                         <span class="text-muted small d-block mb-1">کل دامنه‌های ثبت‌شده</span>
                         <h4 class="fw-bold mb-0 font-monospace">{{ domains|length }}</h4>
                     </div>
-                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 text-primary fs-4">
+                    <div class="bg-primary bg-opacity-10 text-primary fs-4 flex-shrink-0" style="width: 52px; height: 52px; min-width: 52px; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                         <i class="fas fa-network-wired"></i>
                     </div>
                 </div>
@@ -50,8 +68,8 @@
                         {% set active_ssl = domains|selectattr('ssl_status', 'equalto', 'active')|list|length %}
                         <h4 class="fw-bold mb-0 text-success font-monospace">{{ active_ssl }}</h4>
                     </div>
-                    <div class="rounded-circle bg-success bg-opacity-10 p-3 text-success fs-4">
-                        <i class="fas fa-shield-check"></i>
+                    <div class="bg-success bg-opacity-10 text-success fs-4 flex-shrink-0" style="width: 52px; height: 52px; min-width: 52px; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-shield-halved"></i>
                     </div>
                 </div>
             </div>
@@ -64,7 +82,7 @@
                         {% set pending_ssl = domains|selectattr('ssl_status', 'in', ['pending', 'expiring'])|list|length %}
                         <h4 class="fw-bold mb-0 text-warning font-monospace">{{ pending_ssl }}</h4>
                     </div>
-                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 text-warning fs-4">
+                    <div class="bg-warning bg-opacity-10 text-warning fs-4 flex-shrink-0" style="width: 52px; height: 52px; min-width: 52px; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                         <i class="fas fa-clock"></i>
                     </div>
                 </div>
@@ -78,7 +96,7 @@
                         {% set failed_ssl = domains|selectattr('ssl_status', 'in', ['failed', 'expired'])|list|length %}
                         <h4 class="fw-bold mb-0 text-danger font-monospace">{{ failed_ssl }}</h4>
                     </div>
-                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 text-danger fs-4">
+                    <div class="bg-danger bg-opacity-10 text-danger fs-4 flex-shrink-0" style="width: 52px; height: 52px; min-width: 52px; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                         <i class="fas fa-triangle-exclamation"></i>
                     </div>
                 </div>
@@ -118,6 +136,11 @@
                                     </div>
                                     <div>
                                         <div class="fw-bold font-monospace">{{ d['domain'] }}</div>
+                                        {% if d.get('display_name') %}
+                                            <div class="small text-primary fw-medium" style="font-size: 0.78rem;">
+                                                <i class="fas fa-tag me-1 text-primary opacity-75"></i>{{ d['display_name'] }}
+                                            </div>
+                                        {% endif %}
                                         <a href="https://{{ d['domain'] }}" target="_blank" class="small text-decoration-none text-muted" style="font-size: 0.75rem;">
                                             تست اتصال <i class="fas fa-external-link-alt ms-1" style="font-size: 0.65rem;"></i>
                                         </a>
@@ -232,7 +255,7 @@
 <div class="modal fade text-start" id="addDomainModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg border-0">
-            <form method="POST" action="{{ url_for('admin_domains_add') }}">
+            <form method="POST" id="addDomainForm" action="{{ url_for('admin_domains_add') }}">
                 <div class="modal-header bg-primary text-white py-3">
                     <h5 class="modal-title fw-bold">
                         <i class="fas fa-globe me-2"></i>افزودن دامنه جدید به سیستم
@@ -248,6 +271,12 @@
                         <label class="form-label fw-bold small">نام دامنه یا ساب‌دامنه <span class="text-danger">*</span>:</label>
                         <input type="text" name="domain" class="form-control font-monospace" placeholder="مثال: sub.reseller.com یا vpn.mydomain.org" required>
                         <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">نیازی به وارد کردن http یا https نیست.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نام نمایشی دامنه (اختیاری):</label>
+                        <input type="text" name="display_name" class="form-control" placeholder="مثال: پرتال اصلی گو تل">
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">عنوان دلخواه و خوانا جهت نمایش در جدول و انتخاب‌ها</small>
                     </div>
 
                     <div class="mb-3">
@@ -302,7 +331,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                    <button type="submit" class="btn btn-primary fw-bold px-4" id="submitAddDomainBtn">
                         <i class="fas fa-check me-1"></i> ثبت دامنه و فعال‌سازی
                     </button>
                 </div>
@@ -326,6 +355,11 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold small">نام دامنه یا ساب‌دامنه:</label>
                         <input type="text" name="domain" id="editDomainInput" class="form-control font-monospace" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نام نمایشی دامنه:</label>
+                        <input type="text" name="display_name" id="editDisplayNameInput" class="form-control" placeholder="مثال: پرتال اصلی گو تل">
                     </div>
 
                     <div class="mb-3">
@@ -403,7 +437,12 @@
             </div>
             <div class="modal-footer border-secondary py-2 justify-content-between">
                 <small class="text-muted" id="sslFooterNote">لطفاً تا پایان فرآیند منتظر بمانید...</small>
-                <button type="button" class="btn btn-outline-light btn-sm px-3" data-bs-dismiss="modal">بستن پنجره</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-light btn-sm px-3" data-bs-dismiss="modal">بستن پنجره</button>
+                    <button type="button" class="btn btn-primary btn-sm px-3" onclick="window.location.reload()" id="sslRefreshBtn">
+                        <i class="fas fa-arrows-rotate me-1"></i> بستن و به‌روزرسانی صفحه
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -413,6 +452,25 @@
 <form id="deleteDomainForm" method="POST" action="" style="display: none;"></form>
 
 <script>
+function copyServerIpVal(ip, btnElem) {
+    if (!ip || ip.includes('در حال بررسی')) return;
+    navigator.clipboard.writeText(ip).then(() => {
+        if (btnElem) {
+            const origHtml = btnElem.innerHTML;
+            btnElem.innerHTML = '<i class="fas fa-check me-1"></i> کپی شد!';
+            btnElem.classList.remove('btn-primary');
+            btnElem.classList.add('btn-success');
+            setTimeout(() => {
+                btnElem.innerHTML = origHtml;
+                btnElem.classList.remove('btn-success');
+                btnElem.classList.add('btn-primary');
+            }, 2000);
+        }
+    }).catch(err => {
+        console.error("Clipboard copy failed:", err);
+    });
+}
+
 function toggleResellerPicker(type) {
     const scope = document.getElementById('scopeSelect' + type).value;
     const box = document.getElementById('resellerPickerBox' + type);
@@ -426,6 +484,7 @@ function toggleResellerPicker(type) {
 function openEditDomainModal(domainObj) {
     document.getElementById('editDomainForm').action = "/admin/domains/" + domainObj.id + "/edit";
     document.getElementById('editDomainInput').value = domainObj.domain || '';
+    document.getElementById('editDisplayNameInput').value = domainObj.display_name || '';
     document.getElementById('editTargetType').value = domainObj.target_type || 'both';
     document.getElementById('scopeSelectEdit').value = domainObj.scope || 'reseller';
     document.getElementById('editResellerId').value = domainObj.reseller_id || '';
@@ -486,10 +545,7 @@ function openSslRenewModal(domainId, domainName) {
         if (data.success) {
             title.innerText = "✅ گواهی امنیتی SSL با موفقیت تایید شد";
             statusBadge.innerHTML = '<span class="badge bg-success">عملیات موفق</span>';
-            footerNote.innerText = "گواهی با موفقیت صادر و ذخیره شد. انقضا: " + (data.expiry_days || 90) + " روز دیگر.";
-            setTimeout(() => {
-                window.location.reload();
-            }, 2500);
+            footerNote.innerText = "گواهی با موفقیت صادر و ذخیره شد. جهت مشاهده تغییرات بر روی «بستن و به‌روزرسانی صفحه» کلیک فرمایید.";
         } else {
             title.innerText = "❌ بروز خطا در صدور گواهی SSL";
             statusBadge.innerHTML = '<span class="badge bg-danger">خطا</span>';
@@ -542,8 +598,7 @@ function renewAllDomainsSSL() {
         terminal.innerText += "موارد ناموفق: " + (res.failed ? res.failed.length : 0) + "\n";
         title.innerText = "✅ پایش سراسری گواهی‌ها به پایان رسید";
         statusBadge.innerHTML = '<span class="badge bg-success">پایان عملیات</span>';
-        footerNote.innerText = "عملیات با موفقیت به پایان رسید.";
-        setTimeout(() => { window.location.reload(); }, 2500);
+        footerNote.innerText = "عملیات با موفقیت به پایان رسید. جهت مشاهده آخرین وضعیت، دکمه «بستن و به‌روزرسانی صفحه» را کلیک فرمایید.";
     })
     .catch(e => {
         spinner.style.display = 'none';
@@ -555,6 +610,87 @@ function renewAllDomainsSSL() {
 
 document.addEventListener("DOMContentLoaded", function() {
     toggleResellerPicker('Add');
+
+    // هندلر ثبت ایجکس فرم افزودن دامنه با باز کردن خودکار مودال ترمینال لاگ
+    const addForm = document.getElementById('addDomainForm');
+    if (addForm) {
+        addForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const domainInput = this.querySelector('input[name="domain"]');
+            const domainVal = domainInput ? domainInput.value.trim() : '';
+            if (!domainVal) {
+                alert('لطفاً نام دامنه را وارد فرمایید.');
+                return;
+            }
+
+            // بستن مودال افزودن دامنه
+            const addModalEl = document.getElementById('addDomainModal');
+            const addModal = bootstrap.Modal.getInstance(addModalEl) || new bootstrap.Modal(addModalEl);
+            addModal.hide();
+
+            // باز کردن مودال ترمینال لاگ
+            const modalEl = document.getElementById('sslLogModal');
+            const modal = new bootstrap.Modal(modalEl);
+            const terminal = document.getElementById('sslTerminalLogs');
+            const spinner = document.getElementById('sslSpinner');
+            const title = document.getElementById('sslModalTitle');
+            const badge = document.getElementById('sslDomainBadge');
+            const statusBadge = document.getElementById('sslStatusBadge');
+            const footerNote = document.getElementById('sslFooterNote');
+            const closeBtn = document.getElementById('sslCloseBtn');
+
+            badge.innerText = "🌐 Domain: " + domainVal;
+            statusBadge.innerHTML = '<span class="badge bg-warning text-dark">در حال ثبت و استعلام...</span>';
+            terminal.innerText = "[+] در حال ثبت دامنه در سیستم...\n[+] بررسی رکوردهای DNS و ارسال درخواست صدور گواهی SSL...\n";
+            spinner.style.display = 'inline-block';
+            title.innerText = "🔐 در حال ثبت دامنه و اجرای عملیات SSL...";
+            footerNote.innerText = "در حال ارتباط با سرور و بررسی DNS دامنه...";
+            closeBtn.disabled = true;
+
+            modal.show();
+
+            const formData = new FormData(this);
+
+            fetch("/admin/domains/add", {
+                method: "POST",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: formData
+            })
+            .then(response => response.json().then(data => ({ status: response.status, body: data })))
+            .then(result => {
+                spinner.style.display = 'none';
+                closeBtn.disabled = false;
+                const data = result.body;
+
+                if (data.logs) {
+                    terminal.innerText = data.logs;
+                    terminal.scrollTop = terminal.scrollHeight;
+                }
+
+                if (data.success) {
+                    title.innerText = "✅ دامنه با موفقیت ثبت شد";
+                    statusBadge.innerHTML = '<span class="badge bg-success">عملیات موفق</span>';
+                    footerNote.innerText = "دامنه و گواهی با موفقیت ذخیره شد. لطفاً جهت اعمال و مشاهده تغییرات روی «بستن و به‌روزرسانی صفحه» کلیک نمایید.";
+                } else {
+                    title.innerText = "❌ بروز خطا در ثبت دامنه";
+                    statusBadge.innerHTML = '<span class="badge bg-danger">خطا</span>';
+                    footerNote.innerText = data.error || "خطایی در ثبت دامنه رخ داد.";
+                    terminal.innerText += "\n[!] خطای ثبت: " + (data.error || "نامشخص");
+                }
+            })
+            .catch(err => {
+                spinner.style.display = 'none';
+                closeBtn.disabled = false;
+                terminal.innerText += "\n[!] خطای ارتباط یا شبکه: " + err;
+                title.innerText = "❌ خطای شبکه";
+                statusBadge.innerHTML = '<span class="badge bg-danger">خطای ارتباط</span>';
+                footerNote.innerText = "عدم امکان برقراری ارتباط با وب‌سرور.";
+            });
+        });
+    }
 });
 </script>
 {% endblock %}

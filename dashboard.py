@@ -310,10 +310,13 @@ def get_customer_portal_url(token: str, _external: bool = True, reseller_id: Opt
                 sub = db.get_subscription_by_uuid(token_clean)
                 if not sub and token_clean.isdigit():
                     sub = db.get_subscription(int(token_clean))
-                if sub and sub.get("reseller_id"):
-                    reseller_id = sub["reseller_id"]
+                if sub:
+                    reseller_id = sub.get("reseller_id") or 0
             except Exception:
                 pass
+
+        if reseller_id is None:
+            reseller_id = 0
 
         effective_domain = db.get_effective_domain(reseller_id=reseller_id, target_type='client_portal')
         if effective_domain:
@@ -10150,20 +10153,25 @@ def admin_domains():
         flash("شما دسترسی مجاز به مدیریت دامنه‌ها را ندارید.", "danger")
         return redirect(url_for("dashboard"))
 
+    server_public_ip = ssl_manager.get_server_public_ip()
     domains = db.get_all_domains()
     resellers = db.get_all_resellers()
-    return render_template("admin_domains.html", domains=domains, resellers=resellers)
+    return render_template("admin_domains.html", domains=domains, resellers=resellers, server_public_ip=server_public_ip)
 
 
 @app.route("/admin/domains/add", methods=["POST"])
 @admin_required
 def admin_domains_add():
     """افزودن دامنه جدید و راه‌اندازی فرآیند خودکار دریافت SSL"""
+    is_ajax = (request.headers.get("X-Requested-With") == "XMLHttpRequest") or request.is_json
     if session.get("admin_role") != "super_admin" and not has_permission("settings_manage"):
+        if is_ajax:
+            return jsonify({"success": False, "error": "دسترسی غیرمجاز."}), 403
         flash("دسترسی غیرمجاز.", "danger")
         return redirect(url_for("dashboard"))
 
     domain = request.form.get("domain", "").strip()
+    display_name = request.form.get("display_name", "").strip() or None
     target_type = request.form.get("target_type", "both")
     scope = request.form.get("scope", "reseller")
     r_id_raw = request.form.get("reseller_id")
@@ -10172,6 +10180,7 @@ def admin_domains_add():
 
     res = db.add_domain(
         domain=domain,
+        display_name=display_name,
         target_type=target_type,
         scope=scope,
         reseller_id=reseller_id,
@@ -10180,6 +10189,29 @@ def admin_domains_add():
 
     if res.get("success"):
         clean_d = res.get("domain")
+        domain_id = res.get("domain_id")
+        if is_ajax:
+            if ssl_auto_renew:
+                ssl_res = ssl_manager.renew_domain_ssl_with_logs(clean_d)
+                return jsonify({
+                    "success": True,
+                    "domain": clean_d,
+                    "domain_id": domain_id,
+                    "ssl_success": ssl_res.get("success"),
+                    "logs": ssl_res.get("logs", ""),
+                    "expiry_days": ssl_res.get("expiry_days"),
+                    "expiry_date": ssl_res.get("expiry_date"),
+                    "error": ssl_res.get("error")
+                })
+            else:
+                return jsonify({
+                    "success": True,
+                    "domain": clean_d,
+                    "domain_id": domain_id,
+                    "ssl_success": True,
+                    "logs": f"✅ دامنه «{clean_d}» با موفقیت در سیستم ثبت گردید."
+                })
+
         flash(f"دامنه «{clean_d}» با موفقیت افزوده شد.", "success")
         if ssl_auto_renew:
             threading.Thread(
@@ -10188,6 +10220,8 @@ def admin_domains_add():
                 daemon=True
             ).start()
     else:
+        if is_ajax:
+            return jsonify({"success": False, "error": res.get("error")}), 400
         flash(f"خطا در ثبت دامنه: {res.get('error')}", "danger")
 
     return redirect(url_for("admin_domains"))
@@ -10202,6 +10236,7 @@ def admin_domains_edit(domain_id):
         return redirect(url_for("dashboard"))
 
     domain = request.form.get("domain", "").strip()
+    display_name = request.form.get("display_name", "").strip() or None
     target_type = request.form.get("target_type", "both")
     scope = request.form.get("scope", "reseller")
     r_id_raw = request.form.get("reseller_id")
@@ -10212,6 +10247,7 @@ def admin_domains_edit(domain_id):
     res = db.update_domain(
         domain_id,
         domain=domain,
+        display_name=display_name,
         target_type=target_type,
         scope=scope,
         reseller_id=reseller_id,

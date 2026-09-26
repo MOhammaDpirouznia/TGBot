@@ -561,7 +561,7 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک دائمی پرتال مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پرتال مشتری', this)" title="مشاهده و کپی لینک پرتال مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id'], reseller_id=sub.get('reseller_id') or 0) }}', 'لینک پرتال مشتری', this)" title="مشاهده و کپی لینک پرتال مشتری">
                                     <i class="fas fa-link"></i>
                                     <span class="d-none d-lg-inline">پرتال</span>
                                 </button>
@@ -732,7 +732,7 @@
 {% set ref = sub.get('refund_info') or {} %}
 {% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
 {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
-{% set portal_url = get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) %}
+{% set portal_url = get_customer_portal_url(sub.get('hidify_uuid') or sub['id'], reseller_id=sub.get('reseller_id') or 0) %}
 {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
 
 <!-- ─── Modal جامع مدیریت مشتری و بارکدهای اتصال ─── -->
