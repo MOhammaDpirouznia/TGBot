@@ -348,13 +348,258 @@
             transform: translate3d(0, 0, 0);
         }
 
+        /* ─── منوهای کشویی شیشه‌ای مات مدرن (Liquid Glass Dropdown Menu) ─── */
         .dropdown-menu {
-            background-color: var(--card-bg) !important;
-            backdrop-filter: blur(26px) saturate(190%);
-            -webkit-backdrop-filter: blur(26px) saturate(190%);
+            border-radius: 18px !important;
+            padding: 6px !important;
+            backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
+            -webkit-backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
             border: 1px solid var(--card-border) !important;
-            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.15) !important;
-            border-radius: 16px;
+            box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.45), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.25) !important;
+        }
+
+        [data-bs-theme="dark"] .dropdown-menu {
+            background-color: rgba(16, 24, 42, 0.82) !important;
+            color: #f8fafc;
+        }
+
+        [data-bs-theme="light"] .dropdown-menu {
+            background-color: rgba(255, 255, 255, 0.86) !important;
+            color: #0f172a;
+        }
+
+        .dropdown-item {
+            border-radius: 12px !important;
+            padding: 8px 14px !important;
+            margin: 2px 0 !important;
+            transition: all 0.16s ease !important;
+            font-size: 0.86rem !important;
+        }
+
+        [data-bs-theme="dark"] .dropdown-item:hover,
+        [data-bs-theme="dark"] .dropdown-item:focus {
+            background-color: rgba(255, 255, 255, 0.10) !important;
+            color: #ffffff !important;
+            transform: translateX(-2px);
+        }
+
+        [data-bs-theme="light"] .dropdown-item:hover,
+        [data-bs-theme="light"] .dropdown-item:focus {
+            background-color: rgba(0, 122, 255, 0.08) !important;
+            color: #007aff !important;
+            transform: translateX(-2px);
+        }
+
+        /* ─── کامپوننت سراسری منوهای کشویی سلکت شیشه مایع (Apple Liquid Glass Select) ─── */
+        .liquid-select-wrapper {
+            position: relative;
+            display: inline-flex;
+            vertical-align: middle;
+            max-width: 100%;
+        }
+
+        .liquid-select-wrapper.is-open {
+            z-index: 1095;
+        }
+
+        .liquid-select-trigger {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            min-width: 110px;
+            padding: 0.375rem 0.85rem;
+            font-size: 0.875rem;
+            font-family: inherit;
+            border-radius: 14px !important;
+            user-select: none;
+            cursor: pointer;
+            text-align: right;
+            outline: none !important;
+            transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translate3d(0, 0, 0);
+        }
+
+        [data-bs-theme="dark"] .liquid-select-trigger {
+            background: rgba(18, 26, 44, 0.60) !important;
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            color: #f8fafc !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.20) !important;
+        }
+
+        [data-bs-theme="light"] .liquid-select-trigger {
+            background: rgba(255, 255, 255, 0.70) !important;
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 0, 0, 0.12) !important;
+            color: #0f172a !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.80) !important;
+        }
+
+        .liquid-select-trigger:hover,
+        .liquid-select-wrapper.is-open .liquid-select-trigger {
+            border-color: #007aff !important;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25), 0 6px 18px rgba(0, 122, 255, 0.18) !important;
+        }
+
+        .liquid-select-trigger.liquid-select-sm {
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8125rem;
+            border-radius: 12px !important;
+            min-width: 95px;
+        }
+
+        .liquid-select-trigger.liquid-select-lg {
+            padding: 0.5rem 1.15rem;
+            font-size: 1rem;
+            border-radius: 16px !important;
+        }
+
+        .liquid-select-arrow {
+            font-size: 0.72rem;
+            opacity: 0.75;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .liquid-select-wrapper.is-open .liquid-select-arrow {
+            transform: rotate(180deg);
+            color: #007aff;
+            opacity: 1;
+        }
+
+        /* پنجره بازشوی منوی کشویی لیکوید گلس - گرد و بدون لبه‌های تیز در تمام مرورگرها */
+        .liquid-select-dropdown {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 100%;
+            width: max-content;
+            max-width: min(92vw, 440px);
+            max-height: 290px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 6px;
+            border-radius: 18px !important;
+            z-index: 1090;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transform: translateY(-8px) scale(0.97);
+            transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+                        transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+                        visibility 0.2s;
+        }
+
+        .liquid-select-dropdown.open-up {
+            top: auto;
+            bottom: calc(100% + 6px);
+            transform: translateY(8px) scale(0.97);
+        }
+
+        .liquid-select-wrapper.is-open .liquid-select-dropdown {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+
+        [data-bs-theme="dark"] .liquid-select-dropdown {
+            background: rgba(16, 24, 42, 0.82) !important;
+            backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
+            -webkit-backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.22) !important;
+            box-shadow: 0 25px 65px -10px rgba(0, 0, 0, 0.75), 
+                        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.40), 
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+            color: #f8fafc !important;
+        }
+
+        [data-bs-theme="light"] .liquid-select-dropdown {
+            background: rgba(255, 255, 255, 0.86) !important;
+            backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
+            -webkit-backdrop-filter: blur(36px) saturate(200%) contrast(105%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.95) !important;
+            box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.15), 
+                        inset 0 1px 2px 0 rgba(255, 255, 255, 0.95), 
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.40) !important;
+            color: #0f172a !important;
+        }
+
+        /* گزینه‌های درون منوی کشویی */
+        .liquid-select-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.86rem;
+            user-select: none;
+            transition: all 0.16s ease;
+        }
+
+        [data-bs-theme="dark"] .liquid-select-option {
+            color: #e2e8f0;
+        }
+        [data-bs-theme="dark"] .liquid-select-option:hover {
+            background: rgba(255, 255, 255, 0.10);
+            color: #ffffff;
+            transform: translateX(-2px);
+        }
+        [data-bs-theme="dark"] .liquid-select-option.is-selected {
+            background: rgba(0, 122, 255, 0.24) !important;
+            color: #38bdf8 !important;
+            font-weight: 700;
+        }
+
+        [data-bs-theme="light"] .liquid-select-option {
+            color: #334155;
+        }
+        [data-bs-theme="light"] .liquid-select-option:hover {
+            background: rgba(0, 122, 255, 0.08);
+            color: #007aff;
+            transform: translateX(-2px);
+        }
+        [data-bs-theme="light"] .liquid-select-option.is-selected {
+            background: rgba(0, 122, 255, 0.12) !important;
+            color: #007aff !important;
+            font-weight: 700;
+        }
+
+        .liquid-select-option.is-disabled {
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        /* اسکرول‌بار ظریف و شیک iOS */
+        .liquid-select-dropdown::-webkit-scrollbar {
+            width: 5px;
+        }
+        .liquid-select-dropdown::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .liquid-select-dropdown::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 10px;
+        }
+        .liquid-select-dropdown::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.6);
+        }
+
+        /* فال‌بک استایل برای سلکت‌های بومی قبل از تبدیل */
+        select.form-select {
+            border-radius: 14px !important;
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(18px) saturate(180%);
+            -webkit-backdrop-filter: blur(18px) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            color: var(--text-main) !important;
         }
 
         [data-bs-theme="dark"] select option {
@@ -4520,6 +4765,278 @@
                 alert('خطا در برقراری ارتباط با سرور');
             });
         }
+    </script>
+
+    <!-- ═══ موتور هوشمند منوهای کشویی شیشه مایع (Apple Liquid Glass Select System) ═══ -->
+    <script>
+        function initLiquidSelect(root = document) {
+            try {
+                const selects = (root.matches && root.matches('select.form-select')) 
+                    ? [root] 
+                    : Array.from(root.querySelectorAll('select.form-select'));
+
+                selects.forEach(select => {
+                    if (select.dataset.liquidSelectInit === 'true') return;
+                    if (select.hasAttribute('multiple')) return;
+                    if (select.dataset.native === 'true' || select.classList.contains('no-liquid-select')) return;
+
+                    select.dataset.liquidSelectInit = 'true';
+
+                    // کانتینر دربرگیرنده منوی سفارشی
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'liquid-select-wrapper';
+                    if (select.classList.contains('d-none')) wrapper.classList.add('d-none');
+                    if (select.classList.contains('w-100')) wrapper.classList.add('w-100');
+                    if (select.classList.contains('flex-grow-1')) wrapper.classList.add('flex-grow-1');
+
+                    // تطبیق عرض بر اساس استایل اصلی
+                    if (select.style.width) {
+                        wrapper.style.width = select.style.width;
+                    } else if (select.classList.contains('w-auto') || select.style.width === 'auto') {
+                        wrapper.style.width = 'auto';
+                    } else if (select.parentElement && select.parentElement.classList.contains('input-group')) {
+                        wrapper.style.flex = '1 1 auto';
+                    } else {
+                        wrapper.style.width = select.classList.contains('form-select-sm') && select.style.width ? select.style.width : 'auto';
+                        if (!select.style.width && !select.classList.contains('w-auto')) {
+                            wrapper.style.width = '100%';
+                        }
+                    }
+                    if (select.style.minWidth) wrapper.style.minWidth = select.style.minWidth;
+
+                    // دکمه تریگر منو
+                    const trigger = document.createElement('button');
+                    trigger.type = 'button';
+                    trigger.className = 'liquid-select-trigger';
+                    if (select.classList.contains('form-select-sm')) trigger.classList.add('liquid-select-sm');
+                    if (select.classList.contains('form-select-lg')) trigger.classList.add('liquid-select-lg');
+                    trigger.setAttribute('aria-haspopup', 'listbox');
+                    trigger.setAttribute('aria-expanded', 'false');
+                    if (select.disabled) trigger.disabled = true;
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'liquid-select-label text-truncate';
+                    
+                    const arrow = document.createElement('i');
+                    arrow.className = 'fas fa-chevron-down liquid-select-arrow ms-2';
+
+                    trigger.appendChild(labelSpan);
+                    trigger.appendChild(arrow);
+
+                    // لیست بازشوی شیشه‌ای
+                    const dropdown = document.createElement('div');
+                    dropdown.className = 'liquid-select-dropdown shadow-lg';
+                    dropdown.setAttribute('role', 'listbox');
+
+                    // ساخت و بازسازی گزینه‌ها
+                    function buildOptions() {
+                        dropdown.innerHTML = '';
+                        const options = Array.from(select.options);
+                        const selectedOpt = select.selectedOptions[0] || options[0];
+                        labelSpan.textContent = selectedOpt ? selectedOpt.textContent.trim() : '';
+
+                        options.forEach(opt => {
+                            const optDiv = document.createElement('div');
+                            optDiv.className = 'liquid-select-option';
+                            optDiv.dataset.value = opt.value;
+                            if (opt.disabled) optDiv.classList.add('is-disabled');
+                            if (opt === selectedOpt) {
+                                optDiv.classList.add('is-selected');
+                            }
+
+                            const optText = document.createElement('span');
+                            optText.className = 'text-truncate';
+                            optText.textContent = opt.textContent.trim();
+                            optDiv.appendChild(optText);
+
+                            if (opt === selectedOpt) {
+                                const checkIcon = document.createElement('i');
+                                checkIcon.className = 'fas fa-check small text-info ms-auto';
+                                optDiv.appendChild(checkIcon);
+                            }
+
+                            optDiv.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                if (opt.disabled) return;
+                                select.value = opt.value;
+                                labelSpan.textContent = opt.textContent.trim();
+                                dropdown.querySelectorAll('.liquid-select-option').forEach(el => {
+                                    el.classList.remove('is-selected');
+                                    const chk = el.querySelector('.fa-check');
+                                    if (chk) chk.remove();
+                                });
+                                optDiv.classList.add('is-selected');
+                                const chk = document.createElement('i');
+                                chk.className = 'fas fa-check small text-info ms-auto';
+                                optDiv.appendChild(chk);
+
+                                closeDropdown();
+
+                                // ارسال رویدادهای تغییر
+                                select.dispatchEvent(new Event('change', { bubbles: true }));
+                                select.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                // اجرای رویداد مستقیم onchange در صورت تعریف در تگ
+                                const onchangeAttr = select.getAttribute('onchange');
+                                if (onchangeAttr) {
+                                    try {
+                                        const fn = new Function('event', onchangeAttr);
+                                        fn.call(select, new Event('change'));
+                                    } catch (err) {
+                                        console.error('LiquidSelect onchange error:', err);
+                                    }
+                                }
+                            });
+
+                            dropdown.appendChild(optDiv);
+                        });
+                    }
+
+                    buildOptions();
+
+                    function openDropdown() {
+                        document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
+                            if (w !== wrapper) {
+                                w.classList.remove('is-open');
+                                const tr = w.querySelector('.liquid-select-trigger');
+                                if (tr) tr.setAttribute('aria-expanded', 'false');
+                            }
+                        });
+
+                        wrapper.classList.add('is-open');
+                        trigger.setAttribute('aria-expanded', 'true');
+
+                        // بررسی مرزهای صفحه جهت جلوگیری از بیرون زدن منو
+                        const rect = dropdown.getBoundingClientRect();
+                        if (rect.bottom > window.innerHeight - 20) {
+                            dropdown.classList.add('open-up');
+                        } else {
+                            dropdown.classList.remove('open-up');
+                        }
+                        if (rect.left < 10) {
+                            dropdown.style.right = 'auto';
+                            dropdown.style.left = '0';
+                        } else {
+                            dropdown.style.right = '0';
+                            dropdown.style.left = 'auto';
+                        }
+
+                        // اسکرول گزینه فعال در مرکز دید
+                        const active = dropdown.querySelector('.liquid-select-option.is-selected');
+                        if (active) active.scrollIntoView({ block: 'nearest' });
+                    }
+
+                    function closeDropdown() {
+                        wrapper.classList.remove('is-open');
+                        trigger.setAttribute('aria-expanded', 'false');
+                    }
+
+                    trigger.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (wrapper.classList.contains('is-open')) {
+                            closeDropdown();
+                        } else {
+                            openDropdown();
+                        }
+                    });
+
+                    // ناوبری با کیبورد (دکمه‌های جهت‌نما، Enter و Escape)
+                    trigger.addEventListener('keydown', (e) => {
+                        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (!wrapper.classList.contains('is-open')) {
+                                openDropdown();
+                            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                const items = Array.from(dropdown.querySelectorAll('.liquid-select-option:not(.is-disabled)'));
+                                const currentIndex = items.findIndex(el => el.classList.contains('is-selected'));
+                                let nextIndex = e.key === 'ArrowDown' ? currentIndex + 1 : currentIndex - 1;
+                                if (nextIndex < 0) nextIndex = items.length - 1;
+                                if (nextIndex >= items.length) nextIndex = 0;
+                                if (items[nextIndex]) items[nextIndex].click();
+                                openDropdown();
+                            }
+                        } else if (e.key === 'Escape') {
+                            closeDropdown();
+                        }
+                    });
+
+                    // همگام‌سازی زمان تغییر خارجی مقدار سلکت
+                    select.addEventListener('change', () => {
+                        const selectedOpt = select.selectedOptions[0];
+                        if (selectedOpt) {
+                            labelSpan.textContent = selectedOpt.textContent.trim();
+                            dropdown.querySelectorAll('.liquid-select-option').forEach(el => {
+                                const isCur = el.dataset.value === select.value;
+                                el.classList.toggle('is-selected', isCur);
+                                const chk = el.querySelector('.fa-check');
+                                if (isCur && !chk) {
+                                    const newChk = document.createElement('i');
+                                    newChk.className = 'fas fa-check small text-info ms-auto';
+                                    el.appendChild(newChk);
+                                } else if (!isCur && chk) {
+                                    chk.remove();
+                                }
+                            });
+                        }
+                    });
+
+                    // پنهان‌سازی امن سلکت اصلی بدون برهم خوردن اعتبارسنجی و فرم‌ها
+                    select.style.position = 'absolute';
+                    select.style.opacity = '0';
+                    select.style.width = '1px';
+                    select.style.height = '1px';
+                    select.style.padding = '0';
+                    select.style.margin = '0';
+                    select.style.border = 'none';
+                    select.style.pointerEvents = 'none';
+                    select.tabIndex = -1;
+                    select.setAttribute('aria-hidden', 'true');
+
+                    // مانیتورینگ تغییر کلاس‌ها و آپشن‌ها
+                    const mutObserver = new MutationObserver(mutations => {
+                        for (const m of mutations) {
+                            if (m.type === 'attributes' && m.attributeName === 'class') {
+                                if (select.classList.contains('d-none')) {
+                                    wrapper.classList.add('d-none');
+                                } else {
+                                    wrapper.classList.remove('d-none');
+                                }
+                            } else if (m.type === 'attributes' && m.attributeName === 'disabled') {
+                                trigger.disabled = select.disabled;
+                            } else if (m.type === 'childList') {
+                                buildOptions();
+                            }
+                        }
+                    });
+                    mutObserver.observe(select, { attributes: true, attributeFilter: ['class', 'style', 'disabled'], childList: true });
+
+                    // الصاق به ساختار DOM
+                    select.parentNode.insertBefore(wrapper, select.nextSibling);
+                    wrapper.appendChild(trigger);
+                    wrapper.appendChild(dropdown);
+                });
+            } catch (e) {
+                console.warn('initLiquidSelect warning:', e);
+            }
+        }
+
+        // بستن با کلیک در خارج از منو
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.liquid-select-wrapper.is-open').forEach(w => {
+                w.classList.remove('is-open');
+                const tr = w.querySelector('.liquid-select-trigger');
+                if (tr) tr.setAttribute('aria-expanded', 'false');
+            });
+        });
+
+        // اجرای خودکار در زمان لود صفحه و نمایش مودال‌ها
+        document.addEventListener('DOMContentLoaded', () => {
+            initLiquidSelect();
+        });
+
+        document.addEventListener('show.bs.modal', (e) => {
+            initLiquidSelect(e.target);
+        });
     </script>
 
     <!-- PWA Service Worker Registration & Installation Prompt Handler -->
