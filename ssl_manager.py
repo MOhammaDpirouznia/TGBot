@@ -217,6 +217,15 @@ def configure_nginx_for_domain(domain: str, cert_path: Optional[str] = None, key
     except Exception as ex:
         logger.warning(f"Error preparing ACME directory: {ex}")
 
+    # غیرفعال‌سازی صفحه پیش‌فرض welcome to nginx در صورت وجود
+    default_site = "/etc/nginx/sites-enabled/default"
+    if os.path.exists(default_site) or os.path.islink(default_site):
+        try:
+            os.remove(default_site)
+            logger.info("Removed default nginx site to prevent 'Welcome to nginx' collision.")
+        except Exception as ed:
+            logger.debug(f"Could not remove default nginx site: {ed}")
+
     # تعیین پورت داخلی وب‌پنل
     panel_port = 5000
     try:
@@ -226,6 +235,20 @@ def configure_nginx_for_domain(domain: str, cert_path: Optional[str] = None, key
         env_p = os.getenv("PORT") or os.getenv("PANEL_PORT")
         if env_p and str(env_p).isdigit():
             panel_port = int(env_p)
+
+    # شناسایی هوشمند سرتیفیکیت‌های موجود در سیستم در صورت عدم ارسال دستی
+    if not (cert_path and key_path and os.path.exists(cert_path) and os.path.exists(key_path)):
+        le_cert = f"/etc/letsencrypt/live/{clean_d}/fullchain.pem"
+        le_key = f"/etc/letsencrypt/live/{clean_d}/privkey.pem"
+        if os.path.exists(le_cert) and os.path.exists(le_key):
+            cert_path = le_cert
+            key_path = le_key
+        else:
+            local_cert = os.path.join(CERTS_DIR, f"{clean_d}.crt")
+            local_key = os.path.join(CERTS_DIR, f"{clean_d}.key")
+            if os.path.exists(local_cert) and os.path.exists(local_key):
+                cert_path = local_cert
+                key_path = local_key
 
     has_ssl = bool(cert_path and key_path and os.path.exists(cert_path) and os.path.exists(key_path))
 
