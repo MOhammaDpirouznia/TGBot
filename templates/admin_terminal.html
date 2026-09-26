@@ -1,5 +1,121 @@
 {% extends "base.html" %}
-{% block title %}خط فرمان سیستم (SSH / Local){% endblock %}
+{% block title %}خط فرمان سیستم (SSH / Local)<script>
+    function toggleRemoteMode() {
+        const isRemote = document.getElementById('remoteModeSwitch').checked;
+        document.getElementById('remoteSettings').style.display = isRemote ? 'block' : 'none';
+        document.getElementById('termPrompt').innerText = isRemote ? 'remote:~#' : 'root@local:~#';
+        document.getElementById('termInput').focus();
+    }
+
+    const termInput = document.getElementById('termInput');
+    const termOutput = document.getElementById('termOutput');
+    const termContainer = document.getElementById('termContainer');
+    
+    let isRunning = false;
+
+    if (termInput) {
+        termInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = this.value.trim();
+                if (cmd === '') return;
+                
+                if (cmd === 'clear') {
+                    termOutput.innerHTML = '';
+                    this.value = '';
+                    return;
+                }
+                
+                if (isRunning) return;
+                isRunning = true;
+                this.value = '';
+                
+                const prompt = document.getElementById('termPrompt').innerText;
+                termOutput.innerHTML += `\n<span class="text-white">${prompt} ${cmd}</span>\n<span class="terminal-warning">در حال اجرا...</span>`;
+                termContainer.scrollTop = termContainer.scrollHeight;
+                
+                runCommand(cmd);
+            }
+        });
+    }
+
+    async function runCommand(cmd) {
+        const isRemote = document.getElementById('remoteModeSwitch').checked;
+        const formData = new FormData();
+        formData.append('command', cmd);
+        
+        if (isRemote) {
+            formData.append('mode', 'remote');
+            formData.append('host', document.getElementById('sshHost').value);
+            formData.append('port', document.getElementById('sshPort').value);
+            formData.append('user', document.getElementById('sshUser').value);
+            formData.append('password', document.getElementById('sshPass').value);
+        } else {
+            formData.append('mode', 'local');
+        }
+
+        try {
+            const resp = await fetch("{{ url_for('admin_terminal_run') }}", {
+                method: "POST",
+                body: formData
+            });
+            const data = await resp.json();
+            
+            // Remove the 'در حال اجرا...' line
+            const lines = termOutput.innerHTML.split('\n');
+            lines.pop(); // remove last line which is the loading text
+            termOutput.innerHTML = lines.join('\n') + '\n';
+            
+            if (data.success) {
+                const safeOutput = data.output.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                termOutput.innerHTML += `<span class="terminal-success">${safeOutput}</span>\n`;
+            } else {
+                const safeError = (data.error || "Unknown Error").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                termOutput.innerHTML += `<span class="terminal-error">${safeError}</span>\n`;
+            }
+        } catch (e) {
+            const lines = termOutput.innerHTML.split('\n');
+            lines.pop();
+            termOutput.innerHTML = lines.join('\n') + '\n';
+            termOutput.innerHTML += `<span class="terminal-error">خطا در ارتباط با سرور: ${e}</span>\n`;
+        }
+        
+        isRunning = false;
+        termContainer.scrollTop = termContainer.scrollHeight;
+        document.getElementById('termInput').focus();
+    }
+
+    async function setPin() {
+        const pin = document.getElementById('newPin').value;
+        const formData = new FormData();
+        formData.append('action', 'set_pin');
+        formData.append('new_pin', pin);
+        
+        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) location.reload();
+        else alert(data.error);
+    }
+    
+    async function loginPin() {
+        const pin = document.getElementById('loginPin').value;
+        const formData = new FormData();
+        formData.append('action', 'login');
+        formData.append('pin', pin);
+        
+        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) location.reload();
+        else alert(data.error);
+    }
+
+    async function logoutTerminal() {
+        const formData = new FormData();
+        formData.append('action', 'logout');
+        await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
+        location.reload();
+    }
+</script>
+{% endblock %}
 
 {% block content %}
 <style>
@@ -122,6 +238,8 @@ Type your command and press Enter. Interactive commands (top, nano) are restrict
     </div>
 </div>
 
+
+{% endif %}
 <script>
     function toggleRemoteMode() {
         const isRemote = document.getElementById('remoteModeSwitch').checked;
@@ -238,5 +356,4 @@ Type your command and press Enter. Interactive commands (top, nano) are restrict
         location.reload();
     }
 </script>
-{% endif %}
 {% endblock %}

@@ -242,6 +242,9 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                     InlineKeyboardButton("🌐 پایش سلامت نودها و سرورها", callback_data="adm_adv_nodes"),
                 ],
                 [
+                    InlineKeyboardButton("🖥️ خط فرمان (ترمینال)", callback_data="adm_terminal_menu")
+                ],
+                [
                     InlineKeyboardButton("💾 مدیریت پشتیبان‌گیری و بازیابی", callback_data="adm_backup_menu"),
                 ],
                 [
