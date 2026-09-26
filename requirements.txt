@@ -5,4 +5,4 @@ jdatetime==5.2.0
 flask==3.1.1
 qrcode>=7.4.2
 pillow>=10.3.0
-
+cryptography>=41.0.0
