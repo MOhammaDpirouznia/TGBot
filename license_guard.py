@@ -368,7 +368,19 @@ class LicenseGuard:
             if update_info.get("severity") == "FORCE":
                 threading.Thread(target=self._trigger_force_update, args=(update_info,), daemon=True).start()
 
-        # ۳. بررسی وضعیت لایسنس
+        # ۳. همگام‌سازی آیکون نسخه از لایسنس‌سرور
+        if "version_icon_type" in payload:
+            try:
+                from database import db
+                srv_vicon = str(payload.get("version_icon_type", "")).strip()
+                if srv_vicon:
+                    db.save_setting("version_icon_type", srv_vicon)
+                if "version_custom_icon" in payload:
+                    db.save_setting("version_custom_icon", str(payload.get("version_custom_icon", "")).strip())
+            except Exception:
+                pass
+
+        # ۴. بررسی وضعیت لایسنس
         if status in ["ACTIVE", "VALID"]:
             self.is_valid = True
             self.status = "ACTIVE"

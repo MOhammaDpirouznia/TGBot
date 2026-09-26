@@ -1613,7 +1613,7 @@ class ResellerBotInstance:
 
             order_id = f"R{r_id}_ONL_{int(datetime.now().timestamp())}_{user.id % 1000}"
             r_info = db.get_reseller(r_id) or {}
-            domain = r_info.get("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+            domain = db.get_effective_domain(reseller_id=r_id, target_type='client_portal') or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
             if not str(domain).startswith("http"):
                 domain = f"https://{domain}"
             callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"

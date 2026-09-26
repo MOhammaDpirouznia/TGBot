@@ -293,11 +293,31 @@ def get_portal_proxy_path() -> str:
     return "renew"
 
 
-def get_customer_portal_url(token: str, _external: bool = True) -> str:
-    """تولید آدرس اختصاصی پورتال مشتری با در نظر گرفتن پروکسی پچ تنظیمی"""
+def get_customer_portal_url(token: str, _external: bool = True, reseller_id: Optional[int] = None) -> str:
+    """تولید آدرس اختصاصی پورتال مشتری با در نظر گرفتن دامنه اختصاصی نماینده و تفکیک ایزوله"""
     token_clean = str(token).strip() if token else ""
     proxy = get_portal_proxy_path()
     if _external:
+        if reseller_id is None:
+            try:
+                if session and session.get("reseller_id"):
+                    reseller_id = session.get("reseller_id")
+            except Exception:
+                pass
+
+        if reseller_id is None and token_clean:
+            try:
+                sub = db.get_subscription_by_uuid(token_clean)
+                if not sub and token_clean.isdigit():
+                    sub = db.get_subscription(int(token_clean))
+                if sub and sub.get("reseller_id"):
+                    reseller_id = sub["reseller_id"]
+            except Exception:
+                pass
+
+        effective_domain = db.get_effective_domain(reseller_id=reseller_id, target_type='client_portal')
+        if effective_domain:
+            return f"https://{effective_domain}/{proxy}/{token_clean}"
         try:
             base = request.host_url.rstrip("/") if request else ""
         except Exception:
@@ -8842,6 +8862,8 @@ def admin_resellers():
         can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
         gift_traffic_balance = float(request.form.get("gift_traffic_balance", 0.0) or 0.0)
         is_partner = 1 if request.form.get("is_partner") in ("on", "1", "true") else 0
+        panel_domain = request.form.get("panel_domain", "").strip()
+        client_domain = request.form.get("client_domain", "").strip()
 
         res = db.create_reseller(
             username=username,
@@ -8858,6 +8880,12 @@ def admin_resellers():
             gift_traffic_balance=gift_traffic_balance
         )
         if res.get("success"):
+            new_r_id = res.get("reseller_id")
+            if new_r_id and (panel_domain or client_domain):
+                db.sync_reseller_domains(new_r_id, panel_domain=panel_domain, client_domain=client_domain)
+                for d_cand in (panel_domain, client_domain):
+                    if d_cand:
+                        threading.Thread(target=ssl_manager.renew_domain_ssl_with_logs, args=(d_cand,), daemon=True).start()
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
         else:
             flash(f"خطا در ایجاد نماینده: {res.get('error')}", "danger")
@@ -9264,6 +9292,16 @@ def admin_reseller_edit(reseller_id):
 
     res = db.update_reseller(reseller_id, **updates)
     if res.get("success"):
+        panel_domain = request.form.get("panel_domain")
+        client_domain = request.form.get("client_domain")
+        if panel_domain is not None or client_domain is not None:
+            p_clean = (panel_domain or "").strip()
+            c_clean = (client_domain or "").strip()
+            db.sync_reseller_domains(reseller_id, panel_domain=p_clean, client_domain=c_clean)
+            for d_cand in (p_clean, c_clean):
+                if d_cand:
+                    threading.Thread(target=ssl_manager.renew_domain_ssl_with_logs, args=(d_cand,), daemon=True).start()
+
         flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
     else:
         flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
@@ -10079,6 +10117,132 @@ def admin_reseller_delete(reseller_id):
     db.delete_reseller(reseller_id)
     flash(f"نماینده «{r['name']}» با موفقیت حذف شد.", "success")
     return redirect(url_for("admin_resellers"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# بخش جامع مدیریت دامنه‌ها، ایزولاسیون و گواهی‌های امنیتی SSL
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/domains", methods=["GET"])
+@admin_required
+def admin_domains():
+    """نمایش لیست دامنه‌ها، وضعیت SSL و انتساب به نمایندگان"""
+    if session.get("admin_role") != "super_admin" and not has_permission("settings_manage"):
+        flash("شما دسترسی مجاز به مدیریت دامنه‌ها را ندارید.", "danger")
+        return redirect(url_for("dashboard"))
+
+    domains = db.get_all_domains()
+    resellers = db.get_all_resellers()
+    return render_template("admin_domains.html", domains=domains, resellers=resellers)
+
+
+@app.route("/admin/domains/add", methods=["POST"])
+@admin_required
+def admin_domains_add():
+    """افزودن دامنه جدید و راه‌اندازی فرآیند خودکار دریافت SSL"""
+    if session.get("admin_role") != "super_admin" and not has_permission("settings_manage"):
+        flash("دسترسی غیرمجاز.", "danger")
+        return redirect(url_for("dashboard"))
+
+    domain = request.form.get("domain", "").strip()
+    target_type = request.form.get("target_type", "both")
+    scope = request.form.get("scope", "reseller")
+    r_id_raw = request.form.get("reseller_id")
+    reseller_id = int(r_id_raw) if (r_id_raw and str(r_id_raw).isdigit() and int(r_id_raw) > 0) else None
+    ssl_auto_renew = 1 if request.form.get("ssl_auto_renew") in ("1", "on", "true") else 0
+
+    res = db.add_domain(
+        domain=domain,
+        target_type=target_type,
+        scope=scope,
+        reseller_id=reseller_id,
+        ssl_auto_renew=ssl_auto_renew
+    )
+
+    if res.get("success"):
+        clean_d = res.get("domain")
+        flash(f"دامنه «{clean_d}» با موفقیت افزوده شد.", "success")
+        if ssl_auto_renew:
+            threading.Thread(
+                target=ssl_manager.renew_domain_ssl_with_logs, 
+                args=(clean_d,), 
+                daemon=True
+            ).start()
+    else:
+        flash(f"خطا در ثبت دامنه: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_domains"))
+
+
+@app.route("/admin/domains/<int:domain_id>/edit", methods=["POST"])
+@admin_required
+def admin_domains_edit(domain_id):
+    """ویرایش تنظیمات دامنه"""
+    if session.get("admin_role") != "super_admin" and not has_permission("settings_manage"):
+        flash("دسترسی غیرمجاز.", "danger")
+        return redirect(url_for("dashboard"))
+
+    domain = request.form.get("domain", "").strip()
+    target_type = request.form.get("target_type", "both")
+    scope = request.form.get("scope", "reseller")
+    r_id_raw = request.form.get("reseller_id")
+    reseller_id = int(r_id_raw) if (r_id_raw and str(r_id_raw).isdigit() and int(r_id_raw) > 0) else None
+    ssl_auto_renew = 1 if request.form.get("ssl_auto_renew") in ("1", "on", "true") else 0
+    is_active = 1 if request.form.get("is_active") in ("1", "on", "true") else 0
+
+    res = db.update_domain(
+        domain_id,
+        domain=domain,
+        target_type=target_type,
+        scope=scope,
+        reseller_id=reseller_id,
+        ssl_auto_renew=ssl_auto_renew,
+        is_active=is_active
+    )
+
+    if res.get("success"):
+        flash("تغییرات دامنه با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در ذخیره تغییرات: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_domains"))
+
+
+@app.route("/admin/domains/<int:domain_id>/delete", methods=["POST"])
+@admin_required
+def admin_domains_delete(domain_id):
+    """حذف دامنه از سیستم"""
+    if session.get("admin_role") != "super_admin" and not has_permission("settings_manage"):
+        flash("دسترسی غیرمجاز.", "danger")
+        return redirect(url_for("dashboard"))
+
+    res = db.delete_domain(domain_id)
+    if res.get("success"):
+        flash(f"دامنه «{res.get('domain')}» با موفقیت حذف گردید.", "info")
+    else:
+        flash(f"خطا در حذف دامنه: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_domains"))
+
+
+@app.route("/admin/domains/<int:domain_id>/renew-ssl", methods=["POST"])
+@admin_required
+def admin_domains_renew_ssl(domain_id):
+    """تمدید دستی گواهی SSL و بازگرداندن لاگ لحظه‌ای"""
+    dom = db.get_domain_by_id(domain_id)
+    if not dom:
+        return jsonify({"success": False, "error": "دامنه یافت نشد."}), 404
+
+    res = ssl_manager.renew_domain_ssl_with_logs(dom["domain"])
+    return jsonify(res)
+
+
+@app.route("/admin/domains/renew-all", methods=["POST"])
+@admin_required
+def admin_domains_renew_all():
+    """پایش و تمدید خودکار کلیه گواهی‌های دامنه‌ها"""
+    res = ssl_manager.renew_all_ssl_certificates(threshold_days=30)
+    return jsonify(res)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -14390,8 +14554,10 @@ def settings():
             db.save_setting("store_favicon", store_favicon_url)
             db.save_setting("favicon_url", store_favicon_url)
             db.save_setting("brand_header_style", brand_header_style)
-            db.save_setting("version_icon_type", version_icon_type)
-            db.save_setting("version_custom_icon", version_custom_icon)
+            if "version_icon_type" in request.form:
+                db.save_setting("version_icon_type", request.form.get("version_icon_type").strip())
+            if "version_custom_icon" in request.form or request.form.get("clear_version_custom_icon") or ("version_icon_file" in request.files and request.files["version_icon_file"].filename):
+                db.save_setting("version_custom_icon", version_custom_icon)
 
             _store_version_cache["version"] = None
             _store_version_cache["timestamp"] = 0

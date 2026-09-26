@@ -1094,7 +1094,7 @@ class Database:
 
         # ستون‌های برندینگ، دامنه و آموزش‌های اختصاصی نماینده
         for col_def in [
-            "custom_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
+            "custom_domain TEXT", "panel_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
             "brand_title TEXT", "primary_color TEXT", "footer_text TEXT",
             "portal_layout TEXT DEFAULT ''", "portal_plan_style TEXT DEFAULT ''", "portal_palette TEXT DEFAULT 'inherit'"
         ]:
@@ -1175,6 +1175,31 @@ class Database:
         # ستون دسترسی و مدیریت با ربات برای مدیران و اعضای تیم
         try:
             cursor.execute("ALTER TABLE admin_users ADD COLUMN bot_access INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        # جدول جامع مدیریت دامنه‌ها و گواهی‌های امنیتی SSL
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS domains (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    domain TEXT UNIQUE NOT NULL,
+                    target_type TEXT NOT NULL DEFAULT 'both',
+                    scope TEXT NOT NULL DEFAULT 'reseller',
+                    reseller_id INTEGER DEFAULT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    ssl_status TEXT DEFAULT 'pending',
+                    ssl_expiry_date TEXT DEFAULT NULL,
+                    ssl_auto_renew INTEGER DEFAULT 1,
+                    ssl_last_log TEXT DEFAULT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (reseller_id) REFERENCES resellers(id) ON DELETE SET NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_domains_domain ON domains(domain)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_domains_reseller ON domains(reseller_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_domains_scope ON domains(scope)")
         except Exception:
             pass
 
@@ -18463,9 +18488,18 @@ class Database:
         try:
             cursor.execute("""
                 SELECT * FROM resellers 
-                WHERE (LOWER(custom_domain) = ? OR LOWER(tutorial_domain) = ?) AND status = 'active'
-            """, (clean_domain, clean_domain))
+                WHERE (LOWER(custom_domain) = ? OR LOWER(tutorial_domain) = ? OR LOWER(panel_domain) = ?) AND status = 'active'
+            """, (clean_domain, clean_domain, clean_domain))
             row = cursor.fetchone()
+            if not row:
+                cursor.execute("""
+                    SELECT r.* FROM domains d
+                    JOIN resellers r ON d.reseller_id = r.id
+                    WHERE LOWER(d.domain) = ? AND d.is_active = 1 AND r.status = 'active'
+                    LIMIT 1
+                """, (clean_domain,))
+                row = cursor.fetchone()
+
             res = dict(row) if row else None
             _reseller_domain_cache[clean_domain] = {"data": res, "ts": now}
             return res
@@ -18484,7 +18518,7 @@ class Database:
         kwargs["updated_at"] = now
         try:
             allowed = [
-                "custom_domain", "tutorial_domain", "logo_url", "favicon_url",
+                "custom_domain", "panel_domain", "tutorial_domain", "logo_url", "favicon_url",
                 "brand_title", "portal_title", "portal_subtitle", "portal_new_customer_text", "support_phone", "support_username",
                 "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette",
                 "mini_app_splash_enabled", "mini_app_splash_title", "mini_app_splash_subtitle",
@@ -18498,7 +18532,7 @@ class Database:
                 if k in allowed:
                     val = v.strip() if isinstance(v, str) else v
                     # دامنه‌ها در صورت خالی بودن باید None (معادل NULL در دیتابیس) ذخیره شوند تا تداخل ایندکس یونیک رخ ندهد
-                    if k in ("custom_domain", "tutorial_domain"):
+                    if k in ("custom_domain", "panel_domain", "tutorial_domain"):
                         val = val.lower() if isinstance(val, str) else val
                         if not val:
                             val = None
@@ -18512,10 +18546,340 @@ class Database:
             return {"success": True}
         except sqlite3.IntegrityError as e:
             err_str = str(e).lower()
-            if "custom_domain" in err_str or "tutorial_domain" in err_str:
+            if "custom_domain" in err_str or "tutorial_domain" in err_str or "panel_domain" in err_str:
                 return {"success": False, "error": "این دامنه قبلاً توسط نماینده دیگری ثبت شده است."}
             return {"success": False, "error": f"خطای یکتایی اطلاعات: {e}"}
         except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── سامانه جامع مدیریت دامنه‌ها و تفکیک نمایندگان (Domain Management & Isolation) ───
+
+    def clean_domain_string(self, domain: str) -> str:
+        """پالایش دامنه و حذف پروتکل، مسیر، پورت و اسلش‌ها"""
+        if not domain:
+            return ""
+        d = domain.strip().lower()
+        d = re.sub(r"^https?://", "", d)
+        d = d.split("/")[0].split("?")[0].split("#")[0]
+        d = re.sub(r":\d+$", "", d)
+        return d.strip()
+
+    def get_all_domains(self, scope: Optional[str] = None, reseller_id: Optional[int] = None) -> list:
+        """دریافت لیست کلیه دامنه‌ها به همراه مشخصات نماینده متصل"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = """
+                SELECT d.*, r.name as reseller_name, r.username as reseller_username 
+                FROM domains d 
+                LEFT JOIN resellers r ON d.reseller_id = r.id
+                WHERE 1=1
+            """
+            params = []
+            if scope:
+                query += " AND d.scope = ?"
+                params.append(scope)
+            if reseller_id is not None:
+                query += " AND d.reseller_id = ?"
+                params.append(reseller_id)
+            query += " ORDER BY d.id DESC"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting domains: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_domain_by_id(self, domain_id: int) -> Optional[dict]:
+        """دریافت مشخصات یک دامنه با شناسه یکتا"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT d.*, r.name as reseller_name, r.username as reseller_username 
+                FROM domains d 
+                LEFT JOIN resellers r ON d.reseller_id = r.id
+                WHERE d.id = ?
+            """, (domain_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting domain by id {domain_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_domain_by_name(self, domain: str) -> Optional[dict]:
+        """یافتن دامنه بر اساس نام دامنه"""
+        clean_d = self.clean_domain_string(domain)
+        if not clean_d:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT d.*, r.name as reseller_name, r.username as reseller_username 
+                FROM domains d 
+                LEFT JOIN resellers r ON d.reseller_id = r.id
+                WHERE LOWER(d.domain) = ?
+            """, (clean_d,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting domain by name {domain}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def add_domain(self, domain: str, target_type: str = 'both', scope: str = 'reseller', 
+                   reseller_id: Optional[int] = None, ssl_auto_renew: int = 1) -> dict:
+        """ثبت دامنه جدید در سیستم با اعتبارسنجی یکتایی"""
+        clean_d = self.clean_domain_string(domain)
+        if not clean_d:
+            return {"success": False, "error": "نام دامنه معتبر نیست یا خالی ارسال شده است."}
+
+        target_type = target_type if target_type in ('panel', 'client_portal', 'both') else 'both'
+        scope = scope if scope in ('admin', 'all_resellers', 'reseller') else 'reseller'
+        if scope != 'reseller':
+            reseller_id = None
+        elif not reseller_id or int(reseller_id) <= 0:
+            scope = 'all_resellers'
+            reseller_id = None
+
+        now = get_now_iso()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO domains (domain, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, 'pending', ?, ?, ?)
+            """, (clean_d, target_type, scope, reseller_id, 1 if ssl_auto_renew else 0, now, now))
+            domain_id = cursor.lastrowid
+            conn.commit()
+
+            # در صورت انتساب به نماینده، فیلدهای جدول resellers را هم به‌روز می‌کنیم
+            if reseller_id:
+                if target_type in ('client_portal', 'both'):
+                    try:
+                        cursor.execute("UPDATE resellers SET custom_domain = ? WHERE id = ?", (clean_d, reseller_id))
+                        conn.commit()
+                    except Exception:
+                        pass
+                if target_type in ('panel', 'both'):
+                    try:
+                        cursor.execute("UPDATE resellers SET panel_domain = ? WHERE id = ?", (clean_d, reseller_id))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+            _reseller_domain_cache.clear()
+            return {"success": True, "domain_id": domain_id, "domain": clean_d}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": f"دامنه «{clean_d}» از قبل در سیستم ثبت شده است."}
+        except Exception as e:
+            logger.error(f"Error adding domain: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_domain(self, domain_id: int, **kwargs) -> dict:
+        """ویرایش تنظیمات دامنه و وضعیت‌های آن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            allowed = [
+                "domain", "target_type", "scope", "reseller_id", 
+                "is_active", "ssl_status", "ssl_expiry_date", 
+                "ssl_auto_renew", "ssl_last_log"
+            ]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k in allowed:
+                    if k == "domain":
+                        clean_d = self.clean_domain_string(v)
+                        fields.append(f"{k} = ?")
+                        params.append(clean_d)
+                    else:
+                        fields.append(f"{k} = ?")
+                        params.append(v)
+            if not fields:
+                return {"success": True}
+
+            fields.append("updated_at = ?")
+            params.append(now)
+            params.append(domain_id)
+
+            cursor.execute(f"UPDATE domains SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            _reseller_domain_cache.clear()
+            return {"success": True}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این دامنه قبلاً در سیستم ثبت شده است."}
+        except Exception as e:
+            logger.error(f"Error updating domain {domain_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_domain(self, domain_id: int) -> dict:
+        """حذف دامنه از سیستم و پاکسازی ارجاعات نماینده"""
+        dom = self.get_domain_by_id(domain_id)
+        if not dom:
+            return {"success": False, "error": "دامنه یافت نشد."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            domain_name = dom["domain"]
+            reseller_id = dom.get("reseller_id")
+
+            cursor.execute("DELETE FROM domains WHERE id = ?", (domain_id,))
+            conn.commit()
+
+            if reseller_id:
+                try:
+                    cursor.execute("UPDATE resellers SET custom_domain = NULL WHERE id = ? AND LOWER(custom_domain) = ?", (reseller_id, domain_name.lower()))
+                    cursor.execute("UPDATE resellers SET panel_domain = NULL WHERE id = ? AND LOWER(panel_domain) = ?", (reseller_id, domain_name.lower()))
+                    conn.commit()
+                except Exception:
+                    pass
+
+            _reseller_domain_cache.clear()
+            return {"success": True, "domain": domain_name}
+        except Exception as e:
+            logger.error(f"Error deleting domain {domain_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_effective_domain(self, reseller_id: Optional[int] = None, target_type: str = 'client_portal') -> str:
+        """
+        تفکیک و انتخاب هوشمند دامنه با رعایت کامل ایزولاسیون:
+        ۱. بررسی دامنه اختصاصی نماینده برای هدف درخواستی (یا both)
+        ۲. بررسی فیلدهای custom_domain یا panel_domain در جدول resellers
+        ۳. بررسی دامنه سراسری برای کل نمایندگان (scope='all_resellers')
+        ۴. بررسی دامنه اصلی ادمین سیستم (scope='admin')
+        ۵. فال‌بک به تنظیمات عمومی سیستم در دیتابیس یا فایل env
+        """
+        target_type = target_type if target_type in ('panel', 'client_portal') else 'client_portal'
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. تطابق اختصاصی نماینده در جدول domains
+            if reseller_id and int(reseller_id) > 0:
+                cursor.execute("""
+                    SELECT domain FROM domains 
+                    WHERE reseller_id = ? AND target_type IN (?, 'both') AND is_active = 1
+                    ORDER BY CASE WHEN target_type = ? THEN 1 ELSE 2 END, id DESC
+                    LIMIT 1
+                """, (int(reseller_id), target_type, target_type))
+                row = cursor.fetchone()
+                if row and row["domain"]:
+                    return row["domain"].strip()
+
+                # ۲. فال‌بک به ستون‌های جدول resellers
+                cursor.execute("SELECT custom_domain, panel_domain FROM resellers WHERE id = ?", (int(reseller_id),))
+                r_row = cursor.fetchone()
+                if r_row:
+                    if target_type == 'client_portal' and r_row["custom_domain"]:
+                        return r_row["custom_domain"].strip()
+                    elif target_type == 'panel' and r_row["panel_domain"]:
+                        return r_row["panel_domain"].strip()
+                    elif r_row["custom_domain"]:
+                        return r_row["custom_domain"].strip()
+
+                # ۳. بررسی دامنه اشتراکی برای کلیه نمایندگان
+                cursor.execute("""
+                    SELECT domain FROM domains 
+                    WHERE scope = 'all_resellers' AND target_type IN (?, 'both') AND is_active = 1
+                    ORDER BY CASE WHEN target_type = ? THEN 1 ELSE 2 END, id DESC
+                    LIMIT 1
+                """, (target_type, target_type))
+                row = cursor.fetchone()
+                if row and row["domain"]:
+                    return row["domain"].strip()
+
+            # ۴. بررسی دامنه اختصاصی ادمین
+            cursor.execute("""
+                SELECT domain FROM domains 
+                WHERE scope = 'admin' AND target_type IN (?, 'both') AND is_active = 1
+                ORDER BY CASE WHEN target_type = ? THEN 1 ELSE 2 END, id DESC
+                LIMIT 1
+            """, (target_type, target_type))
+            row = cursor.fetchone()
+            if row and row["domain"]:
+                return row["domain"].strip()
+
+            # ۵. فال‌بک به تنظیمات سراسری پنل
+            sys_dom = self.get_setting("custom_domain") or self.get_setting("panel_domain") or os.getenv("PANEL_DOMAIN", "")
+            return self.clean_domain_string(sys_dom)
+        except Exception as e:
+            logger.error(f"Error in get_effective_domain (r_id={reseller_id}, type={target_type}): {e}")
+            sys_dom = self.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+            return self.clean_domain_string(sys_dom)
+        finally:
+            conn.close()
+
+    def sync_reseller_domains(self, reseller_id: int, panel_domain: Optional[str] = None, 
+                              client_domain: Optional[str] = None) -> dict:
+        """
+        همگام‌سازی دوطرفه دامنه‌های وارد شده در فرم نماینده با جدول جامع domains
+        """
+        if not reseller_id or int(reseller_id) <= 0:
+            return {"success": False, "error": "شناسه نماینده نامعتبر است."}
+
+        p_dom = self.clean_domain_string(panel_domain or "")
+        c_dom = self.clean_domain_string(client_domain or "")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # اگر هر دو دامنه یکسان و معتبر باشند: یک رکورد با نوع 'both'
+            if p_dom and c_dom and p_dom == c_dom:
+                cursor.execute("DELETE FROM domains WHERE reseller_id = ? AND domain != ?", (reseller_id, p_dom))
+                cursor.execute("""
+                    INSERT INTO domains (domain, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
+                    VALUES (?, 'both', 'reseller', ?, 1, 'pending', 1, ?, ?)
+                    ON CONFLICT(domain) DO UPDATE SET target_type = 'both', scope = 'reseller', reseller_id = ?, updated_at = ?
+                """, (p_dom, reseller_id, now, now, reseller_id, now))
+            else:
+                if p_dom:
+                    cursor.execute("""
+                        INSERT INTO domains (domain, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
+                        VALUES (?, 'panel', 'reseller', ?, 1, 'pending', 1, ?, ?)
+                        ON CONFLICT(domain) DO UPDATE SET target_type = 'panel', scope = 'reseller', reseller_id = ?, updated_at = ?
+                    """, (p_dom, reseller_id, now, now, reseller_id, now))
+                else:
+                    cursor.execute("DELETE FROM domains WHERE reseller_id = ? AND target_type = 'panel'", (reseller_id,))
+
+                if c_dom:
+                    cursor.execute("""
+                        INSERT INTO domains (domain, target_type, scope, reseller_id, is_active, ssl_status, ssl_auto_renew, created_at, updated_at)
+                        VALUES (?, 'client_portal', 'reseller', ?, 1, 'pending', 1, ?, ?)
+                        ON CONFLICT(domain) DO UPDATE SET target_type = 'client_portal', scope = 'reseller', reseller_id = ?, updated_at = ?
+                    """, (c_dom, reseller_id, now, now, reseller_id, now))
+                else:
+                    cursor.execute("DELETE FROM domains WHERE reseller_id = ? AND target_type = 'client_portal'", (reseller_id,))
+
+            # بروزرسانی ستون‌های جدول resellers
+            cursor.execute("""
+                UPDATE resellers 
+                SET panel_domain = ?, custom_domain = ?, updated_at = ?
+                WHERE id = ?
+            """, (p_dom or None, c_dom or None, now, reseller_id))
+
+            conn.commit()
+            _reseller_domain_cache.clear()
+            return {"success": True, "panel_domain": p_dom, "client_domain": c_dom}
+        except Exception as e:
+            logger.error(f"Error syncing reseller domains for #{reseller_id}: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()

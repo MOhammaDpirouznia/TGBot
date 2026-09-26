@@ -202,15 +202,7 @@ class NotificationScheduler:
     def _build_portal_url(self, subscription: dict) -> str:
         """ساخت آدرس پورتال دائمی و اختصاصی مشتری بر اساس UUID یا شناسه اشتراک"""
         reseller_id = subscription.get("reseller_id")
-        domain = ""
-        if reseller_id:
-            try:
-                r_info = db.get_reseller(reseller_id) or {}
-                domain = r_info.get("domain")
-            except Exception:
-                domain = ""
-        if not domain:
-            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+        domain = db.get_effective_domain(reseller_id=reseller_id, target_type='client_portal')
         token = subscription.get("hidify_uuid") or subscription.get("id")
         if domain and token:
             return f"https://{domain}/user/{token}"

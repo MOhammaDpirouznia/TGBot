@@ -1584,6 +1584,29 @@
                         <input type="number" name="telegram_id" class="form-control font-monospace" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
                     </div>
 
+                    <!-- بخش دامنه‌های اختصاصی نماینده -->
+                    <div class="mb-3 border border-primary border-opacity-25 p-3 rounded bg-primary bg-opacity-10">
+                        <label class="form-label fw-bold text-primary small d-flex align-items-center justify-content-between mb-2">
+                            <span><i class="fas fa-globe me-1"></i> دامنه‌های اختصاصی نماینده (همگام با بخش دامنه‌ها):</span>
+                        </label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">دامنه ورود به پنل نماینده:</label>
+                                <input type="text" name="panel_domain" id="panelDomainEdit{{ r['id'] }}" class="form-control form-control-sm font-monospace" value="{{ r.get('panel_domain') or '' }}" placeholder="panel.reseller.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">دامنه پرتال مشتریان نماینده:</label>
+                                <input type="text" name="client_domain" id="clientDomainEdit{{ r['id'] }}" class="form-control form-control-sm font-monospace" value="{{ r.get('custom_domain') or '' }}" placeholder="sub.reseller.com">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch small">
+                            <input class="form-check-input" type="checkbox" id="syncDomainsEdit{{ r['id'] }}" onchange="if(this.checked){ document.getElementById('clientDomainEdit{{ r['id'] }}').value = document.getElementById('panelDomainEdit{{ r['id'] }}').value; }">
+                            <label class="form-check-label text-muted" for="syncDomainsEdit{{ r['id'] }}" style="font-size: 0.73rem;">
+                                استفاده از دامنه یکسان برای هر دو (پنل نماینده و پرتال مشتریان)
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- بخش تنظیمات خرید اعتباری (خرید نسیه/پیش‌اعتبار) -->
                     <div class="mb-3 border border-warning p-3 rounded bg-warning bg-opacity-10">
                         <label class="form-label fw-bold text-dark"><i class="fas fa-hand-holding-dollar text-warning me-1"></i> تنظیمات خرید اعتباری (پست‌پی / نسیه):</label>
@@ -2012,6 +2035,30 @@
                         <label class="form-label">آیدی عددی تلگرام (اختیاری برای نوتیفیکیشن):</label>
                         <input type="number" name="telegram_id" class="form-control" placeholder="مثال: 123456789">
                     </div>
+
+                    <!-- بخش دامنه‌های اختصاصی نماینده -->
+                    <div class="mb-3 border border-primary border-opacity-25 p-3 rounded bg-primary bg-opacity-10">
+                        <label class="form-label fw-bold text-primary small d-flex align-items-center justify-content-between mb-2">
+                            <span><i class="fas fa-globe me-1"></i> دامنه‌های اختصاصی نماینده (اتصال خودکار به بخش دامنه‌ها):</span>
+                        </label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">دامنه ورود به پنل نماینده:</label>
+                                <input type="text" name="panel_domain" id="panelDomainAdd" class="form-control form-control-sm font-monospace" placeholder="panel.reseller.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">دامنه پرتال مشتریان نماینده:</label>
+                                <input type="text" name="client_domain" id="clientDomainAdd" class="form-control form-control-sm font-monospace" placeholder="sub.reseller.com">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch small">
+                            <input class="form-check-input" type="checkbox" id="syncDomainsAdd" onchange="if(this.checked){ document.getElementById('clientDomainAdd').value = document.getElementById('panelDomainAdd').value; }">
+                            <label class="form-check-label text-muted" for="syncDomainsAdd" style="font-size: 0.73rem;">
+                                استفاده از دامنه یکسان برای هر دو (پنل نماینده و پرتال مشتریان)
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="mb-3 border p-2 rounded bg-light">
                         <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> اتصال به ادمین پنل هیدیفای:</label>
                         <div class="form-check form-switch mb-2">

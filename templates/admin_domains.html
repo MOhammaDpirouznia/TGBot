@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+
+{% block title %}مدیریت دامنه‌ها و امنیت SSL{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-md-4 py-4">
+    <!-- هدر صفحه -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+        <div>
+            <h4 class="fw-bold mb-1 d-flex align-items-center gap-2">
+                <i class="fas fa-globe text-primary"></i>
+                مدیریت دامنه‌ها و گواهی‌های امنیتی SSL
+            </h4>
+            <p class="text-muted small mb-0">
+                پیکربندی دامنه‌های اختصاصی پنل مدیریت، پرتال مشترکین نمایندگان و صدور خودکار سرتیفیکیت SSL
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-info d-flex align-items-center gap-2" onclick="renewAllDomainsSSL()">
+                <i class="fas fa-arrows-rotate"></i>
+                <span class="d-none d-sm-inline">بررسی و تمدید خودکار همه</span>
+            </button>
+            <button type="button" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+                <i class="fas fa-plus"></i>
+                <span>افزودن دامنه جدید</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- کارت‌های آمار سریع دامنه‌ها -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-3 h-100 bg-light">
+                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                    <div>
+                        <span class="text-muted small d-block mb-1">کل دامنه‌های ثبت‌شده</span>
+                        <h4 class="fw-bold mb-0 font-monospace">{{ domains|length }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 text-primary fs-4">
+                        <i class="fas fa-network-wired"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-3 h-100 bg-light">
+                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                    <div>
+                        <span class="text-muted small d-block mb-1">SSL فعال و ایمن</span>
+                        {% set active_ssl = domains|selectattr('ssl_status', 'equalto', 'active')|list|length %}
+                        <h4 class="fw-bold mb-0 text-success font-monospace">{{ active_ssl }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-success bg-opacity-10 p-3 text-success fs-4">
+                        <i class="fas fa-shield-check"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-3 h-100 bg-light">
+                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                    <div>
+                        <span class="text-muted small d-block mb-1">نزدیک به انقضا / در انتظار</span>
+                        {% set pending_ssl = domains|selectattr('ssl_status', 'in', ['pending', 'expiring'])|list|length %}
+                        <h4 class="fw-bold mb-0 text-warning font-monospace">{{ pending_ssl }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 text-warning fs-4">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-3 h-100 bg-light">
+                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                    <div>
+                        <span class="text-muted small d-block mb-1">خطا / منقضی‌شده</span>
+                        {% set failed_ssl = domains|selectattr('ssl_status', 'in', ['failed', 'expired'])|list|length %}
+                        <h4 class="fw-bold mb-0 text-danger font-monospace">{{ failed_ssl }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 text-danger fs-4">
+                        <i class="fas fa-triangle-exclamation"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول نمایش دامنه‌ها -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                <i class="fas fa-list text-primary"></i>
+                فهرست کلیه دامنه‌ها و تنظیمات تفکیک
+            </h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">نام دامنه</th>
+                        <th>نوع کاربرد</th>
+                        <th>اختصاص به</th>
+                        <th>وضعیت SSL</th>
+                        <th>تاریخ انقضای SSL</th>
+                        <th>وضعیت اتصال</th>
+                        <th class="text-center pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if domains %}
+                        {% for d in domains %}
+                        <tr>
+                            <td class="ps-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="p-2 rounded bg-light border">
+                                        <i class="fas fa-link text-secondary"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold font-monospace">{{ d['domain'] }}</div>
+                                        <a href="https://{{ d['domain'] }}" target="_blank" class="small text-decoration-none text-muted" style="font-size: 0.75rem;">
+                                            تست اتصال <i class="fas fa-external-link-alt ms-1" style="font-size: 0.65rem;"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if d['target_type'] == 'both' %}
+                                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-layer-group me-1"></i> پنل و پرتال مشتری
+                                    </span>
+                                {% elif d['target_type'] == 'panel' %}
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-desktop me-1"></i> فقط پنل مدیریت
+                                    </span>
+                                {% elif d['target_type'] == 'client_portal' %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-user-check me-1"></i> فقط پرتال مشتریان
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if d['scope'] == 'admin' %}
+                                    <span class="badge bg-secondary bg-opacity-10 text-dark border px-2 py-1">
+                                        <i class="fas fa-user-shield me-1 text-danger"></i> سیستم / ادمین اصلی
+                                    </span>
+                                {% elif d['scope'] == 'all_resellers' %}
+                                    <span class="badge bg-warning bg-opacity-10 text-dark border px-2 py-1">
+                                        <i class="fas fa-users me-1 text-warning"></i> اشتراکی کلیه نمایندگان
+                                    </span>
+                                {% elif d['scope'] == 'reseller' %}
+                                    <span class="badge bg-purple bg-opacity-10 text-dark border px-2 py-1" style="background-color: #f3e8ff;">
+                                        <i class="fas fa-user-tie me-1 text-primary"></i> 
+                                        {{ d['reseller_name'] or 'نماینده #' ~ d['reseller_id'] }}
+                                        <span class="text-muted font-monospace">({{ d['reseller_username'] }})</span>
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if d['ssl_status'] == 'active' %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-check-circle me-1"></i> معتبر و فعال
+                                    </span>
+                                {% elif d['ssl_status'] == 'expiring' %}
+                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-exclamation-triangle me-1"></i> نزدیک به انقضا
+                                    </span>
+                                {% elif d['ssl_status'] == 'pending' %}
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1">
+                                        <i class="fas fa-spinner fa-spin me-1"></i> در انتظار بررسی
+                                    </span>
+                                {% elif d['ssl_status'] == 'failed' %}
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1" title="{{ d['ssl_last_log'] or 'خطا در دریافت سرتیفیکیت' }}">
+                                        <i class="fas fa-times-circle me-1"></i> خطای صدور
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary px-2 py-1">{{ d['ssl_status'] or 'نامشخص' }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if d['ssl_expiry_date'] %}
+                                    <span class="small font-monospace text-dark d-block">{{ d['ssl_expiry_date'][:10] }}</span>
+                                    <small class="text-muted" style="font-size: 0.7rem;">{{ d['ssl_expiry_date'][11:16] }} UTC</small>
+                                {% else %}
+                                    <span class="text-muted small">ثبت نشده</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if d['is_active'] %}
+                                    <span class="text-success small fw-bold"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>فعال</span>
+                                {% else %}
+                                    <span class="text-secondary small"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>غیرفعال</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-success" 
+                                            title="تمدید دستی و استعلام زنده SSL"
+                                            onclick="openSslRenewModal({{ d['id'] }}, '{{ d['domain'] }}')">
+                                        <i class="fas fa-lock me-1"></i> تمدید SSL
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary"
+                                            title="ویرایش دامنه"
+                                            onclick="openEditDomainModal({{ d|tojson|safe }})">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            title="حذف دامنه"
+                                            onclick="confirmDeleteDomain({{ d['id'] }}, '{{ d['domain'] }}')">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="fas fa-globe fs-1 d-block mb-3 opacity-25"></i>
+                                <div class="fw-bold mb-1">هنوز هیچ دامنه‌ای در سیستم ثبت نشده است.</div>
+                                <small>جهت افزودن دامنه اختصاصی برای پرتال مشتریان یا پنل نمایندگان روی دکمه «افزودن دامنه جدید» کلیک کنید.</small>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ۱. Modal افزودن دامنه جدید -->
+<div class="modal fade text-start" id="addDomainModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_domains_add') }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-globe me-2"></i>افزودن دامنه جدید به سیستم
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i> پس از ثبت دامنه، فرآیند بررسی DNS و دریافت خودکار SSL رایگان در پس‌زمینه آغاز می‌شود.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نام دامنه یا ساب‌دامنه <span class="text-danger">*</span>:</label>
+                        <input type="text" name="domain" class="form-control font-monospace" placeholder="مثال: sub.reseller.com یا vpn.mydomain.org" required>
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">نیازی به وارد کردن http یا https نیست.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نوع کاربرد دامنه:</label>
+                        <div class="d-flex flex-column gap-2 p-2 bg-light rounded border">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="target_type" id="typeBothAdd" value="both" checked>
+                                <label class="form-check-label fw-bold small text-dark" for="typeBothAdd">
+                                    <i class="fas fa-layer-group text-primary me-1"></i> هم پنل مدیریت و هم پرتال و لینک مشتریان
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="target_type" id="typePortalAdd" value="client_portal">
+                                <label class="form-check-label fw-bold small text-dark" for="typePortalAdd">
+                                    <i class="fas fa-user-check text-success me-1"></i> فقط پرتال و لینک اتصال مشتریان (ساب‌اسکریپشن / پیامک / ربات)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="target_type" id="typePanelAdd" value="panel">
+                                <label class="form-check-label fw-bold small text-dark" for="typePanelAdd">
+                                    <i class="fas fa-desktop text-info me-1"></i> فقط ورود به پنل نماینده / ادمین
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">سطح اختصاص و دسترسی:</label>
+                        <select name="scope" id="scopeSelectAdd" class="form-select" onchange="toggleResellerPicker('Add')">
+                            <option value="admin">ادمین اصلی / سیستم (دامنه عمومی مدیریت)</option>
+                            <option value="all_resellers">اشتراکی کلیه نمایندگان (نمایندگان بدون دامنه اختصاصی)</option>
+                            <option value="reseller" selected>اختصاصی یک نماینده خاص</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="resellerPickerBoxAdd">
+                        <label class="form-label fw-bold small">انتخاب نماینده فروش:</label>
+                        <select name="reseller_id" class="form-select">
+                            <option value="">-- انتخاب نماینده --</option>
+                            {% for r in resellers %}
+                            <option value="{{ r['id'] }}">{{ r['name'] }} ({{ r['username'] }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" name="ssl_auto_renew" id="sslAutoRenewAdd" value="1" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="sslAutoRenewAdd">
+                            تمدید و صدور خودکار رایگان گواهی SSL
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-check me-1"></i> ثبت دامنه و فعال‌سازی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ۲. Modal ویرایش دامنه -->
+<div class="modal fade text-start" id="editDomainModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" id="editDomainForm" action="">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-pen me-2"></i>ویرایش تنظیمات دامنه
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نام دامنه یا ساب‌دامنه:</label>
+                        <input type="text" name="domain" id="editDomainInput" class="form-control font-monospace" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">نوع کاربرد دامنه:</label>
+                        <select name="target_type" id="editTargetType" class="form-select">
+                            <option value="both">هم پنل مدیریت و هم پرتال و لینک مشتریان</option>
+                            <option value="client_portal">فقط پرتال و لینک اتصال مشتریان</option>
+                            <option value="panel">فقط ورود به پنل نماینده / ادمین</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">سطح اختصاص:</label>
+                        <select name="scope" id="scopeSelectEdit" class="form-select" onchange="toggleResellerPicker('Edit')">
+                            <option value="admin">ادمین اصلی / سیستم</option>
+                            <option value="all_resellers">اشتراکی کلیه نمایندگان</option>
+                            <option value="reseller">اختصاصی یک نماینده خاص</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="resellerPickerBoxEdit">
+                        <label class="form-label fw-bold small">انتخاب نماینده فروش:</label>
+                        <select name="reseller_id" id="editResellerId" class="form-select">
+                            <option value="">-- انتخاب نماینده --</option>
+                            {% for r in resellers %}
+                            <option value="{{ r['id'] }}">{{ r['name'] }} ({{ r['username'] }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" name="ssl_auto_renew" id="editSslAutoRenew" value="1">
+                        <label class="form-check-label fw-bold small text-dark" for="editSslAutoRenew">
+                            تمدید خودکار گواهی SSL
+                        </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="editIsActive" value="1">
+                        <label class="form-check-label fw-bold small text-dark" for="editIsActive">
+                            دامنه فعال باشد
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ۳. Modal ترمینال و لاگ زنده تمدید SSL -->
+<div class="modal fade text-start" id="sslLogModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 bg-dark text-white">
+            <div class="modal-header border-secondary py-3 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="spinner-border spinner-border-sm text-info" id="sslSpinner" role="status"></span>
+                    <h6 class="modal-title fw-bold font-monospace mb-0" id="sslModalTitle">
+                        🔐 در حال استعلام و تمدید گواهی SSL...
+                    </h6>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" id="sslCloseBtn"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1 text-muted small">
+                    <span id="sslDomainBadge" class="font-monospace text-info"></span>
+                    <span id="sslStatusBadge"></span>
+                </div>
+                <!-- جعبه لاگ ترمینال -->
+                <pre id="sslTerminalLogs" class="p-3 rounded bg-black border border-secondary font-monospace small mb-0" 
+                     style="height: 320px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; color: #10b981; line-height: 1.6; direction: ltr; text-align: left;"></pre>
+            </div>
+            <div class="modal-footer border-secondary py-2 justify-content-between">
+                <small class="text-muted" id="sslFooterNote">لطفاً تا پایان فرآیند منتظر بمانید...</small>
+                <button type="button" class="btn btn-outline-light btn-sm px-3" data-bs-dismiss="modal">بستن پنجره</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- فرم مخفی جهت حذف دامنه -->
+<form id="deleteDomainForm" method="POST" action="" style="display: none;"></form>
+
+<script>
+function toggleResellerPicker(type) {
+    const scope = document.getElementById('scopeSelect' + type).value;
+    const box = document.getElementById('resellerPickerBox' + type);
+    if (scope === 'reseller') {
+        box.style.display = 'block';
+    } else {
+        box.style.display = 'none';
+    }
+}
+
+function openEditDomainModal(domainObj) {
+    document.getElementById('editDomainForm').action = "/admin/domains/" + domainObj.id + "/edit";
+    document.getElementById('editDomainInput').value = domainObj.domain || '';
+    document.getElementById('editTargetType').value = domainObj.target_type || 'both';
+    document.getElementById('scopeSelectEdit').value = domainObj.scope || 'reseller';
+    document.getElementById('editResellerId').value = domainObj.reseller_id || '';
+    document.getElementById('editSslAutoRenew').checked = !!domainObj.ssl_auto_renew;
+    document.getElementById('editIsActive').checked = !!domainObj.is_active;
+
+    toggleResellerPicker('Edit');
+    const modal = new bootstrap.Modal(document.getElementById('editDomainModal'));
+    modal.show();
+}
+
+function confirmDeleteDomain(domainId, domainName) {
+    if (confirm("آیا از حذف دامنه «" + domainName + "» اطمینان دارید؟\nاین عملیات دسترسی‌های متصل به این دامنه را غیرفعال خواهد کرد.")) {
+        const form = document.getElementById('deleteDomainForm');
+        form.action = "/admin/domains/" + domainId + "/delete";
+        form.submit();
+    }
+}
+
+function openSslRenewModal(domainId, domainName) {
+    const modalEl = document.getElementById('sslLogModal');
+    const modal = new bootstrap.Modal(modalEl);
+    
+    const terminal = document.getElementById('sslTerminalLogs');
+    const spinner = document.getElementById('sslSpinner');
+    const title = document.getElementById('sslModalTitle');
+    const badge = document.getElementById('sslDomainBadge');
+    const statusBadge = document.getElementById('sslStatusBadge');
+    const footerNote = document.getElementById('sslFooterNote');
+    const closeBtn = document.getElementById('sslCloseBtn');
+
+    badge.innerText = "🌐 Domain: " + domainName;
+    statusBadge.innerHTML = '<span class="badge bg-warning text-dark">در حال پردازش...</span>';
+    terminal.innerText = "[+] برقراری ارتباط با هسته صدور گواهی SSL...\n[+] ارسال درخواست برای " + domainName + "...\n";
+    spinner.style.display = 'inline-block';
+    title.innerText = "🔐 در حال استعلام و صدور گواهی SSL...";
+    footerNote.innerText = "در حال ارتباط با سرور و بررسی DNS دامنه...";
+    closeBtn.disabled = true;
+
+    modal.show();
+
+    fetch("/admin/domains/" + domainId + "/renew-ssl", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        spinner.style.display = 'none';
+        closeBtn.disabled = false;
+        if (data.logs) {
+            terminal.innerText = data.logs;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        if (data.success) {
+            title.innerText = "✅ گواهی امنیتی SSL با موفقیت تایید شد";
+            statusBadge.innerHTML = '<span class="badge bg-success">عملیات موفق</span>';
+            footerNote.innerText = "گواهی با موفقیت صادر و ذخیره شد. انقضا: " + (data.expiry_days || 90) + " روز دیگر.";
+            setTimeout(() => {
+                window.location.reload();
+            }, 2500);
+        } else {
+            title.innerText = "❌ بروز خطا در صدور گواهی SSL";
+            statusBadge.innerHTML = '<span class="badge bg-danger">خطا</span>';
+            footerNote.innerText = data.error || "صدور گواهی با خطا مواجه گردید.";
+        }
+    })
+    .catch(err => {
+        spinner.style.display = 'none';
+        closeBtn.disabled = false;
+        terminal.innerText += "\n[!] خطای شبکه یا تایم‌اوت ارتباط: " + err;
+        title.innerText = "❌ خطای شبکه";
+        statusBadge.innerHTML = '<span class="badge bg-danger">خطای ارتباط</span>';
+        footerNote.innerText = "عدم امکان برقراری ارتباط با وب‌سرور.";
+    });
+}
+
+function renewAllDomainsSSL() {
+    if (!confirm("آیا مایلید کلیه دامنه‌ها جهت صدور و تمدید خودکار گواهی SSL بررسی شوند؟")) return;
+    
+    const modalEl = document.getElementById('sslLogModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const terminal = document.getElementById('sslTerminalLogs');
+    const spinner = document.getElementById('sslSpinner');
+    const title = document.getElementById('sslModalTitle');
+    const badge = document.getElementById('sslDomainBadge');
+    const statusBadge = document.getElementById('sslStatusBadge');
+    const footerNote = document.getElementById('sslFooterNote');
+    const closeBtn = document.getElementById('sslCloseBtn');
+
+    badge.innerText = "🌐 All Configured Domains";
+    statusBadge.innerHTML = '<span class="badge bg-warning text-dark">بررسی سراسری...</span>';
+    terminal.innerText = "[+] شروع پایش خودکار کلیه دامنه‌ها و تمدید موارد رو به انقضا...\n";
+    spinner.style.display = 'inline-block';
+    title.innerText = "🔄 در حال پایش خودکار کلیه گواهی‌ها...";
+    closeBtn.disabled = true;
+    modal.show();
+
+    fetch("/admin/domains/renew-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+    })
+    .then(r => r.json())
+    .then(res => {
+        spinner.style.display = 'none';
+        closeBtn.disabled = false;
+        terminal.innerText += "\n[+] نتیجه پایش سراسری:\n";
+        terminal.innerText += "تعداد دامنه‌های بررسی‌شده: " + (res.checked_domains ? res.checked_domains.length : 0) + "\n";
+        terminal.innerText += "تعداد تمدید شده: " + (res.renewed ? res.renewed.length : 0) + "\n";
+        terminal.innerText += "بدون نیاز به تمدید (سالم): " + (res.skipped ? res.skipped.length : 0) + "\n";
+        terminal.innerText += "موارد ناموفق: " + (res.failed ? res.failed.length : 0) + "\n";
+        title.innerText = "✅ پایش سراسری گواهی‌ها به پایان رسید";
+        statusBadge.innerHTML = '<span class="badge bg-success">پایان عملیات</span>';
+        footerNote.innerText = "عملیات با موفقیت به پایان رسید.";
+        setTimeout(() => { window.location.reload(); }, 2500);
+    })
+    .catch(e => {
+        spinner.style.display = 'none';
+        closeBtn.disabled = false;
+        terminal.innerText += "\n[!] خطا: " + e;
+        statusBadge.innerHTML = '<span class="badge bg-danger">خطا</span>';
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    toggleResellerPicker('Add');
+});
+</script>
+{% endblock %}

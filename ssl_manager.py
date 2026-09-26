@@ -346,14 +346,24 @@ def get_certificate_expiry_days(domain: str) -> Optional[float]:
 def get_all_configured_domains() -> list[str]:
     """
     استخراج هوشمند کلیه دامنه‌ها و ساب‌دامنه‌های ثبت شده در سیستم:
+    - جدول اختصاصی دامنه‌ها (domains)
     - دامنه اصلی پنل / مشتری (custom_domain, panel_domain)
     - دامنه آموزش‌ها و عیب‌یابی (tutorial_domain, troubleshoot_domain)
     - دامنه صادرشده جاری (ssl_domain)
-    - کلیه دامنه‌های اختصاصی نمایندگان فعال (resellers.custom_domain, resellers.tutorial_domain)
+    - کلیه دامنه‌های اختصاصی نمایندگان فعال (resellers.custom_domain, resellers.panel_domain, resellers.tutorial_domain)
     """
     raw_domains = []
 
-    # ۱. تنظیمات عمومی پنل
+    # ۱. جدول متمرکز دامنه‌ها
+    try:
+        dom_records = db.get_all_domains()
+        for rec in dom_records:
+            if rec.get("domain") and rec.get("is_active"):
+                raw_domains.append(rec["domain"])
+    except Exception as e:
+        logger.warning(f"Error fetching from domains table: {e}")
+
+    # ۲. تنظیمات عمومی پنل
     for key in ("custom_domain", "panel_domain", "tutorial_domain", "troubleshoot_domain", "ssl_domain"):
         try:
             val = db.get_setting(key)
@@ -362,20 +372,22 @@ def get_all_configured_domains() -> list[str]:
         except Exception:
             pass
 
-    # ۲. دامنه‌های اختصاصی نمایندگان
+    # ۳. دامنه‌های اختصاصی نمایندگان در جدول resellers
     try:
         conn = db.get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT custom_domain, tutorial_domain FROM resellers WHERE status != 'deleted'")
+        cur.execute("SELECT custom_domain, panel_domain, tutorial_domain FROM resellers WHERE status != 'deleted'")
         for row in cur.fetchall():
-            if row["custom_domain"]:
-                raw_domains.append(str(row["custom_domain"]))
-            if row["tutorial_domain"]:
-                raw_domains.append(str(row["tutorial_domain"]))
+            for col in ("custom_domain", "panel_domain", "tutorial_domain"):
+                try:
+                    if row[col]:
+                        raw_domains.append(str(row[col]))
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning(f"Error collecting reseller domains for SSL: {e}")
 
-    # ۳. فیلترسازی، پالایش و حذف موارد تکراری و نامعتبر
+    # ۴. فیلترسازی، پالایش و حذف موارد تکراری و نامعتبر
     unique_domains: list[str] = []
     for d in raw_domains:
         cleaned = clean_domain(d)
@@ -390,12 +402,123 @@ def get_all_configured_domains() -> list[str]:
     return unique_domains
 
 
+def renew_domain_ssl_with_logs(domain_input: str) -> Dict[str, Any]:
+    """
+    اجرای دستی و جامع تمدید/صدور گواهی SSL به همراه جمع‌آوری لاگ لحظه‌ای جهت نمایش در مودال کاربری
+    """
+    from datetime import datetime, timezone, timedelta
+    clean_d = clean_domain(domain_input)
+    logs: list[str] = []
+
+    def _log(msg: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        logs.append(line)
+        logger.info(line)
+
+    _log(f"🚀 شروع فرآیند استعلام و صدور گواهی امنیتی SSL برای دامنه: {clean_d}")
+
+    if not clean_d:
+        _log("❌ خطا: نام دامنه خالی یا نامعتبر است.")
+        return {
+            "success": False,
+            "domain": domain_input,
+            "logs": "\n".join(logs),
+            "error": "نام دامنه نامعتبر است."
+        }
+
+    # مرحله ۱: استعلام وضعیت DNS دامنه و تطابق با سرور
+    _log("🔍 در حال استعلام رکوردهای DNS و بررسی آی‌پی عمومی سرور...")
+    dns_res = check_domain_dns(clean_d)
+    server_ip = dns_res.get("server_ip", "ناشناس")
+    resolved_ip = dns_res.get("resolved_ip", "یافت نشد")
+
+    _log(f"📌 آی‌پی عمومی سرور شما: {server_ip}")
+    _log(f"🌐 آی‌پی اشاره‌شده توسط دامنه (A Record): {resolved_ip}")
+
+    if dns_res.get("matches"):
+        _log("✅ رکورد DNS دامنه با موفقیت به این سرور اشاره می‌کند.")
+    else:
+        _log(f"⚠️ اخطار تطابق DNS: {dns_res.get('error') or 'عدم تطابق آی‌پی دامنه با سرور'}")
+        _log("ℹ️ در صورتی که از Cloudflare پروکسی روشن (ابر نارنجی) استفاده می‌فرمایید، گواهی خودکار داخلی فعال خواهد شد.")
+
+    # مرحله ۲: اجرای درخواست گواهی امنیتی SSL
+    _log("🔐 درخواست صدور گواهی امنیتی معتبر با استاندارد ACME...")
+    res = request_ssl_certificate(clean_d)
+
+    success = res.get("success", False)
+    provider_name = res.get("provider_name", "ناشناس")
+    provider_id = res.get("provider", "unknown")
+
+    if success:
+        _log(f"🎉 گواهی امنیتی با موفقیت صادر/تمدید شد!")
+        _log(f"🛡 مرجع ارائه‌دهنده گواهی: {provider_name}")
+        _log(f"📁 مسیر فایل سرتیفیکیت: {res.get('cert_path')}")
+        _log(f"🔑 مسیر کلید خصوصی: {res.get('key_path')}")
+
+        # استخراج روزهای انقضا
+        expiry_days = get_certificate_expiry_days(clean_d)
+        expiry_date_str = ""
+        if expiry_days is not None and expiry_days > 0:
+            expiry_dt = datetime.now(timezone.utc) + timedelta(days=expiry_days)
+            expiry_date_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            _log(f"📅 مدت اعتبار سرتیفیکیت: {round(expiry_days, 1)} روز (تا تاریخ {expiry_date_str})")
+        else:
+            _log("📅 مدت اعتبار سرتیفیکیت فعال ثبت گردید.")
+
+        # ذخیره وضعیت در جدول domains در صورت وجود
+        try:
+            dom_record = db.get_domain_by_name(clean_d)
+            if dom_record:
+                status_text = "active" if (expiry_days is None or expiry_days > 15) else "expiring"
+                db.update_domain(
+                    dom_record["id"],
+                    ssl_status=status_text,
+                    ssl_expiry_date=expiry_date_str,
+                    ssl_last_log="\n".join(logs)
+                )
+        except Exception as e:
+            _log(f"⚠️ خطای به‌روزرسانی جدول دامنه‌ها: {e}")
+
+        return {
+            "success": True,
+            "domain": clean_d,
+            "provider": provider_name,
+            "expiry_days": round(expiry_days, 1) if expiry_days else 90,
+            "expiry_date": expiry_date_str,
+            "logs": "\n".join(logs),
+            "error": None
+        }
+    else:
+        err_msg = res.get("error", "خطای ناشناخته در صدور SSL")
+        _log(f"❌ عدم موفقیت در دریافت گواهی SSL: {err_msg}")
+        if res.get("details"):
+            _log(f"جزئیات خطا: {res.get('details')}")
+
+        try:
+            dom_record = db.get_domain_by_name(clean_d)
+            if dom_record:
+                db.update_domain(
+                    dom_record["id"],
+                    ssl_status="failed",
+                    ssl_last_log="\n".join(logs)
+                )
+        except Exception:
+            pass
+
+        return {
+            "success": False,
+            "domain": clean_d,
+            "logs": "\n".join(logs),
+            "error": err_msg
+        }
+
+
 def renew_all_ssl_certificates(threshold_days: int = 30) -> Dict[str, Any]:
     """
     بررسی هوشمند و تمدید خودکار کلیه گواهی‌های SSL سیستم:
     - کلیه دامنه‌ها بررسی می‌شوند.
-    - در صورتی که گواهی موجود نباشد یا کمتر از threshold_days (پیش‌فرض ۳۰ روز) تا انقضای ۹۰ روزه آن مانده باشد،
-      به صورت خودکار از طریق Let's Encrypt / ZeroSSL یا Self-Signed تمدید می‌شود.
+    - در صورتی که کمتر از threshold_days مانده باشد تمدید می‌گردد.
     """
     domains = get_all_configured_domains()
     logger.info(f"Starting SSL renewal check for {len(domains)} configured domains (threshold: {threshold_days} days)...")
@@ -410,22 +533,14 @@ def renew_all_ssl_certificates(threshold_days: int = 30) -> Dict[str, Any]:
     for dom in domains:
         try:
             remaining_days = get_certificate_expiry_days(dom)
-            if remaining_days is None:
-                logger.info(f"[SSL Auto-Renewal] Domain '{dom}' has NO certificate. Requesting new certificate...")
-                res = request_ssl_certificate(dom)
+            if remaining_days is None or remaining_days <= threshold_days:
+                logger.info(f"[SSL Auto-Renewal] Renewing domain '{dom}'...")
+                res = renew_domain_ssl_with_logs(dom)
                 if res.get("success"):
-                    results["renewed"].append({"domain": dom, "reason": "missing", "provider": res.get("provider")})
+                    results["renewed"].append({"domain": dom, "provider": res.get("provider")})
                 else:
-                    results["failed"].append({"domain": dom, "reason": "missing", "error": res.get("error")})
-            elif remaining_days <= threshold_days:
-                logger.info(f"[SSL Auto-Renewal] Domain '{dom}' certificate expires in {remaining_days:.1f} days (<= {threshold_days}). Renewing...")
-                res = request_ssl_certificate(dom)
-                if res.get("success"):
-                    results["renewed"].append({"domain": dom, "reason": f"expiring in {remaining_days:.1f}d", "provider": res.get("provider")})
-                else:
-                    results["failed"].append({"domain": dom, "reason": f"expiring in {remaining_days:.1f}d", "error": res.get("error")})
+                    results["failed"].append({"domain": dom, "error": res.get("error")})
             else:
-                logger.debug(f"[SSL Auto-Renewal] Domain '{dom}' certificate is healthy ({remaining_days:.1f} days remaining). Skipping.")
                 results["skipped"].append({"domain": dom, "remaining_days": round(remaining_days, 1)})
         except Exception as e:
             logger.error(f"[SSL Auto-Renewal] Unexpected error processing domain '{dom}': {e}")
@@ -433,4 +548,5 @@ def renew_all_ssl_certificates(threshold_days: int = 30) -> Dict[str, Any]:
 
     logger.info(f"SSL renewal check completed: {len(results['renewed'])} renewed, {len(results['skipped'])} skipped, {len(results['failed'])} failed.")
     return results
+
 
