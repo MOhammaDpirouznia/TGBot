@@ -15562,6 +15562,7 @@ def reseller_dashboard():
 @reseller_required
 def reseller_create_user():
     """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی یا خرید اعتباری"""
+    now_naive = get_now_naive()
     reseller_id = session.get("reseller_id")
     reseller = db.get_reseller(reseller_id) or {}
     stats = db.get_reseller_stats(reseller_id) or {}
@@ -20239,6 +20240,7 @@ def reseller_sync_menu_button():
 @permission_required("create_customer")
 def admin_create_customer():
     """افزودن و ایجاد دستی مشتری توسط مدیر/شریک همراه با ثبت بدهی نقدی و محاسبه درصد شراکت"""
+    now_naive = get_now_naive()
     plans = get_plans_dict()
     admin_id = session.get("admin_id")
     admin_user = db.get_admin_user(admin_id) if admin_id else None
@@ -20316,7 +20318,7 @@ def admin_create_customer():
         internal_note = request.form.get("internal_note", "").strip()
         customer_note = request.form.get("customer_note", "").strip()
         now = get_now_iso()
-        now_naive = get_now_naive()
+        
         if payment_method == "debtor":
             payment_status = "unpaid"
             debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else price

@@ -17230,7 +17230,7 @@ class Database:
                             VALUES (?, ?, ?, 'revoke', 'status', 'approved', 'revoked', ?, ?)
                         """, (tx_id, reseller_id, by_user_str, reason, now))
 
-                        # ج) کسر از کارت بانکی نماینده
+                        # ج) کسر مبلغ استرداد از کارت بانکی نماینده (به جای ابطال کامل مبلغ)
                         c_tx = cursor.execute("""
                             SELECT id, card_id, amount FROM card_transactions
                             WHERE owner_type='reseller' AND reseller_id=?
@@ -17240,20 +17240,26 @@ class Database:
                         """, (reseller_id, str(tx_id), str(sub_id))).fetchone()
 
                         card_deducted = False
-                        if c_tx:
+                        if c_tx and refund_amount > 0:
                             c_tx_dict = dict(c_tx)
                             c_card_id = c_tx_dict["card_id"]
-                            c_amt = int(c_tx_dict.get("amount") or 0)
+                            
+                            cursor.execute("UPDATE reseller_cards SET balance = balance - ? WHERE id=?", (refund_amount, c_card_id))
+                            
+                            new_bal_row = cursor.execute("SELECT balance FROM reseller_cards WHERE id=?", (c_card_id,)).fetchone()
+                            new_bal = int(new_bal_row[0]) if new_bal_row else 0
+                            
                             cursor.execute("""
-                                UPDATE card_transactions
-                                SET is_revoked=1, revoked_at=?, revoked_by=?, revoke_reason=?
-                                WHERE id=?
-                            """, (now, by_user_str, f"ابطال رسید پرداخت #{tx_id} بابت حذف اشتراک", c_tx_dict["id"]))
-                            cursor.execute("""
-                                UPDATE reseller_cards
-                                SET balance = balance - ?
-                                WHERE id=?
-                            """, (c_amt, c_card_id))
+                                INSERT INTO card_transactions (
+                                    card_id, owner_type, reseller_id, type, amount, balance_after,
+                                    category, title, description, tracking_code, ref_type, ref_id,
+                                    created_by, created_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                c_card_id, 'reseller', reseller_id, 'withdrawal', refund_amount, new_bal,
+                                'refund', f"استرداد وجه اشتراک {account_name}", f"استرداد وجه بابت حذف اشتراک (رسید #{tx_id} - علت: {reason})",
+                                None, 'subscription', str(sub_id), by_user_str, now
+                            ))
                             card_deducted = True
 
                         # د) ابطال فاکتور هوشمند در صورت وجود
@@ -17533,6 +17539,59 @@ class Database:
                 SET is_deleted = 1, deleted_at = ?, delete_reason = ?, deleted_by = ?, status = 'deleted', updated_at = ?
                 WHERE id = ?
             """, (now, reason, admin_name, now, sub_id))
+
+            # ۴. ثبت استرداد در کارت بانکی (در صورت وجود تراکنش واریز)
+            if refund_to_customer and refund_amount > 0:
+                try:
+                    tx_row = cursor.execute("""
+                        SELECT id FROM transactions
+                        WHERE (subscription_id = ? OR renew_sub_id = ? OR (account_name IS NOT NULL AND account_name = ?))
+                          AND status IN ('approved', 'completed')
+                        ORDER BY id DESC LIMIT 1
+                    """, (sub_id, sub_id, account_name)).fetchone()
+                    
+                    tx_id = tx_row["id"] if tx_row else 0
+                    
+                    c_tx = cursor.execute("""
+                        SELECT id, card_id, owner_type, reseller_id FROM card_transactions
+                        WHERE ((ref_type='transaction' AND ref_id=?) OR (ref_type='subscription' AND ref_id=?))
+                          AND type='deposit' AND (is_revoked=0 OR is_revoked IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    """, (str(tx_id), str(sub_id))).fetchone()
+
+                    if c_tx:
+                        c_card_id = c_tx["card_id"]
+                        c_owner_type = c_tx["owner_type"]
+                        c_reseller_id = c_tx["reseller_id"]
+                        c_table = "reseller_cards" if c_owner_type == "reseller" else "bank_cards"
+
+                        cursor.execute(f"UPDATE {c_table} SET balance = balance - ? WHERE id=?", (refund_amount, c_card_id))
+                        
+                        new_bal_row = cursor.execute(f"SELECT balance FROM {c_table} WHERE id=?", (c_card_id,)).fetchone()
+                        new_bal = int(new_bal_row[0]) if new_bal_row else 0
+                        
+                        cursor.execute("""
+                            INSERT INTO card_transactions (
+                                card_id, owner_type, reseller_id, type, amount, balance_after,
+                                category, title, description, tracking_code, ref_type, ref_id,
+                                created_by, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            c_card_id, c_owner_type, c_reseller_id, 'withdrawal', refund_amount, new_bal,
+                            'refund', f"استرداد وجه اشتراک {account_name}", f"استرداد وجه بابت انتقال به سطل زباله (علت: {reason})",
+                            None, 'subscription', str(sub_id), admin_name, now
+                        ))
+
+                        if c_owner_type == "admin":
+                            cursor.execute("""
+                                INSERT INTO accounting_records 
+                                (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
+                                VALUES ('expense', 'استرداد وجه', ?, ?, ?, 'card_tx', ?, ?, ?, ?)
+                            """, (f"استرداد وجه اشتراک {account_name}", refund_amount, f"card_{c_card_id}", str(sub_id), f"استرداد وجه بابت انتقال به سطل زباله", now[:10], now))
+                            
+                except Exception as e_refund_card:
+                    logger.error(f"Error refunding card in admin sub delete: {e_refund_card}")
+
             conn.commit()
 
             # ثبت لاگ انتقال به سطل زباله توسط مدیر
@@ -19582,15 +19641,15 @@ class Database:
         r_cond_usr = ""
         if scope == "admin_only":
             r_cond_sub = " AND (s.reseller_id IS NULL OR s.reseller_id = 0)"
-            r_cond_usr = " AND (u.reseller_id IS NULL OR u.reseller_id = 0)"
+            r_cond_usr = " AND (NOT EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.telegram_id = u.telegram_id AND sub.reseller_id > 0))"
         elif scope == "all_resellers":
             r_cond_sub = " AND (s.reseller_id > 0)"
-            r_cond_usr = " AND (u.reseller_id > 0)"
+            r_cond_usr = " AND EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.telegram_id = u.telegram_id AND sub.reseller_id > 0)"
         elif scope == "selected_resellers" and selected_reseller_ids:
             ids_str = ",".join(str(int(x)) for x in selected_reseller_ids if str(x).isdigit())
             if ids_str:
                 r_cond_sub = f" AND s.reseller_id IN ({ids_str})"
-                r_cond_usr = f" AND u.reseller_id IN ({ids_str})"
+                r_cond_usr = f" AND EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.telegram_id = u.telegram_id AND sub.reseller_id IN ({ids_str}))"
             else:
                 conn.close()
                 return []
@@ -19663,8 +19722,8 @@ class Database:
         else: # channel == "telegram"
             if target_group == "all":
                 query = f"""
-                    SELECT DISTINCT telegram_id FROM users 
-                    WHERE telegram_id IS NOT NULL AND telegram_id != 0 {r_cond_usr}
+                    SELECT DISTINCT u.telegram_id FROM users u
+                    WHERE u.telegram_id IS NOT NULL AND u.telegram_id != 0 {r_cond_usr}
                     UNION
                     SELECT DISTINCT telegram_id FROM subscriptions s 
                     WHERE telegram_id IS NOT NULL AND telegram_id != 0 AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
