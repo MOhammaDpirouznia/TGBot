@@ -1513,14 +1513,14 @@ function selectPalette(pid) {
                 <div class="row g-3">
                     <!-- iOS Liquid Glass -->
                     <div class="col-md-6 col-lg-4">
-                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'ios_glass' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
-                            <input type="radio" name="login_style" value="ios_glass" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'ios_glass' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style in ('liquid_glass', 'ios_glass') %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="liquid_glass" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style in ('liquid_glass', 'ios_glass') %}checked{% endif %} onchange="selectLoginTheme(this)">
                             <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: radial-gradient(circle at top right, rgba(0, 122, 255, 0.45), transparent 60%), radial-gradient(circle at bottom left, rgba(175, 82, 222, 0.35), transparent 60%), #070b14; color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.18);">
                                 <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 10px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.35); box-shadow: 0 4px 15px rgba(0,122,255,0.35);">
-                                    <i class="fab fa-apple me-1 text-info"></i> iOS Liquid Glass
+                                    <i class="fab fa-apple me-1 text-info"></i> Liquid Glass
                                 </div>
                             </div>
-                            <div class="fw-bold text-dark small mb-1">اپل گلس آیفون (iOS Liquid Glass)</div>
+                            <div class="fw-bold text-dark small mb-1">لیکوید گلس (Liquid Glass)</div>
                             <div class="text-muted" style="font-size: 0.75rem;">طراحی فوق‌مدرن مات شیشه‌ای الهام‌گرفته از iOS 18 با ماتی و بلور عمیق در هردو حالت روز و شب</div>
                         </label>
                     </div>

@@ -54,11 +54,11 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "mesh_blend": "screen"
         }
     },
-    "ios_glass": {
-        "id": "ios_glass",
-        "name": "اپل گلس آیفون (iOS Liquid Glass)",
-        "subtitle": "شیشه‌ای فوق‌مات و کریستالی با الهام از iOS 18 و سیستم‌های مدرن اپل",
-        "description": "طراحی پیشرفته شیشه‌ای مات (Frosted Glassmorphism) با ماتی عمیق، لبه‌های بازتابنده نور و کنتراست فوق‌العاده بالا در هر دو حالت تیره و روشن",
+    "liquid_glass": {
+        "id": "liquid_glass",
+        "name": "لیکوید گلس (Liquid Glass)",
+        "subtitle": "شیشه‌ای مایع فوق‌العاده مات با الهام از iOS 18 با بازتاب لبه‌ها و شفافیت کریستالی",
+        "description": "انعکاس مات و شیشه‌ای عمیق پس‌زمینه (Liquid Frosted Glass) با لبه‌های بازتابنده نور، تفکیک کریستالی پنجره‌ها و کنتراست بی‌نظیر در هر دو حالت تیره و روشن",
         "is_default": False,
         "primary_color": "#007aff",
         "primary_hover": "#005ecb",
@@ -70,33 +70,37 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "gradient": "linear-gradient(135deg, #007aff 0%, #af52de 50%, #38bdf8 100%)"
         },
         "light": {
-            "body_bg": "#f5f7fc",
-            "card_bg": "rgba(255, 255, 255, 0.74)",
-            "card_border": "rgba(255, 255, 255, 0.85)",
-            "card_border_subtle": "rgba(226, 232, 240, 0.7)",
-            "card_shadow": "0 10px 32px -4px rgba(0, 122, 255, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
+            "body_bg": "#f4f6fb",
+            "card_bg": "rgba(255, 255, 255, 0.52)",
+            "card_border": "rgba(255, 255, 255, 0.88)",
+            "card_border_subtle": "rgba(255, 255, 255, 0.65)",
+            "card_shadow": "0 14px 40px -6px rgba(0, 122, 255, 0.10), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95)",
             "text_main": "#0f172a",
             "text_muted": "#475569",
             "chip_bg": "rgba(255, 255, 255, 0.65)",
-            "chip_border": "rgba(255, 255, 255, 0.85)",
-            "blob1_color": "rgba(0, 122, 255, 0.22)",
-            "blob2_color": "rgba(175, 82, 222, 0.18)",
-            "blob3_color": "rgba(56, 189, 248, 0.20)",
+            "chip_border": "rgba(255, 255, 255, 0.88)",
+            "blob1_color": "rgba(0, 122, 255, 0.30)",
+            "blob2_color": "rgba(175, 82, 222, 0.26)",
+            "blob3_color": "rgba(56, 189, 248, 0.28)",
+            "blob4_color": "rgba(59, 130, 246, 0.25)",
+            "blob5_color": "rgba(236, 72, 153, 0.22)",
             "mesh_blend": "normal"
         },
         "dark": {
-            "body_bg": "#080c14",
-            "card_bg": "rgba(16, 24, 40, 0.65)",
-            "card_border": "rgba(255, 255, 255, 0.14)",
-            "card_border_subtle": "rgba(255, 255, 255, 0.07)",
-            "card_shadow": "0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 35px rgba(0, 122, 255, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.18)",
+            "body_bg": "#070b14",
+            "card_bg": "rgba(18, 26, 44, 0.48)",
+            "card_border": "rgba(255, 255, 255, 0.18)",
+            "card_border_subtle": "rgba(255, 255, 255, 0.10)",
+            "card_shadow": "0 25px 60px -15px rgba(0, 0, 0, 0.65), 0 0 30px rgba(0, 122, 255, 0.10), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.28)",
             "text_main": "#f8fafc",
             "text_muted": "#94a3b8",
-            "chip_bg": "rgba(255, 255, 255, 0.06)",
-            "chip_border": "rgba(255, 255, 255, 0.12)",
-            "blob1_color": "rgba(0, 122, 255, 0.32)",
-            "blob2_color": "rgba(175, 82, 222, 0.25)",
-            "blob3_color": "rgba(56, 189, 248, 0.22)",
+            "chip_bg": "rgba(255, 255, 255, 0.07)",
+            "chip_border": "rgba(255, 255, 255, 0.16)",
+            "blob1_color": "rgba(0, 122, 255, 0.40)",
+            "blob2_color": "rgba(175, 82, 222, 0.34)",
+            "blob3_color": "rgba(56, 189, 248, 0.32)",
+            "blob4_color": "rgba(59, 130, 246, 0.30)",
+            "blob5_color": "rgba(236, 72, 153, 0.28)",
             "mesh_blend": "screen"
         }
     },
@@ -468,6 +472,9 @@ PALETTES: Dict[str, Dict[str, Any]] = {
     }
 }
 
+# نام‌های مستعار جهت سازگاری کامل
+PALETTES["ios_glass"] = PALETTES["liquid_glass"]
+
 
 def get_all_palettes() -> Dict[str, Dict[str, Any]]:
     """دریافت لیست کامل پالت‌های پشتیبانی‌شده"""
@@ -475,7 +482,9 @@ def get_all_palettes() -> Dict[str, Dict[str, Any]]:
 
 
 def get_palette(palette_id: str) -> Dict[str, Any]:
-    """دریافت اطلاعات یک پالت با پشتیبانی از پالت پیش‌فرض"""
+    """دریافت اطلاعات یک پالت با پشتیبانی از پالت پیش‌فرض و نام‌های مستعار"""
+    if palette_id in ("ios_glass", "liquid_glass"):
+        return PALETTES.get("liquid_glass") or PALETTES.get("ios_glass") or PALETTES["vps_aurora"]
     return PALETTES.get(palette_id) or PALETTES["vps_aurora"]
 
 
@@ -541,19 +550,19 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         blur_val = "100px"
         light_opacity = "0.25"
         dark_opacity = "0.6"
-        glass_blur = "14px" if pid == "ios_glass" else "12px"
+        glass_blur = "18px" if pid in ("liquid_glass", "ios_glass") else "12px"
         minimal_mesh_css = ""
     elif intensity == "high":
         blur_val = "70px"
         light_opacity = "0.50"
         dark_opacity = "1.3"
-        glass_blur = "28px" if pid == "ios_glass" else "24px"
+        glass_blur = "36px" if pid in ("liquid_glass", "ios_glass") else "24px"
         minimal_mesh_css = ""
     else: # normal
         blur_val = "85px"
         light_opacity = "0.35"
         dark_opacity = "1.0"
-        glass_blur = "22px" if pid == "ios_glass" else "18px"
+        glass_blur = "28px" if pid in ("liquid_glass", "ios_glass") else "18px"
         minimal_mesh_css = ""
 
     l = data["light"]
@@ -578,9 +587,11 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         --palette-text-muted: {l['text_muted']};
         --palette-chip-bg: {l['chip_bg']};
         --palette-chip-border: {l['chip_border']};
-        --aura-blob-1: {l['blob1_color']};
-        --aura-blob-2: {l['blob2_color']};
-        --aura-blob-3: {l['blob3_color']};
+        --aura-blob-1: {l.get('blob1_color', 'rgba(0, 122, 255, 0.28)')};
+        --aura-blob-2: {l.get('blob2_color', 'rgba(175, 82, 222, 0.24)')};
+        --aura-blob-3: {l.get('blob3_color', 'rgba(56, 189, 248, 0.26)')};
+        --aura-blob-4: {l.get('blob4_color', l.get('blob1_color', 'rgba(59, 130, 246, 0.25)'))};
+        --aura-blob-5: {l.get('blob5_color', l.get('blob2_color', 'rgba(236, 72, 153, 0.22)'))};
         --aura-opacity: {light_opacity};
         --aura-blend: {l['mesh_blend']};
     }}
@@ -596,9 +607,11 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         --palette-text-muted: {d['text_muted']};
         --palette-chip-bg: {d['chip_bg']};
         --palette-chip-border: {d['chip_border']};
-        --aura-blob-1: {d['blob1_color']};
-        --aura-blob-2: {d['blob2_color']};
-        --aura-blob-3: {d['blob3_color']};
+        --aura-blob-1: {d.get('blob1_color', 'rgba(0, 122, 255, 0.38)')};
+        --aura-blob-2: {d.get('blob2_color', 'rgba(175, 82, 222, 0.32)')};
+        --aura-blob-3: {d.get('blob3_color', 'rgba(56, 189, 248, 0.30)')};
+        --aura-blob-4: {d.get('blob4_color', d.get('blob1_color', 'rgba(59, 130, 246, 0.30)'))};
+        --aura-blob-5: {d.get('blob5_color', d.get('blob2_color', 'rgba(236, 72, 153, 0.28)'))};
         --aura-opacity: {dark_opacity};
         --aura-blend: {d['mesh_blend']};
     }}

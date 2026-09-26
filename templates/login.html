@@ -3,10 +3,11 @@
 {% block title %}ورود به {{ login_page_title or branding.get('brand_title') or 'سامانه مدیریت و نمایندگی VPN' }}{% endblock %}
 
 {% block login_content %}
-{% set active_style = login_style or 'glass_aurora' %}
+{% set active_style = login_style or 'liquid_glass' %}
+{% if active_style == 'ios_glass' %}{% set active_style = 'liquid_glass' %}{% endif %}
 {% set show_bg_effect = login_bg_effect if login_bg_effect is defined else true %}
 
-<div class="login-page-root login-theme-{{ active_style }} position-relative overflow-hidden d-flex align-items-center justify-content-center"
+<div class="login-page-root login-theme-{{ active_style }} {% if active_style in ('liquid_glass', 'ios_glass') %}login-theme-ios_glass login-theme-liquid_glass{% endif %} position-relative overflow-hidden d-flex align-items-center justify-content-center"
      {% if active_style in ['cyber_neon', 'glass_aurora', 'ruby_waves', 'executive_dark', 'gradient_vibrant'] %}data-bs-theme="dark"{% endif %}
      style="min-height: 100vh; padding: 24px 16px;">
     
@@ -21,7 +22,7 @@
     <!-- جلوه‌های نوری و پس‌زمینه بر اساس تنظیمات سیستم -->
     {% if show_bg_effect %}
     <div class="login-bg-decorations position-absolute w-100 h-100 top-0 start-0 overflow-hidden" style="z-index: 0; pointer-events: none;">
-        {% if active_style == 'ios_glass' %}
+        {% if active_style in ('liquid_glass', 'ios_glass') %}
             <div class="ios-fluid-orb orb-apple-1 position-absolute rounded-circle" style="width: 540px; height: 540px; top: -12%; right: -8%; background: radial-gradient(circle, rgba(0, 122, 255, 0.45) 0%, rgba(88, 86, 214, 0.22) 50%, transparent 70%); filter: blur(60px); animation: floatOrb1 13s ease-in-out infinite alternate;"></div>
             <div class="ios-fluid-orb orb-apple-2 position-absolute rounded-circle" style="width: 480px; height: 480px; bottom: -12%; left: -6%; background: radial-gradient(circle, rgba(175, 82, 222, 0.40) 0%, rgba(255, 45, 85, 0.16) 50%, transparent 70%); filter: blur(65px); animation: floatOrb2 15s ease-in-out infinite alternate;"></div>
             <div class="ios-fluid-orb orb-apple-3 position-absolute rounded-circle" style="width: 380px; height: 380px; top: 40%; left: 25%; background: radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, transparent 65%); filter: blur(55px); animation: floatOrb3 18s ease-in-out infinite alternate;"></div>
@@ -61,7 +62,7 @@
                                 <i class="fas fa-fire fs-2 text-danger"></i>
                             {% elif active_style == 'executive_dark' %}
                                 <i class="fas fa-shield-halved fs-2 text-warning"></i>
-                            {% elif active_style == 'ios_glass' %}
+                            {% elif active_style in ('liquid_glass', 'ios_glass') %}
                                 <i class="fas fa-shield-halved fs-2 text-primary" style="filter: drop-shadow(0 2px 10px rgba(0, 122, 255, 0.5));"></i>
                             {% else %}
                                 <i class="fas fa-shield-halved fs-2 text-primary"></i>
