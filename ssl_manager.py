@@ -226,15 +226,18 @@ def configure_nginx_for_domain(domain: str, cert_path: Optional[str] = None, key
         except Exception as ed:
             logger.debug(f"Could not remove default nginx site: {ed}")
 
-    # تعیین پورت داخلی وب‌پنل
-    panel_port = 5000
+    # تعیین دقیق پورت داخلی وب‌پنل (مثلاً 2083 یا 5000)
+    panel_port = 2083
     try:
-        from dashboard import get_panel_port
-        panel_port = get_panel_port()
+        val = db.get_setting("panel_port")
+        if val is not None and str(val).strip().isdigit():
+            panel_port = int(str(val).strip())
     except Exception:
-        env_p = os.getenv("PORT") or os.getenv("PANEL_PORT")
-        if env_p and str(env_p).isdigit():
-            panel_port = int(env_p)
+        pass
+    if panel_port == 2083:
+        env_p = os.getenv("PANEL_PORT") or os.getenv("PORT")
+        if env_p and str(env_p).strip().isdigit():
+            panel_port = int(str(env_p).strip())
 
     # شناسایی هوشمند سرتیفیکیت‌های موجود در سیستم در صورت عدم ارسال دستی
     if not (cert_path and key_path and os.path.exists(cert_path) and os.path.exists(key_path)):
