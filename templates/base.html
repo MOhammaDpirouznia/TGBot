@@ -130,6 +130,8 @@
         }
 
         .main-content {
+            position: relative;
+            z-index: 1;
             padding: 16px 20px;
         }
 
@@ -230,7 +232,7 @@
             height: 100vh;
             overflow: hidden;
             pointer-events: none;
-            z-index: -1;
+            z-index: 0; /* رفع باگ کرومیوم: مقدار لایه غیرمنفی برای نمونه‌برداری صحیح backdrop-filter */
             opacity: var(--aura-opacity, 1);
             transition: opacity 0.5s ease;
         }
@@ -299,19 +301,47 @@
         /* ─── کارت‌های شیشه‌ای مات مدرن (Frosted Glassmorphism Cards) ─── */
         .card {
             background-color: var(--card-bg) !important;
-            backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
-            -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
+            backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
             border: 1px solid var(--card-border) !important;
             box-shadow: var(--palette-card-shadow, 0 10px 25px -5px rgba(0,0,0,0.05)) !important;
             border-radius: 18px;
             transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+            transform: translate3d(0, 0, 0);
         }
 
         .sidebar {
-            backdrop-filter: blur(20px) saturate(160%);
-            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
             border-left: 1px solid var(--sidebar-border);
             z-index: 1020;
+            transform: translate3d(0, 0, 0);
+        }
+
+        .modal-content {
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(26px) saturate(180%);
+            -webkit-backdrop-filter: blur(26px) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.45) !important;
+        }
+
+        .dropdown-menu {
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.25) !important;
+            border-radius: 14px;
+        }
+
+        [data-bs-theme="dark"] select option {
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        [data-bs-theme="light"] select option {
+            background-color: #ffffff;
+            color: #0f172a;
         }
 
         [data-bs-theme="dark"] .card-header,

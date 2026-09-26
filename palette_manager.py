@@ -54,6 +54,52 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "mesh_blend": "screen"
         }
     },
+    "ios_glass": {
+        "id": "ios_glass",
+        "name": "اپل گلس آیفون (iOS Liquid Glass)",
+        "subtitle": "شیشه‌ای فوق‌مات و کریستالی با الهام از iOS 18 و سیستم‌های مدرن اپل",
+        "description": "طراحی پیشرفته شیشه‌ای مات (Frosted Glassmorphism) با ماتی عمیق، لبه‌های بازتابنده نور و کنتراست فوق‌العاده بالا در هر دو حالت تیره و روشن",
+        "is_default": False,
+        "primary_color": "#007aff",
+        "primary_hover": "#005ecb",
+        "accent_color": "#5856d6",
+        "preview": {
+            "blob1": "#007aff",
+            "blob2": "#af52de",
+            "blob3": "#38bdf8",
+            "gradient": "linear-gradient(135deg, #007aff 0%, #af52de 50%, #38bdf8 100%)"
+        },
+        "light": {
+            "body_bg": "#f5f7fc",
+            "card_bg": "rgba(255, 255, 255, 0.74)",
+            "card_border": "rgba(255, 255, 255, 0.85)",
+            "card_border_subtle": "rgba(226, 232, 240, 0.7)",
+            "card_shadow": "0 10px 32px -4px rgba(0, 122, 255, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
+            "text_main": "#0f172a",
+            "text_muted": "#475569",
+            "chip_bg": "rgba(255, 255, 255, 0.65)",
+            "chip_border": "rgba(255, 255, 255, 0.85)",
+            "blob1_color": "rgba(0, 122, 255, 0.22)",
+            "blob2_color": "rgba(175, 82, 222, 0.18)",
+            "blob3_color": "rgba(56, 189, 248, 0.20)",
+            "mesh_blend": "normal"
+        },
+        "dark": {
+            "body_bg": "#080c14",
+            "card_bg": "rgba(16, 24, 40, 0.65)",
+            "card_border": "rgba(255, 255, 255, 0.14)",
+            "card_border_subtle": "rgba(255, 255, 255, 0.07)",
+            "card_shadow": "0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 35px rgba(0, 122, 255, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.18)",
+            "text_main": "#f8fafc",
+            "text_muted": "#94a3b8",
+            "chip_bg": "rgba(255, 255, 255, 0.06)",
+            "chip_border": "rgba(255, 255, 255, 0.12)",
+            "blob1_color": "rgba(0, 122, 255, 0.32)",
+            "blob2_color": "rgba(175, 82, 222, 0.25)",
+            "blob3_color": "rgba(56, 189, 248, 0.22)",
+            "mesh_blend": "screen"
+        }
+    },
     "cyber_emerald": {
         "id": "cyber_emerald",
         "name": "زمرد سایبری (سبز مدرن)",
@@ -495,19 +541,19 @@ def generate_palette_css(palette_config: Dict[str, Any]) -> str:
         blur_val = "100px"
         light_opacity = "0.25"
         dark_opacity = "0.6"
-        glass_blur = "12px"
+        glass_blur = "14px" if pid == "ios_glass" else "12px"
         minimal_mesh_css = ""
     elif intensity == "high":
         blur_val = "70px"
         light_opacity = "0.50"
         dark_opacity = "1.3"
-        glass_blur = "24px"
+        glass_blur = "28px" if pid == "ios_glass" else "24px"
         minimal_mesh_css = ""
     else: # normal
         blur_val = "85px"
         light_opacity = "0.35"
         dark_opacity = "1.0"
-        glass_blur = "18px"
+        glass_blur = "22px" if pid == "ios_glass" else "18px"
         minimal_mesh_css = ""
 
     l = data["light"]
