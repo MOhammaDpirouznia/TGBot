@@ -2785,8 +2785,45 @@
                 </div>
                 {% endif %}
 
-                <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_node_monitor', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'admin_auto_backup', 'admin_domains', 'settings', 'admin_ota_update', 'admin_profile'] %}
+                <!-- دسته‌بندی ۴: شبکه -->
+                {% set is_network_group_active = request.endpoint in ['admin_domains', 'admin_domains_view', 'admin_terminal', 'admin_logs', 'admin_node_monitor'] %}
+                <button class="sidebar-dropdown-toggle {% if is_network_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminNetworkCollapse" 
+                        aria-expanded="{% if is_network_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminNetworkCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-network-wired text-success"></i>
+                        <span>شبکه</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_network_group_active %}show{% endif %}" id="adminNetworkCollapse">
+                    <div class="submenu-inner">
+                        {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
+                        <a class="submenu-item {% if request.endpoint in ['admin_domains', 'admin_domains_view'] %}active{% endif %}" href="{{ url_for('admin_domains') }}">
+                            <i class="fas fa-globe text-primary"></i> دامنه‌ها
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_terminal' %}active{% endif %}" href="{{ url_for('admin_terminal') }}">
+                            <i class="fas fa-terminal text-primary"></i> خط فرمان (Terminal)
+                        </a>
+                        {% endif %}
+                        {% if has_permission('servers_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
+                            <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_node_monitor' %}active{% endif %}" href="{{ url_for('admin_node_monitor') }}">
+                            <i class="fas fa-network-wired text-warning"></i> پایش سلامت نودها و سوییچینگ
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- دسته‌بندی ۵: تنظیمات سیستم -->
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'admin_auto_backup', 'settings', 'admin_ota_update', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -2795,7 +2832,7 @@
                         aria-controls="adminSettingsCollapse">
                     <span class="d-flex align-items-center gap-2">
                         <i class="fas fa-gear text-info"></i>
-                        <span>سیستم و تنظیمات</span>
+                        <span>تنظیمات سیستم</span>
                     </span>
                     <i class="fas fa-chevron-down dropdown-chevron"></i>
                 </button>
@@ -2820,12 +2857,6 @@
                         </a>
                         {% endif %}
                         {% if has_permission('servers_view') %}
-                        <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
-                            <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
-                        </a>
-                        <a class="submenu-item {% if request.endpoint == 'admin_node_monitor' %}active{% endif %}" href="{{ url_for('admin_node_monitor') }}">
-                            <i class="fas fa-network-wired text-warning"></i> پایش سلامت نودها و سوییچینگ
-                        </a>
                         <a class="submenu-item {% if request.endpoint == 'admin_security' %}active{% endif %}" href="{{ url_for('admin_security') }}">
                             <i class="fas fa-shield-alt text-primary"></i> امنیت سیستم
                         </a>
@@ -2834,17 +2865,11 @@
                         <a class="submenu-item {% if request.endpoint == 'admin_auto_backup' %}active{% endif %}" href="{{ url_for('admin_auto_backup') }}">
                             <i class="fas fa-cloud-arrow-up text-primary"></i> پشتیبان‌گیری خودکار
                         </a>
-                        <a class="submenu-item {% if request.endpoint in ['admin_domains', 'admin_domains_view'] %}active{% endif %}" href="{{ url_for('admin_domains') }}">
-                            <i class="fas fa-globe text-primary"></i> دامنه‌ها
-                        </a>
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' %}
                         <a class="submenu-item {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                             <i class="fas fa-sliders text-secondary"></i> تنظیمات سیستم
                         </a>
-                          <a class="submenu-item {% if request.endpoint == 'admin_terminal' %}active{% endif %}" href="{{ url_for('admin_terminal') }}">
-                              <i class="fas fa-terminal text-primary"></i> خط فرمان (Terminal)
-                          </a>
                         <a class="submenu-item {% if request.endpoint == 'admin_ota_update' %}active{% endif %}" href="{{ url_for('admin_ota_update') }}">
                             <i class="fas fa-cloud-arrow-down text-info"></i> مرکز به‌روزرسانی (OTA)
                         </a>
