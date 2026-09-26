@@ -7429,6 +7429,13 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
             return ADMIN_MENU
 
+        elif data == "adm_adv_tickets":
+            return await ticket_list(update, context)
+
+        elif data == "adm_terminal_menu":
+            from terminal_bot_handlers import adm_terminal_menu
+            return await adm_terminal_menu(update, context)
+
         elif data == "adm_adv_settings":
             from admin_bot_admin import get_admin_settings_overview_payload
             txt, kb = get_admin_settings_overview_payload()
@@ -7540,7 +7547,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return ADMIN_MENU
             p_text = "👤 **ساخت اشتراک مشتری جدید**\n\nلطفاً بسته مورد نظر را انتخاب فرمایید:"
             btns = []
-            for p in plans:
+            for p in plans.values():
                 pid = p.get("id") or p.get("plan_id")
                 pname = p.get("name") or p.get("title") or pid
                 price = p.get("price", 0)

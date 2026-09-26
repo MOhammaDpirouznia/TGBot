@@ -27342,7 +27342,9 @@ def admin_terminal_run():
     
     if mode == 'local':
         success, output = TerminalManager.run_local_command(cmd)
-        return jsonify({'success': success, 'output': output})
+        if success:
+            return jsonify({'success': True, 'output': output})
+        return jsonify({'success': False, 'error': output})
     elif mode == 'remote':
         host = request.form.get('host')
         port = int(request.form.get('port', 22))
@@ -27353,7 +27355,29 @@ def admin_terminal_run():
             return jsonify({'success': False, 'error': 'اطلاعات ورود ریموت ناقص است.'})
             
         success, output = TerminalManager.run_remote_command(host, port, user, password, cmd)
-        return jsonify({'success': success, 'output': output})
+        if success:
+            return jsonify({'success': True, 'output': output})
+        return jsonify({'success': False, 'error': output})
         
     return jsonify({'success': False, 'error': 'حالت نامعتبر'})
+
+@app.route('/admin/api/terminal/test_connection', methods=['POST'])
+@admin_required
+def admin_terminal_test_connection():
+    if not session.get('terminal_auth'):
+        return jsonify({'success': False, 'error': 'لطفا ابتدا با پین لاگین کنید.'})
+        
+    host = request.form.get('host')
+    port = int(request.form.get('port', 22))
+    user = request.form.get('user')
+    password = request.form.get('password')
+    
+    if not all([host, user, password]):
+        return jsonify({'success': False, 'error': 'اطلاعات ورود ریموت ناقص است.'})
+        
+    # Run a simple echo command to test connection
+    success, output = TerminalManager.run_remote_command(host, port, user, password, "echo 'Connection Successful'")
+    if success:
+        return jsonify({'success': True, 'message': 'اتصال با موفقیت برقرار شد.'})
+    return jsonify({'success': False, 'error': output})
 

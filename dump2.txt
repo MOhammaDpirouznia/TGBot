@@ -1,0 +1,549 @@
+async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش منوی ادمین و پنل اختصاصی نماینده"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = update.effective_user
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    admin_mgr = db.get_admin_manager_by_telegram_id(user.id)
+    is_admin_mgr = bool(admin_mgr and admin_mgr.get("bot_access"))
+    is_sys_admin = is_super_admin or is_admin_mgr
+    effective_admin_role = "super_admin" if is_super_admin else (admin_mgr.get("role") or "super_admin")
+    context.user_data["admin_role"] = effective_admin_role
+    if admin_mgr:
+        context.user_data["admin_mgr_username"] = admin_mgr.get("username")
+
+    is_r_adm, r_id_found, r_role = db.is_telegram_user_any_reseller_admin(user.id)
+    reseller = db.get_reseller_by_telegram_id(user.id)
+    if not reseller and is_r_adm:
+        reseller = db.get_reseller(r_id_found)
+
+    if data == "admin_back":
+        await query.edit_message_text("❌ پنل مدیریت بسته شد.")
+        return ConversationHandler.END
+
+    if data in ("admin_back_menu", "res_adm_menu", "adm_adv_menu"):
+        return await admin_panel(update, context)
+
+    # ─── بررسی دسترسی امنیتی دکمه‌های غیرفعال برای نمایندگان یا مدیران بدون دسترسی ───
+    if data in ("admin_backup", "admin_restore", "adm_instant_backup", "adm_backup_menu", "adm_backup_history"):
+        if not is_sys_admin:
+            await query.answer("⛔ این بخش فقط برای مدیریت ارشد سیستم در دسترس است.", show_alert=True)
+            return ADMIN_MENU
+
+    if data in ("admin_cards", "admin_plans"):
+        if not is_super_admin and effective_admin_role not in ("full_access", "super_admin"):
+            await query.answer("⛔ دسترسی شما به این بخش محدود شده است.", show_alert=True)
+            return ADMIN_MENU
+
+    if effective_admin_role == "finance" and (data in ("adm_adv_create_user", "adm_adv_renew_user") or data.startswith("adm_adv_cplan_") or data.startswith("adm_adv_rnw_") or data.startswith("adm_adv_rnwmode_")):
+        await query.answer("⛔ شما به عنوان مدیر مالی مجاز به صدور یا تمدید اشتراک نیستید.", show_alert=True)
+        return ADMIN_MENU
+
+    if data == "admin_cards":
+        return await show_cards_menu(update, context)
+
+    if data == "admin_plans":
+        return await show_plans_menu(update, context)
+
+    if data in ("admin_stats_btn", "res_adm_stats"):
+        return await admin_stats(update, context)
+
+    if data == "adm_backup_menu":
+        return await admin_backup_menu_handler(update, context)
+
+    if data == "adm_backup_history":
+        return await admin_backup_history_handler(update, context)
+
+    if data in ("adm_instant_backup", "admin_backup"):
+        if not is_sys_admin:
+            await query.answer("⛔ این عملیات فقط برای مدیریت ارشد سیستم مجاز است.", show_alert=True)
+            return ADMIN_MENU
+        return await admin_instant_backup_handler(update, context)
+
+    if data == "admin_restore":
+        return await admin_restore_handler(update, context)
+
+    # ─── هندلرهای مدیریت پیشرفته ارشد سامانه ───
+    if is_sys_admin:
+        if data == "adm_ai_menu" or data.startswith("ai_"):
+            from ai_bot_handlers import handle_ai_bot_callback
+            handled = await handle_ai_bot_callback(update, context, bot_type="admin", owner_id=0)
+            if handled:
+                return ADMIN_MENU
+
+        if data == "adm_adv_stats":
+            from admin_bot_admin import get_admin_advanced_stats_text
+            txt = get_admin_advanced_stats_text()
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]])
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data in ("adm_adv_payments", "adm_pay_flt_pending", "adm_pay_flt_approved"):
+            from admin_bot_admin import get_admin_payments_payload
+            flt = "approved" if data == "adm_pay_flt_approved" else "pending"
+            txt, kb = get_admin_payments_payload(flt)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_pay_dtl_"):
+            order_id = data.replace("adm_pay_dtl_", "")
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM transactions WHERE order_id=? OR id=?", (order_id, order_id))
+            tx_row = cursor.fetchone()
+            conn.close()
+            if not tx_row:
+                await query.answer("❌ سفارش یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+            tx = dict(tx_row)
+            p_text = f"🧾 **جزئیات پرداخت سفارش #{tx.get('id')}**\n\n"
+            p_text += f"👤 مشتری: `{tx.get('user_id')}` (@{tx.get('username') or 'ندارد'})\n"
+            p_text += f"📦 بسته: **{tx.get('plan_name')}**\n"
+            p_text += f"💰 مبلغ: **{tx.get('amount', 0):,} تومان**\n"
+            p_text += f"🔢 کد پیگیری/فیش: `{tx.get('tracking_code') or 'ثبت فیش'}`\n"
+            p_text += f"📅 تاریخ: {tx.get('created_at', '')[:16].replace('T', ' ')}\n"
+            o_id = tx.get("order_id")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"adm_pay_app_{o_id}", style="success"),
+                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"adm_pay_rej_{o_id}", style="danger"),
+                ],
+                [InlineKeyboardButton("🔙 بازگشت به پرداخت‌ها", callback_data="adm_adv_payments")]
+            ])
+            await query.edit_message_text(p_text, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_pay_app_") or data.startswith("adm_pay_rej_"):
+            await admin_order_pay_action_callback(update, context)
+            return ADMIN_MENU
+
+        elif data == "adm_adv_discounts":
+            from admin_bot_admin import get_admin_discounts_payload
+            txt, kb = get_admin_discounts_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_disc_create":
+            context.user_data["waiting_adm_new_discount_code"] = True
+            await query.edit_message_text(
+                "🎁 **ایجاد کد تخفیف جدید**\n\n"
+                "لطفاً متن کد تخفیف مدنظر خود را با حروف انگلیسی ارسال فرمایید (مثال: `OFF20`):\n"
+                "(برای انصراف /cancel ارسال کنید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data.startswith("adm_disc_del_"):
+            c_code = data.replace("adm_disc_del_", "")
+            db.delete_discount_code(c_code)
+            await query.answer(f"🗑️ کد تخفیف {c_code} حذف شد.", show_alert=True)
+            from admin_bot_admin import get_admin_discounts_payload
+            txt, kb = get_admin_discounts_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_adv_reports":
+            from admin_bot_admin import get_admin_reports_payload
+            txt, kb = get_admin_reports_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_adv_settings":
+            from admin_bot_admin import get_admin_settings_overview_payload
+            txt, kb = get_admin_settings_overview_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_adv_nodes":
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "adm_node_ping_all":
+            await query.answer("⚡ در حال پایش و سنجش پینگ تمامی نودها...", show_alert=False)
+            from node_monitor import NodeMonitor
+            await NodeMonitor.check_all_nodes(trigger_failover=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
+        elif data == "adm_node_sync":
+            await query.answer("🔄 در حال دریافت دامنه‌ها از هیدیفای...", show_alert=False)
+            from node_monitor import NodeMonitor
+            from hidify import HidifyClient
+            h_url = db.get_setting("hidify_panel_url") or os.getenv("HIDIFY_PANEL_URL", "")
+            h_key = db.get_setting("hidify_api_key") or os.getenv("HIDIFY_API_KEY", "")
+            h_proxy = db.get_setting("hidify_proxy_path") or os.getenv("HIDIFY_PROXY_PATH", "")
+            h_client = HidifyClient(h_url, h_key, h_proxy)
+            added = await NodeMonitor.sync_hiddify_domains(h_client)
+            await h_client.close()
+            await query.answer(f"✅ تعداد {added} دامنه جدید اضافه شد.", show_alert=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
+        elif data == "adm_node_failover_menu":
+            nodes = db.get_all_nodes(active_only=True)
+            fallback_nodes = [n for n in nodes if n.get("is_fallback") or n.get("status") == "online"]
+            if not fallback_nodes:
+                await query.answer("❌ نود جایگزین یا پشتیبان آماده‌ای برای سوییچ یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+            
+            kb_list = []
+            for src in nodes:
+                s_name = src.get("name") or src.get("host")
+                fb_id = src.get("fallback_target_id")
+                if fb_id:
+                    fb_n = db.get_node(fb_id)
+                    fb_name = fb_n.get("name") if fb_n else f"نود #{fb_id}"
+                    kb_list.append([InlineKeyboardButton(f"🔄 {s_name} ➡️ {fb_name}", callback_data=f"adm_do_failover_{src['id']}_{fb_id}")])
+                elif fallback_nodes:
+                    tgt = fallback_nodes[0]
+                    if tgt["id"] != src["id"]:
+                        kb_list.append([InlineKeyboardButton(f"🔄 {s_name} ➡️ {tgt['name']}", callback_data=f"adm_do_failover_{src['id']}_{tgt['id']}")])
+            
+            kb_list.append([InlineKeyboardButton("🔙 بازگشت به پایش نودها", callback_data="adm_adv_nodes")])
+            await query.edit_message_text(
+                "🔄 **منوی سوییچ اضطراری ترافیک (Failover)**\n\n"
+                "لطفاً نود مورد نظر جهت انتقال به سرور رزرو را انتخاب فرمایید:\n"
+                "با لمس هر گزینه، انتقال به صورت آنی و بدون قطعی اعمال می‌گردد.",
+                reply_markup=InlineKeyboardMarkup(kb_list),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data.startswith("adm_do_failover_"):
+            parts = data.replace("adm_do_failover_", "").split("_")
+            if len(parts) >= 2:
+                src_id, tgt_id = int(parts[0]), int(parts[1])
+                from node_monitor import NodeMonitor
+                res = await NodeMonitor.execute_failover(src_id, tgt_id, reason="سوییچ دستی از طریق ربات تلگرام")
+                if res.get("success"):
+                    await query.answer(f"✅ {res.get('message')}", show_alert=True)
+                else:
+                    await query.answer(f"❌ خطا: {res.get('error')}", show_alert=True)
+            from admin_bot_admin import get_admin_nodes_overview_payload
+            txt, kb = get_admin_nodes_overview_payload()
+            try:
+                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
+            return ADMIN_MENU
+
+        elif data == "adm_adv_broadcast":
+            context.user_data["waiting_adm_broadcast"] = True
+            await query.edit_message_text(
+                "📢 **ارسال پیام همگانی به کلیه کاربران سامانه**\n\n"
+                "لطفاً متن پیام مورد نظر را ارسال فرمایید:\n"
+                "(برای انصراف /cancel ارسال نمایید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "adm_adv_create_user":
+            if effective_admin_role == "finance":
+                await query.answer("⛔ شما به عنوان مدیر مالی مجاز به صدور اشتراک نیستید.", show_alert=True)
+                return ADMIN_MENU
+            plans = get_all_plans()
+            if not plans:
+                await query.answer("❌ هیچ بسته‌ای تعریف نشده است.", show_alert=True)
+                return ADMIN_MENU
+            p_text = "👤 **ساخت اشتراک مشتری جدید**\n\nلطفاً بسته مورد نظر را انتخاب فرمایید:"
+            btns = []
+            for p in plans:
+                pid = p.get("id") or p.get("plan_id")
+                pname = p.get("name") or p.get("title") or pid
+                price = p.get("price", 0)
+                btns.append([InlineKeyboardButton(f"📦 {pname} ({price:,} ت)", callback_data=f"adm_adv_cplan_{pid}")])
+            btns.append([InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(btns), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_adv_cplan_"):
+            if effective_admin_role == "finance":
+                await query.answer("⛔ شما به عنوان مدیر مالی مجاز به صدور اشتراک نیستید.", show_alert=True)
+                return ADMIN_MENU
+            plan_id = data.replace("adm_adv_cplan_", "")
+            context.user_data["adm_create_plan_id"] = plan_id
+            await query.edit_message_text(
+                f"👤 **تنظیم نام اکانت مشتری جدید**\n\n"
+                f"لطفاً نام انگلیسی دلخواه برای اکانت مشتری را ارسال فرمایید:\n"
+                f"مثال: `client_reza`\n\n"
+                f"(برای تولید خودکار نام عبارت `auto` را ارسال کنید یا /cancel برای انصراف)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "adm_adv_renew_user":
+            context.user_data["waiting_adm_search_sub"] = True
+            await query.edit_message_text(
+                "🔍 **تمدید اشتراک با جستجوی مشتری**\n\n"
+                "لطفاً نام اکانت (Account Name)، شماره تلفن، یا آیدی تلگرام مشتری را ارسال فرمایید:\n"
+                "(برای انصراف /cancel ارسال نمایید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data.startswith("adm_adv_rsub_"):
+            sub_id = int(data.replace("adm_adv_rsub_", ""))
+            sub = db.get_subscription(sub_id)
+            if not sub:
+                await query.answer("❌ اشتراک یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+            plans = get_all_plans()
+            r_name = sub.get("account_name") or f"sub_{sub_id}"
+            u_gb = round(sub.get("data_used", 0), 1)
+            l_gb = round(sub.get("data_limit", 0), 1)
+            p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
+            p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
+            p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
+            btns = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
+            for p in plans:
+                pid = p.get("id") or p.get("plan_id")
+                pname = p.get("name") or p.get("title") or pid
+                price = p.get("price", 0)
+                btns.append([InlineKeyboardButton(f"📦 {pname} ({price:,} ت)", callback_data=f"adm_adv_rnw_{sub_id}_{pid}")])
+            btns.append([InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(btns), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_act_queue_"):
+            parts = data.replace("adm_act_queue_", "").split("_")
+            q_id = int(parts[0])
+            sub_id = int(parts[1])
+            from dashboard import activate_single_queue_item
+            res = activate_single_queue_item(q_id, triggered_by="مدیر در تلگرام")
+            if res.get("success"):
+                await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
+            else:
+                err_msg = res.get("error", "خطای ناشناخته")
+                await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
+            sub = db.get_subscription(sub_id)
+            if not sub:
+                await query.edit_message_text("❌ اشتراک یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="adm_adv_menu")]]))
+                return ADMIN_MENU
+            plans = get_all_plans()
+            r_name = sub.get("account_name") or f"sub_{sub_id}"
+            u_gb = round(sub.get("data_used", 0), 1)
+            l_gb = round(sub.get("data_limit", 0), 1)
+            p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
+            p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
+            p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
+            btns = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+            p_text += "لطفاً بسته مورد نظر برای تمدید را انتخاب فرمایید:"
+            for p in plans:
+                pid = p.get("id") or p.get("plan_id")
+                pname = p.get("name") or p.get("title") or pid
+                price = p.get("price", 0)
+                btns.append([InlineKeyboardButton(f"📦 {pname} ({price:,} ت)", callback_data=f"adm_adv_rnw_{sub_id}_{pid}")])
+            btns.append([InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(btns), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_adv_rnw_"):
+            parts = data.replace("adm_adv_rnw_", "").split("_", 1)
+            sub_id = int(parts[0])
+            plan_id = parts[1]
+            sub = db.get_subscription(sub_id)
+            plans = get_all_plans()
+            plan = next((p for p in plans if str(p.get("id", "")) == str(plan_id) or str(p.get("plan_id", "")) == str(plan_id)), None)
+            if not sub or not plan:
+                await query.answer("❌ اشتراک یا بسته نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            pname = plan.get("name") or plan.get("title", "اشتراک")
+            acct_name = sub.get("account_name") or f"sub_{sub_id}"
+            price = plan.get("price", 0)
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+
+            # بررسی وضعیت فعال یا منقضی بودن اشتراک
+            is_sub_depleted = False
+            if sub.get("status") != "active":
+                is_sub_depleted = True
+            elif sub.get("data_limit", 0) > 0 and (sub.get("data_used") or 0) >= sub.get("data_limit", 0):
+                is_sub_depleted = True
+            elif sub.get("expire_date"):
+                try:
+                    exp_dt = datetime.fromisoformat(str(sub.get("expire_date")).replace("Z", ""))
+                    if exp_dt <= get_now_naive():
+                        is_sub_depleted = True
+                except Exception:
+                    pass
+
+            if is_sub_depleted:
+                status_desc = "⚠️ **وضعیت اشتراک:** منقضی شده یا حجم به پایان رسیده است.\n💡 **پیشنهاد سیستم:** به دلیل قطع بودن دسترسی، **فعال‌سازی فوری و آنی** توصیه می‌شود تا اتصال کاربر بلافاصله وصل شود."
+                buttons = [
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (پیشنهادی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                ]
+            else:
+                status_desc = "🛡️ **وضعیت اشتراک:** دارای حجم و روزهای فعال است.\n💡 **پیشنهاد سیستم:** جهت جلوگیری از سوختن روزها و حجم باقیمانده، **قرارگیری در صف تمدید** توصیه می‌شود تا در پایان دوره فعلی خودکار فعال گردد."
+                buttons = [
+                    [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (پیشنهادی - حفظ روزها)", callback_data=f"adm_adv_rnwmode_queue_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("⚡ فعال‌سازی فوری و آنی (ریست دوره فعلی)", callback_data=f"adm_adv_rnwmode_instant_{sub_id}_{plan_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data=f"adm_adv_renew_{sub_id}")]
+                ]
+
+            prompt_text = (
+                f"🔄 **انتخاب نحوه اعمال تمدید «{acct_name}»**\n\n"
+                f"📦 بسته انتخابی: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ بسته: **{price:,} تومان**\n\n"
+                f"{status_desc}\n\n"
+                f"لطفاً نحوه اعمال این تمدید را مشخص فرمایید:\n\n"
+                f"⚡ **فعال‌سازی فوری و آنی:**\n"
+                f"میزان مصرف فعلی صفر شده و حجم و تاریخ جدید بلافاصله جایگزین می‌گردد.\n\n"
+                f"⏳ **قرارگیری در صف تمدید (رزرو خودکار):**\n"
+                f"حجم و روزهای باقیمانده فعلی کاربر حفظ می‌شود و این بسته پس از پایان سرویس فعلی، به طور خودکار فعال خواهد شد."
+            )
+            await query.edit_message_text(prompt_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_adv_rnwmode_"):
+            # adm_adv_rnwmode_{mode}_{sub_id}_{plan_id}
+            sub_data = data.replace("adm_adv_rnwmode_", "")
+            parts = sub_data.split("_", 2)
+            if len(parts) < 3:
+                await query.answer("❌ درخواست نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+            mode = parts[0]
+            sub_id = int(parts[1])
+            plan_id = parts[2]
+            sub = db.get_subscription(sub_id)
+            plans = get_all_plans()
+            plan = next((p for p in plans if str(p.get("id", "")) == str(plan_id) or str(p.get("plan_id", "")) == str(plan_id)), None)
+            if not sub or not plan:
+                await query.answer("❌ اشتراک یا بسته نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+
+            # بررسی کول‌داون ضد تمدید تکراری
+            is_cooldown, remaining, cool_msg = RenewalGuard.check_cooldown(
+                sub_id, sub.get("last_renewed_at"), cooldown_seconds=30
+            )
+            if is_cooldown:
+                await query.answer(cool_msg, show_alert=True)
+                return ADMIN_MENU
+
+            # قفل ضد کلیک همزمان
+            if not RenewalGuard.acquire_lock(sub_id):
+                await query.answer("⚠️ عملیات تمدید این اشتراک در حال حاضر توسط درخواست دیگری در حال پردازش است. لطفاً چند لحظه صبر کنید.", show_alert=True)
+                return ADMIN_MENU
+
+            await query.answer("⏳ در حال پردازش تمدید...", show_alert=False)
+
+            try:
+                vol = plan.get("data_limit", 30)
+                days = plan.get("duration", 30)
+                pname = plan.get("name") or plan.get("title", "اشتراک")
+                acct_name = sub.get("account_name") or f"sub_{sub_id}"
+                price = plan.get("price", 0)
+
+                if mode == "queue":
+                    q_res = db.add_to_subscription_queue(
+                        subscription_id=sub_id,
+                        plan_id=plan_id,
+                        plan_name=pname,
+                        data_limit=float(vol),
+                        duration=int(days),
+                        cost=price,
+                        reseller_id=None,
+                        telegram_id=sub.get("telegram_id"),
+                        hidify_uuid=sub.get("hidify_uuid"),
+                        note="رزرو تمدید در صف توسط مدیریت"
+                    )
+                    q_order = q_res.get("queue_order", 1) if q_res.get("success") else 1
+                    RenewalGuard.record_successful_renewal(sub_id)
+
+                    def_acc = db.get_customer_default_account("admin", 0)
+                    if def_acc and price > 0:
+                        try:
+                            db.add_card_transaction(card_id=def_acc['id'], owner_type="admin", tx_type="deposit", amount=price, category="رزرو تمدید در صف", title=f"رزرو تمدید {acct_name} ({pname}) در صف", ref_type="subscription", ref_id=str(sub_id), actor="admin_bot")
+                        except Exception:
+                            pass
+
+                    if sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
+                        try:
+                            cust_msg = (
+                                f"⏳ **بسته تمدیدی شما در صف رزرو قرار گرفت!**\n\n"
+                                f"📦 بسته: **{pname}**\n"
+                                f"📊 حجم بسته: **{vol} گیگابایت**\n"
+                                f"⏰ مدت اعتبار: **{days} روز**\n"
+                                f"🔹 نوبت در صف: **نوبت {q_order}**\n\n"
+                                f"ℹ️ حجم و زمان باقیمانده فعلی شما محفوظ است و این بسته پس از اتمام دوره فعلی، به صورت کاملاً خودکار فعال خواهد شد."
+                            )
+                            await context.bot.send_message(chat_id=int(sub["telegram_id"]), text=cust_msg, parse_mode="Markdown")
+                        except Exception:
+                            pass
+
+                    await query.edit_message_text(
+                        f"✅ **بسته تمدیدی با موفقیت در صف رزرو قرار گرفت!**\n\n"
+                        f"👤 اشتراک: **{acct_name}**\n"
+                        f"📦 بسته رزرو شده: **{pname}** ({vol}GB - {days} روز)\n"
+                        f"⏳ نوبت در صف: **نوبت {q_order}**\n"
+                        f"💵 مبلغ: **{price:,} تومان**\n\n"
+                        f"ℹ️ ترافیک مصرفی و زمان فعلی دست‌نخورده باقی ماند و بسته در زمان مقتضی فعال خواهد شد.",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]]),
+                        parse_mode="Markdown"
+                    )
+                    return ADMIN_MENU
+
+                else:
+                    if sub.get("hidify_uuid"):
+                        try:
+                            await hidify_client.update_user(
+                                uuid=sub["hidify_uuid"],
+                                package_days=int(days),
+                                usage_limit_gb=float(vol) if vol > 0 else None,
+                                reset_usage=True
+                            )
+                        except Exception as e_ren:
+                            logger.error(f"Error renewing sub in hidify for admin: {e_ren}")
+
+                    db.update_subscription(
+                        sub_id,
+                        plan_id=plan_id,
+                        plan_name=pname,
+                        data_limit=float(vol),
+                        duration=int(days),
+                        data_used=0.0,
+                        status="active",
+                        last_renewed_at=get_now_iso(),
+                        last_lifecycle_event_at=get_now_iso()
+                    )
+                    RenewalGuard.record_successful_renewal(sub_id)
+
+                    def_acc = db.get_customer_default_account("admin", 0)
+                    if def_acc and price > 0:
+                        try:
+                            db.add_card_transaction(card_id=def_acc['id'], owner_type="admin", tx_type="deposit", amount=price, category="تمدید اشتراک", title=f"تمدید {acct_name} ({pname}) در ربات", ref_type="subscription", ref_id=str(sub_id), actor="admin_bot")
+                        except Exception:
+                            pass

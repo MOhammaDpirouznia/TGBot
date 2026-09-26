@@ -1,10 +1,65 @@
 {% extends "base.html" %}
-{% block title %}خط فرمان سیستم (SSH / Local)<script>
+{% block title %}خط فرمان سیستم (SSH / Local){% endblock %}
+
+{% block content %}
+<script>
     function toggleRemoteMode() {
         const isRemote = document.getElementById('remoteModeSwitch').checked;
         document.getElementById('remoteSettings').style.display = isRemote ? 'block' : 'none';
         document.getElementById('termPrompt').innerText = isRemote ? 'remote:~#' : 'root@local:~#';
         document.getElementById('termInput').focus();
+        document.getElementById('connStatus').style.display = 'none';
+    }
+
+    async function testConnection() {
+        const btn = document.getElementById('btnTestConn');
+        const status = document.getElementById('connStatus');
+        const host = document.getElementById('sshHost').value;
+        const port = document.getElementById('sshPort').value;
+        const user = document.getElementById('sshUser').value;
+        const pass = document.getElementById('sshPass').value;
+        
+        if (!host || !user || !pass) {
+            status.style.display = 'block';
+            status.className = 'mt-2 small fw-bold text-danger';
+            status.innerText = 'لطفاً هاست، یوزر و پسورد را وارد کنید.';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        status.style.display = 'block';
+        status.className = 'mt-2 small fw-bold text-info';
+        status.innerText = 'در حال بررسی اتصال...';
+
+        const formData = new URLSearchParams();
+        formData.append('host', host);
+        formData.append('port', port || '22');
+        formData.append('user', user);
+        formData.append('password', pass);
+
+        try {
+            const res = await fetch('/admin/api/terminal/test_connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                status.className = 'mt-2 small fw-bold text-success';
+                status.innerText = '✅ ' + data.message;
+            } else {
+                status.className = 'mt-2 small fw-bold text-danger';
+                status.innerText = '❌ خطا: ' + (data.error || 'Unknown Error');
+            }
+        } catch (e) {
+            status.className = 'mt-2 small fw-bold text-danger';
+            status.innerText = '❌ خطای شبکه در ارتباط با سرور';
+        }
+        
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug"></i>';
     }
 
     const termInput = document.getElementById('termInput');
@@ -115,9 +170,7 @@
         location.reload();
     }
 </script>
-{% endblock %}
 
-{% block content %}
 <style>
     .terminal-container {
         background-color: #0c0c0c;
@@ -217,10 +270,16 @@
                     <div class="col-md-3">
                         <input type="text" id="sshUser" class="form-control form-control-sm" placeholder="Username (e.g. root)" dir="ltr">
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <input type="password" id="sshPass" class="form-control form-control-sm" placeholder="Password (موقت، ذخیره نمی‌شود)" dir="ltr">
                     </div>
+                    <div class="col-md-1">
+                        <button type="button" class="btn btn-sm btn-primary w-100" onclick="testConnection()" id="btnTestConn" title="تست اتصال">
+                            <i class="fas fa-plug"></i>
+                        </button>
+                    </div>
                 </div>
+                <div id="connStatus" class="mt-2 small fw-bold" style="display:none;"></div>
                 <small class="text-danger mt-2 d-block"><i class="fas fa-info-circle"></i> پسورد ریموت در دیتابیس ذخیره نمی‌شود و فقط برای همین سشن معتبر است.</small>
             </div>
         </div>
@@ -240,120 +299,3 @@ Type your command and press Enter. Interactive commands (top, nano) are restrict
 
 
 {% endif %}
-<script>
-    function toggleRemoteMode() {
-        const isRemote = document.getElementById('remoteModeSwitch').checked;
-        document.getElementById('remoteSettings').style.display = isRemote ? 'block' : 'none';
-        document.getElementById('termPrompt').innerText = isRemote ? 'remote:~#' : 'root@local:~#';
-        document.getElementById('termInput').focus();
-    }
-
-    const termInput = document.getElementById('termInput');
-    const termOutput = document.getElementById('termOutput');
-    const termContainer = document.getElementById('termContainer');
-    
-    let isRunning = false;
-
-    if (termInput) {
-        termInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const cmd = this.value.trim();
-                if (cmd === '') return;
-                
-                if (cmd === 'clear') {
-                    termOutput.innerHTML = '';
-                    this.value = '';
-                    return;
-                }
-                
-                if (isRunning) return;
-                isRunning = true;
-                this.value = '';
-                
-                const prompt = document.getElementById('termPrompt').innerText;
-                termOutput.innerHTML += `\n<span class="text-white">${prompt} ${cmd}</span>\n<span class="terminal-warning">در حال اجرا...</span>`;
-                termContainer.scrollTop = termContainer.scrollHeight;
-                
-                runCommand(cmd);
-            }
-        });
-    }
-
-    async function runCommand(cmd) {
-        const isRemote = document.getElementById('remoteModeSwitch').checked;
-        const formData = new FormData();
-        formData.append('command', cmd);
-        
-        if (isRemote) {
-            formData.append('mode', 'remote');
-            formData.append('host', document.getElementById('sshHost').value);
-            formData.append('port', document.getElementById('sshPort').value);
-            formData.append('user', document.getElementById('sshUser').value);
-            formData.append('password', document.getElementById('sshPass').value);
-        } else {
-            formData.append('mode', 'local');
-        }
-
-        try {
-            const resp = await fetch("{{ url_for('admin_terminal_run') }}", {
-                method: "POST",
-                body: formData
-            });
-            const data = await resp.json();
-            
-            // Remove the 'در حال اجرا...' line
-            const lines = termOutput.innerHTML.split('\n');
-            lines.pop(); // remove last line which is the loading text
-            termOutput.innerHTML = lines.join('\n') + '\n';
-            
-            if (data.success) {
-                const safeOutput = data.output.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                termOutput.innerHTML += `<span class="terminal-success">${safeOutput}</span>\n`;
-            } else {
-                const safeError = (data.error || "Unknown Error").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                termOutput.innerHTML += `<span class="terminal-error">${safeError}</span>\n`;
-            }
-        } catch (e) {
-            const lines = termOutput.innerHTML.split('\n');
-            lines.pop();
-            termOutput.innerHTML = lines.join('\n') + '\n';
-            termOutput.innerHTML += `<span class="terminal-error">خطا در ارتباط با سرور: ${e}</span>\n`;
-        }
-        
-        isRunning = false;
-        termContainer.scrollTop = termContainer.scrollHeight;
-        document.getElementById('termInput').focus();
-    }
-
-    async function setPin() {
-        const pin = document.getElementById('newPin').value;
-        const formData = new FormData();
-        formData.append('action', 'set_pin');
-        formData.append('new_pin', pin);
-        
-        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
-        const data = await resp.json();
-        if (data.success) location.reload();
-        else alert(data.error);
-    }
-    
-    async function loginPin() {
-        const pin = document.getElementById('loginPin').value;
-        const formData = new FormData();
-        formData.append('action', 'login');
-        formData.append('pin', pin);
-        
-        const resp = await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
-        const data = await resp.json();
-        if (data.success) location.reload();
-        else alert(data.error);
-    }
-
-    async function logoutTerminal() {
-        const formData = new FormData();
-        formData.append('action', 'logout');
-        await fetch("{{ url_for('admin_terminal_auth') }}", { method: "POST", body: formData });
-        location.reload();
-    }
-</script>
-{% endblock %}
