@@ -23,14 +23,34 @@ class NodeMonitor:
         """
         تست پینگ TCP سوکت جهت سنجش دقیق در دسترس بودن نود و محاسبه تاخیر (Latency) به میلی‌ثانیه
         """
+        import urllib.parse
         clean_host = host.strip()
-        for prefix in ("https://", "http://", "vless://", "vmess://", "trojan://"):
-            if clean_host.startswith(prefix):
-                clean_host = clean_host[len(prefix):]
-        if "/" in clean_host:
-            clean_host = clean_host.split("/")[0]
-        if ":" in clean_host:
-            clean_host = clean_host.split(":")[0]
+        
+        if "://" in clean_host:
+            parsed = urllib.parse.urlparse(clean_host)
+            if parsed.hostname:
+                clean_host = parsed.hostname
+                if parsed.port:
+                    port = parsed.port
+            else:
+                clean_host = clean_host.split("://")[-1]
+                if "/" in clean_host:
+                    clean_host = clean_host.split("/")[0]
+                if "@" in clean_host:
+                    clean_host = clean_host.split("@")[-1]
+                if ":" in clean_host:
+                    port_str = clean_host.split(":")[1]
+                    if port_str.isdigit(): port = int(port_str)
+                    clean_host = clean_host.split(":")[0]
+        else:
+            if "/" in clean_host:
+                clean_host = clean_host.split("/")[0]
+            if "@" in clean_host:
+                clean_host = clean_host.split("@")[-1]
+            if ":" in clean_host:
+                port_str = clean_host.split(":")[1]
+                if port_str.isdigit(): port = int(port_str)
+                clean_host = clean_host.split(":")[0]
 
         start_time = time.perf_counter()
         try:
@@ -112,6 +132,17 @@ class NodeMonitor:
                 consecutive_fails = updated_node.get("consecutive_fails", 0)
                 auto_failover = bool(updated_node.get("auto_failover", False))
                 fallback_target_id = updated_node.get("fallback_target_id")
+                node_type = updated_node.get("node_type", "")
+
+                # هشدار تلگرامی برای کانفیگ و سایت ایران
+                if consecutive_fails == 3 and node_type in ("config_node", "iran_site"):
+                    try:
+                        from notifications import send_admin_notification
+                        type_str = "سایت/سرور ایران" if node_type == "iran_site" else "کانفیگ پروکسی"
+                        alert_msg = f"⚠️ <b>هشدار قطعی ارتباط!</b>\n\nتست ارتباط با <b>{updated_node.get('name')}</b> ({type_str}) با شکست مواجه شد.\n\n🌐 آدرس: <code>{updated_node.get('host')}</code>\n🔌 پورت: {updated_node.get('port')}"
+                        send_admin_notification(alert_msg)
+                    except Exception as e:
+                        logger.error(f"Failed to send telegram alert for node {node_id}: {e}")
 
                 if consecutive_fails >= 3 and auto_failover and fallback_target_id:
                     target_node = db.get_node(fallback_target_id)
