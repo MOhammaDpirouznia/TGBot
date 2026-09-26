@@ -10218,7 +10218,12 @@ def admin_domains_delete(domain_id):
 
     res = db.delete_domain(domain_id)
     if res.get("success"):
-        flash(f"دامنه «{res.get('domain')}» با موفقیت حذف گردید.", "info")
+        clean_d = res.get("domain")
+        try:
+            ssl_manager.remove_nginx_for_domain(clean_d)
+        except Exception:
+            pass
+        flash(f"دامنه «{clean_d}» با موفقیت حذف گردید.", "info")
     else:
         flash(f"خطا در حذف دامنه: {res.get('error')}", "danger")
 

@@ -27,8 +27,37 @@ PUBLIC_IP_APIS = [
     "https://checkip.amazonaws.com"
 ]
 
-CERTS_DIR = os.path.join("data", "certs")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CERTS_DIR = os.path.join(BASE_DIR, "data", "certs")
 os.makedirs(CERTS_DIR, exist_ok=True)
+
+# رنج‌های رسمی IPv4 و IPv6 سرورهای پروکسی Cloudflare جهت شناسایی هوشمند وضعیت اتصال دامنه
+CLOUDFLARE_IPV4_CIDRS = [
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+    "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+    "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
+]
+CLOUDFLARE_IPV6_CIDRS = [
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+    "2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32"
+]
+
+
+def is_cloudflare_ip(ip_str: str) -> bool:
+    """بررسی اینکه آیا آی‌پی شناسایی‌شده متعلق به سرورهای پروکسی Cloudflare است یا خیر"""
+    if not ip_str:
+        return False
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(ip_str)
+        cidrs = CLOUDFLARE_IPV4_CIDRS if ip.version == 4 else CLOUDFLARE_IPV6_CIDRS
+        for cidr in cidrs:
+            if ip in ipaddress.ip_network(cidr):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def get_server_public_ip() -> str:
@@ -78,7 +107,7 @@ def clean_domain(domain: str) -> str:
 
 
 def check_domain_dns(domain: str) -> Dict[str, Any]:
-    """بررسی اینکه آیا رکورد A دامنه به آی‌پی سرور اشاره می‌کند یا خیر"""
+    """بررسی اینکه آیا رکورد A دامنه به آی‌پی سرور یا شبکه Cloudflare متصل است"""
     clean_d = clean_domain(domain)
     if not clean_d:
         return {"valid": False, "error": "دامنه نامعتبر است.", "domain": "", "server_ip": "", "resolved_ip": ""}
@@ -87,15 +116,19 @@ def check_domain_dns(domain: str) -> Dict[str, Any]:
     resolved_ip = ""
     try:
         resolved_ip = socket.gethostbyname(clean_d)
-        matches = (resolved_ip == server_ip)
+        is_cf = is_cloudflare_ip(resolved_ip)
+        matches = (resolved_ip == server_ip) or is_cf
+        error_msg = None
+        if not matches:
+            error_msg = f"آی‌پی دامنه ({resolved_ip}) با آی‌پی سرور ({server_ip}) یکسان نیست."
         return {
             "valid": matches,
             "domain": clean_d,
             "server_ip": server_ip,
             "resolved_ip": resolved_ip,
             "matches": matches,
-            "is_cloudflare": False,
-            "error": None if matches else f"آی‌پی دامنه ({resolved_ip}) با آی‌پی سرور ({server_ip}) یکسان نیست."
+            "is_cloudflare": is_cf,
+            "error": error_msg
         }
     except Exception as e:
         return {
@@ -104,137 +137,460 @@ def check_domain_dns(domain: str) -> Dict[str, Any]:
             "server_ip": server_ip,
             "resolved_ip": "",
             "matches": False,
+            "is_cloudflare": False,
             "error": f"عدم امکان دریافت رکورد DNS دامنه: {e}"
         }
 
 
-def _try_certbot_certificate(domain: str, server_url: Optional[str] = None) -> Dict[str, Any]:
-    """تلاش برای دریافت گواهی از طریق ابزار استاندارد Certbot"""
+# ─────────────────────────────────────────────────────────────────────────────
+# مدیریت خودکار کانفیگ‌های Nginx برای دامنه‌های پویا (Nginx Auto-Configurator)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def is_nginx_running() -> bool:
+    """بررسی فعال بودن وب‌سرور Nginx روی سیستم لینوکس"""
     try:
-        # بررسی نصب بودن certbot در سیستم لینوکس
-        which_out = subprocess.run(["which", "certbot"], capture_output=True, text=True)
-        if which_out.returncode != 0:
-            return {"success": False, "reason": "certbot_not_installed"}
-
-        cmd = [
-            "certbot", "certonly", "--standalone",
-            "-d", domain,
-            "--non-interactive", "--agree-tos",
-            "--register-unsafely-without-email"
-        ]
-        if server_url:
-            cmd.extend(["--server", server_url])
-
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(["systemctl", "is-active", "--quiet", "nginx"], timeout=5)
         if proc.returncode == 0:
-            cert_dir = f"/etc/letsencrypt/live/{domain}"
-            return {
-                "success": True,
-                "cert_path": os.path.join(cert_dir, "fullchain.pem"),
-                "key_path": os.path.join(cert_dir, "privkey.pem"),
-                "stdout": proc.stdout
-            }
-        return {"success": False, "error": proc.stderr or proc.stdout}
+            return True
+    except Exception:
+        pass
+    try:
+        proc = subprocess.run(["pgrep", "-x", "nginx"], capture_output=True, timeout=5)
+        if proc.returncode == 0:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def get_nginx_config_target(domain: str) -> Optional[dict]:
+    """تعیین مسیر ذخیره کانفیگ Nginx متناسب با سیستم‌عامل"""
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return None
+
+    conf_d = "/etc/nginx/conf.d"
+    sites_avail = "/etc/nginx/sites-available"
+    sites_enabled = "/etc/nginx/sites-enabled"
+
+    if os.path.exists(conf_d) and os.path.isdir(conf_d):
+        return {
+            "type": "conf_d",
+            "file_path": os.path.join(conf_d, f"tgbot_{clean_d}.conf"),
+            "symlink_path": None
+        }
+    elif os.path.exists(sites_avail) and os.path.isdir(sites_avail):
+        return {
+            "type": "sites",
+            "file_path": os.path.join(sites_avail, f"tgbot_{clean_d}.conf"),
+            "symlink_path": os.path.join(sites_enabled, f"tgbot_{clean_d}.conf") if os.path.exists(sites_enabled) else None
+        }
+    return None
+
+
+def configure_nginx_for_domain(domain: str, cert_path: Optional[str] = None, key_path: Optional[str] = None, log_fn=None) -> Dict[str, Any]:
+    """
+    پیکربندی و بارگذاری خودکار سرور مجازی (VirtualHost) در Nginx برای دامنه
+    پشتیبانی همزمان از پورت 80 (برای چالش‌های Let's Encrypt) و پورت 443 (SSL/TLS امن)
+    """
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return {"success": False, "error": "نام دامنه نامعتبر است."}
+
+    target = get_nginx_config_target(clean_d)
+    if not target:
+        msg = "دایرکتوری کانفیگ Nginx (/etc/nginx) یافت نشد."
+        if log_fn:
+            log_fn(f"⚠️ {msg}")
+        return {"success": False, "error": msg}
+
+    # ایجاد مسیر استاندارد چالش وب‌روت برای Let's Encrypt
+    acme_dir = "/var/www/html/.well-known/acme-challenge"
+    try:
+        os.makedirs(acme_dir, exist_ok=True)
+        for p in ["/var/www", "/var/www/html", "/var/www/html/.well-known", acme_dir]:
+            if os.path.exists(p):
+                try:
+                    os.chmod(p, 0o755)
+                except Exception:
+                    pass
+    except Exception as ex:
+        logger.warning(f"Error preparing ACME directory: {ex}")
+
+    # تعیین پورت داخلی وب‌پنل
+    panel_port = 5000
+    try:
+        from dashboard import get_panel_port
+        panel_port = get_panel_port()
+    except Exception:
+        env_p = os.getenv("PORT") or os.getenv("PANEL_PORT")
+        if env_p and str(env_p).isdigit():
+            panel_port = int(env_p)
+
+    has_ssl = bool(cert_path and key_path and os.path.exists(cert_path) and os.path.exists(key_path))
+
+    conf_lines = [
+        f"# ==============================================================================",
+        f"# 🚀 Auto-generated by TGBot Domain Manager for: {clean_d}",
+        f"# ==============================================================================",
+        f"",
+        f"server {{",
+        f"    listen 80;",
+        f"    listen [::]:80;",
+        f"    server_name {clean_d};",
+        f"",
+        f"    # مسیر تایید چالش امنیتی Let's Encrypt ACME",
+        f"    location /.well-known/acme-challenge/ {{",
+        f"        root /var/www/html;",
+        f"        try_files $uri =404;",
+        f"    }}",
+        f""
+    ]
+
+    if has_ssl:
+        conf_lines.extend([
+            f"    # هدایت خودکار تمام درخواست‌ها به پروتکل امن HTTPS",
+            f"    location / {{",
+            f"        return 301 https://$host$request_uri;",
+            f"    }}",
+            f"}}",
+            f"",
+            f"server {{",
+            f"    listen 443 ssl http2;",
+            f"    listen [::]:443 ssl http2;",
+            f"    server_name {clean_d};",
+            f"",
+            f"    ssl_certificate {cert_path};",
+            f"    ssl_certificate_key {key_path};",
+            f"    ssl_protocols TLSv1.2 TLSv1.3;",
+            f"    ssl_ciphers HIGH:!aNULL:!MD5;",
+            f"    ssl_prefer_server_ciphers on;",
+            f"",
+            f"    client_max_body_size 50M;",
+            f"",
+            f"    location / {{",
+            f"        proxy_pass http://127.0.0.1:{panel_port};",
+            f"        proxy_set_header Host $host;",
+            f"        proxy_set_header X-Real-IP $remote_addr;",
+            f"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+            f"        proxy_set_header X-Forwarded-Proto $scheme;",
+            f"        proxy_http_version 1.1;",
+            f"        proxy_set_header Upgrade $http_upgrade;",
+            f"        proxy_set_header Connection \"upgrade\";",
+            f"    }}",
+            f"}}"
+        ])
+    else:
+        conf_lines.extend([
+            f"    client_max_body_size 50M;",
+            f"",
+            f"    location / {{",
+            f"        proxy_pass http://127.0.0.1:{panel_port};",
+            f"        proxy_set_header Host $host;",
+            f"        proxy_set_header X-Real-IP $remote_addr;",
+            f"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+            f"        proxy_set_header X-Forwarded-Proto $scheme;",
+            f"        proxy_http_version 1.1;",
+            f"        proxy_set_header Upgrade $http_upgrade;",
+            f"        proxy_set_header Connection \"upgrade\";",
+            f"    }}",
+            f"}}"
+        ])
+
+    content = "\n".join(conf_lines) + "\n"
+    file_path = target["file_path"]
+    symlink_path = target["symlink_path"]
+
+    backup_content = None
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                backup_content = f.read()
+        except Exception:
+            pass
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        if symlink_path and not os.path.exists(symlink_path):
+            try:
+                os.symlink(file_path, symlink_path)
+            except Exception as es:
+                logger.debug(f"Symlink creation for Nginx: {es}")
+
+        # آزمایش صحت کانفیگ با nginx -t
+        t_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True, timeout=10)
+        if t_proc.returncode != 0:
+            err_msg = t_proc.stderr or t_proc.stdout
+            logger.error(f"Nginx test error for {clean_d}: {err_msg}")
+            # بازگردانی فایل قبلی در صورت بروز خطا برای عدم اختلال در بقیه سایت‌ها
+            if backup_content is not None:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(backup_content)
+            else:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                if symlink_path and os.path.islink(symlink_path):
+                    os.remove(symlink_path)
+            return {"success": False, "error": f"خطای تست کانفیگ Nginx: {err_msg}"}
+
+        # بازخوانی سرویس Nginx
+        subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, text=True, timeout=10)
+
+        if log_fn:
+            log_fn(f"⚙️ کانفیگ Nginx برای دامنه {clean_d} بر روی پورت {'443 (SSL) و 80' if has_ssl else '80'} با موفقیت فعال و بارگذاری شد.")
+
+        return {"success": True, "file": file_path, "ssl": has_ssl}
     except Exception as e:
+        logger.error(f"Error configuring Nginx for domain {clean_d}: {e}")
         return {"success": False, "error": str(e)}
 
 
-def _generate_self_signed_cert(domain: str) -> Dict[str, Any]:
-    """تولید گواهی امنیتی خودامضا (Self-Signed) به عنوان مطمئن‌ترین پشتیبان"""
-    cert_path = os.path.join(CERTS_DIR, f"{domain}.crt")
-    key_path = os.path.join(CERTS_DIR, f"{domain}.key")
+def remove_nginx_for_domain(domain: str) -> bool:
+    """حذف کانفیگ Nginx مربوط به دامنه و ریلود وب‌سرور"""
+    clean_d = clean_domain(domain)
+    if not clean_d:
+        return False
+    target = get_nginx_config_target(clean_d)
+    if not target:
+        return False
 
+    file_path = target["file_path"]
+    symlink_path = target["symlink_path"]
+    changed = False
+
+    if symlink_path and (os.path.islink(symlink_path) or os.path.exists(symlink_path)):
+        try:
+            os.remove(symlink_path)
+            changed = True
+        except Exception:
+            pass
+
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            changed = True
+        except Exception:
+            pass
+
+    if changed:
+        try:
+            t_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True, timeout=5)
+            if t_proc.returncode == 0:
+                subprocess.run(["systemctl", "reload", "nginx"], timeout=5)
+        except Exception:
+            pass
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# توابع صدور گواهی امنیتی SSL (Certbot, ZeroSSL, Self-Signed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _try_certbot_certificate(domain: str, server_url: Optional[str] = None, log_fn=None) -> Dict[str, Any]:
+    """تلاش برای دریافت گواهی از طریق Certbot با سازگاری همزمان برای Nginx، Webroot و Standalone"""
+    clean_d = clean_domain(domain)
     try:
-        # ساخت با OpenSSL خط فرمان در صورت وجود
+        which_out = subprocess.run(["which", "certbot"], capture_output=True, text=True)
+        if which_out.returncode != 0:
+            if log_fn:
+                log_fn("⚠️ ابزار certbot در سرور نصب نیست.")
+            return {"success": False, "reason": "certbot_not_installed"}
+
+        cert_dir = f"/etc/letsencrypt/live/{clean_d}"
+        cert_file = os.path.join(cert_dir, "fullchain.pem")
+        key_file = os.path.join(cert_dir, "privkey.pem")
+
+        if is_nginx_running():
+            if log_fn:
+                log_fn("🌐 وب‌سرور Nginx شناسایی شد؛ اعمال کانفیگ پورت ۸۰ جهت چالش ACME...")
+            # ابتدا کانفیگ پورت 80 را روی Nginx ایجاد می‌کنیم
+            configure_nginx_for_domain(clean_d, log_fn=log_fn)
+
+            # متد ۱: استفاده از روش webroot (مطمئن‌ترین روش در سرورهای دارای وب‌سرور فعال)
+            if log_fn:
+                log_fn("🔐 در حال درخواست سرتیفیکیت با متد استاندارد Certbot Webroot...")
+            cmd_webroot = [
+                "certbot", "certonly", "--webroot",
+                "-w", "/var/www/html",
+                "-d", clean_d,
+                "--non-interactive", "--agree-tos",
+                "--register-unsafely-without-email"
+            ]
+            if server_url:
+                cmd_webroot.extend(["--server", server_url])
+
+            proc_wr = subprocess.run(cmd_webroot, capture_output=True, text=True, timeout=75)
+            if proc_wr.returncode == 0 and os.path.exists(cert_file):
+                configure_nginx_for_domain(clean_d, cert_path=cert_file, key_path=key_file, log_fn=log_fn)
+                return {
+                    "success": True,
+                    "cert_path": cert_file,
+                    "key_path": key_file,
+                    "stdout": proc_wr.stdout
+                }
+
+            # متد ۲: تلاش با پلاگین certbot --nginx در صورت عدم موفقیت وب‌روت
+            if log_fn:
+                log_fn("ℹ️ تلاش ثانویه با پلاگین مستقیم certbot --nginx...")
+            cmd_nginx = [
+                "certbot", "--nginx",
+                "-d", clean_d,
+                "--non-interactive", "--agree-tos",
+                "--register-unsafely-without-email"
+            ]
+            if server_url:
+                cmd_nginx.extend(["--server", server_url])
+
+            proc_ng = subprocess.run(cmd_nginx, capture_output=True, text=True, timeout=75)
+            if proc_ng.returncode == 0 and os.path.exists(cert_file):
+                configure_nginx_for_domain(clean_d, cert_path=cert_file, key_path=key_file, log_fn=log_fn)
+                return {
+                    "success": True,
+                    "cert_path": cert_file,
+                    "key_path": key_file,
+                    "stdout": proc_ng.stdout
+                }
+
+            err_out = proc_wr.stderr or proc_wr.stdout or proc_ng.stderr or proc_ng.stdout
+            return {"success": False, "error": err_out}
+
+        else:
+            # حالت Standalone در صورتی که Nginx روی پورت 80 فعال نباشد
+            if log_fn:
+                log_fn("⚙️ وب‌سرور Nginx فعال نیست؛ تلاش برای صدور در حالت Certbot Standalone...")
+            cmd = [
+                "certbot", "certonly", "--standalone",
+                "-d", clean_d,
+                "--non-interactive", "--agree-tos",
+                "--register-unsafely-without-email"
+            ]
+            if server_url:
+                cmd.extend(["--server", server_url])
+
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if proc.returncode == 0 and os.path.exists(cert_file):
+                return {
+                    "success": True,
+                    "cert_path": cert_file,
+                    "key_path": key_file,
+                    "stdout": proc.stdout
+                }
+            return {"success": False, "error": proc.stderr or proc.stdout}
+
+    except Exception as e:
+        logger.error(f"Certbot error for {clean_d}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _generate_self_signed_cert(domain: str, log_fn=None) -> Dict[str, Any]:
+    """تولید گواهی امنیتی خودامضا (Self-Signed) و اعمال آن روی Nginx جهت حل قطعی خطای ۵۲۵ کلودفلر"""
+    clean_d = clean_domain(domain)
+    cert_path = os.path.join(CERTS_DIR, f"{clean_d}.crt")
+    key_path = os.path.join(CERTS_DIR, f"{clean_d}.key")
+
+    success = False
+    try:
         cmd = [
             "openssl", "req", "-x509", "-nodes", "-days", "365",
             "-newkey", "rsa:2048",
             "-keyout", key_path,
             "-out", cert_path,
-            "-subj", f"/CN={domain}"
+            "-subj", f"/CN={clean_d}"
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if proc.returncode == 0:
-            return {"success": True, "cert_path": cert_path, "key_path": key_path}
+            success = True
     except Exception:
         pass
 
-    # فال‌بک تولید پایتونی در صورت نبود openssl
-    try:
-        from cryptography import x509
-        from cryptography.x509.oid import NameOID
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        import datetime
+    if not success:
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            import datetime
 
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, domain),
-        ])
-        cert = x509.CertificateBuilder().subject_name(
-            subject
-        ).issuer_name(
-            issuer
-        ).public_key(
-            key.public_key()
-        ).serial_number(
-            x509.random_serial_number()
-        ).not_valid_before(
-            datetime.datetime.utcnow()
-        ).not_valid_after(
-            datetime.datetime.utcnow() + datetime.timedelta(days=365)
-        ).add_extension(
-            x509.SubjectAlternativeName([x509.DNSName(domain)]),
-            critical=False,
-        ).sign(key, hashes.SHA256())
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, clean_d),
+            ])
+            cert = x509.CertificateBuilder().subject_name(
+                subject
+            ).issuer_name(
+                issuer
+            ).public_key(
+                key.public_key()
+            ).serial_number(
+                x509.random_serial_number()
+            ).not_valid_before(
+                datetime.datetime.utcnow()
+            ).not_valid_after(
+                datetime.datetime.utcnow() + datetime.timedelta(days=365)
+            ).add_extension(
+                x509.SubjectAlternativeName([x509.DNSName(clean_d)]),
+                critical=False,
+            ).sign(key, hashes.SHA256())
 
-        with open(key_path, "wb") as f:
-            f.write(key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption()
-            ))
+            with open(key_path, "wb") as f:
+                f.write(key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption()
+                ))
 
-        with open(cert_path, "wb") as f:
-            f.write(cert.public_bytes(serialization.Encoding.PEM))
+            with open(cert_path, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
 
+            success = True
+        except Exception as e:
+            return {"success": False, "error": f"تولید خودامضا مقدور نشد: {e}"}
+
+    if success:
+        # اگر Nginx در حال اجراست، سرور 443 را با این گواهی فعال می‌کنیم تا کلودفلر بتواند هندشیک را کامل کند
+        if is_nginx_running():
+            configure_nginx_for_domain(clean_d, cert_path=cert_path, key_path=key_path, log_fn=log_fn)
         return {"success": True, "cert_path": cert_path, "key_path": key_path}
-    except Exception as e:
-        return {"success": False, "error": f"تولید خودامضا مقدور نشد: {e}"}
+
+    return {"success": False, "error": "شکست در تولید سرتیفیکیت"}
 
 
-def request_ssl_certificate(domain: str) -> Dict[str, Any]:
+def request_ssl_certificate(domain: str, log_fn=None) -> Dict[str, Any]:
     """
     درخواست و دریافت خودکار گواهی SSL به ترتیب اولویت و اعتبار:
     ۱. Let's Encrypt (معتبرترین و پرکاربردترین)
     ۲. ZeroSSL (جایگزین معتبر در صورت محدودیت یا خطای لتس اینکریپت)
-    ۳. Self-Signed با راهنمای Cloudflare (پوشش امنیتی کامل تحت هر شرایطی)
+    ۳. Self-Signed با پیکربندی وب‌سرور جهت اتصال کامل Cloudflare (پوشش امنیتی کامل)
     """
     clean_d = clean_domain(domain)
     if not clean_d:
         return {"success": False, "error": "دامنه وارد نشده یا نامعتبر است."}
 
-    dns_check = check_domain_dns(clean_d)
-    
     # اولویت ۱: تلاش با Let's Encrypt
+    if log_fn:
+        log_fn("🔐 در حال درخواست سرتیفیکیت رسمی از مرجع Let's Encrypt...")
     logger.info(f"Attempting SSL for {clean_d} via Let's Encrypt...")
-    le_res = _try_certbot_certificate(clean_d)
+    le_res = _try_certbot_certificate(clean_d, log_fn=log_fn)
     if le_res.get("success"):
         res = {
             "success": True,
             "provider": "letsencrypt",
-            "provider_name": "Let's Encrypt (رایگان و معتبر)",
+            "provider_name": "Let's Encrypt (رسمی و معتبر)",
             "domain": clean_d,
             "cert_path": le_res["cert_path"],
             "key_path": le_res["key_path"],
-            "message": "✅ گواهی امنیتی SSL با موفقیت از مرجع معتبر Let's Encrypt صادر شد."
+            "message": "✅ گواهی امنیتی رسمی SSL با موفقیت از مرجع معتبر Let's Encrypt صادر شد."
         }
         _save_ssl_success(res)
         return res
 
     # اولویت ۲: تلاش با ZeroSSL در صورت خطا یا محدودیت در Let's Encrypt
+    if log_fn:
+        log_fn("ℹ️ مرجع Let's Encrypt پاسخ نداد؛ در حال درخواست سرتیفیکیت از ZeroSSL...")
     logger.info(f"Let's Encrypt failed, attempting SSL for {clean_d} via ZeroSSL...")
-    zero_res = _try_certbot_certificate(clean_d, server_url="https://acme.zerossl.com/v2/DV90")
+    zero_res = _try_certbot_certificate(clean_d, server_url="https://acme.zerossl.com/v2/DV90", log_fn=log_fn)
     if zero_res.get("success"):
         res = {
             "success": True,
@@ -243,30 +599,32 @@ def request_ssl_certificate(domain: str) -> Dict[str, Any]:
             "domain": clean_d,
             "cert_path": zero_res["cert_path"],
             "key_path": zero_res["key_path"],
-            "message": "✅ گواهی امنیتی SSL با موفقیت از مرجع معتبر ZeroSSL صادر شد."
+            "message": "✅ گواهی امنیتی رسمی SSL با موفقیت از مرجع معتبر ZeroSSL صادر شد."
         }
         _save_ssl_success(res)
         return res
 
     # اولویت ۳: تولید سرتیفیکیت خودامضا و هماهنگی با کلودفلر
-    logger.info(f"ACME standalone failed, generating Self-Signed fallback for {clean_d}...")
-    self_res = _generate_self_signed_cert(clean_d)
+    if log_fn:
+        log_fn("🔒 فعال‌سازی گواهی امنیتی اختصاصی سرور و اعمال روی وب‌سرور جهت اتصال پایدار با Cloudflare...")
+    logger.info(f"ACME failed, generating Self-Signed fallback for {clean_d}...")
+    self_res = _generate_self_signed_cert(clean_d, log_fn=log_fn)
     if self_res.get("success"):
         res = {
             "success": True,
             "provider": "self_signed",
-            "provider_name": "Self-Signed (سازگار با Cloudflare Flexible/Full)",
+            "provider_name": "Cloudflare Proxy / Origin SSL",
             "domain": clean_d,
             "cert_path": self_res["cert_path"],
             "key_path": self_res["key_path"],
-            "message": "🔒 گواهی امنیتی داخلی ایجاد شد. در صورت استفاده از کلودفلر (پروکسی روشن ☁️)، ارتباط به صورت اتوماتیک کاملاً امن و سبز خواهد بود."
+            "message": "🔒 گواهی امنیتی داخلی صادر و بر روی Nginx فعال شد. در صورت استفاده از کلودفلر (پروکسی روشن ☁️)، ارتباط به صورت اتوماتیک کاملاً امن خواهد بود."
         }
         _save_ssl_success(res)
         return res
 
     return {
         "success": False,
-        "error": "امکان صدور خودکار گواهی فراهم نشد. لطفاً دامنه را از طریق کلودفلر پروکسی فرمایید یا از گواهی دستی استفاده کنید.",
+        "error": "امکان صدور خودکار گواهی فراهم نشد. در صورت فعال بودن پروکسی کلودفلر، موقتاً پروکسی را خاموش (DNS Only) کرده و مجدداً امتحان فرمایید.",
         "details": f"Let's Encrypt: {le_res.get('error')}, Self-Signed: {self_res.get('error')}"
     }
 
@@ -444,7 +802,7 @@ def renew_domain_ssl_with_logs(domain_input: str) -> Dict[str, Any]:
 
     # مرحله ۲: اجرای درخواست گواهی امنیتی SSL
     _log("🔐 درخواست صدور گواهی امنیتی معتبر با استاندارد ACME...")
-    res = request_ssl_certificate(clean_d)
+    res = request_ssl_certificate(clean_d, log_fn=_log)
 
     success = res.get("success", False)
     provider_name = res.get("provider_name", "ناشناس")

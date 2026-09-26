@@ -190,12 +190,12 @@ echo -e "${BLUE}${MSG_CHECK_DEPS}${NC}"
 if [ -f /etc/debian_version ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq python3 python3-pip python3-venv git curl wget openssl certbot socat
+    apt-get install -y -qq python3 python3-pip python3-venv git curl wget openssl certbot python3-certbot-nginx socat
 elif [ -f /etc/redhat-release ]; then
     if command -v dnf &>/dev/null; then
-        dnf install -y python3 python3-pip git curl wget openssl certbot socat
+        dnf install -y python3 python3-pip git curl wget openssl certbot python3-certbot-nginx socat
     else
-        yum install -y python3 python3-pip git curl wget openssl certbot socat
+        yum install -y python3 python3-pip git curl wget openssl certbot python3-certbot-nginx socat
     fi
 else
     echo -e "${YELLOW}${MSG_WARN_DISTRO}${NC}"
