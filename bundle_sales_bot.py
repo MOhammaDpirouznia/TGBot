@@ -586,6 +586,18 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
 
+    if data == "adm_backup_menu":
+        text = (
+            "💾 <b>مدیریت پشتیبان‌گیری</b>\n\n"
+            "جهت تهیه نسخه پشتیبان کامل از دیتابیس پنل اصلی و تنظیمات پنل هیدیفای روی دکمه زیر کلیک فرمایید:"
+        )
+        buttons = [
+            [InlineKeyboardButton("⚡ تهیه فوری پشتیبان (اصلی + هیدیفای)", callback_data="adm_instant_backup")],
+            [InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="bsb_admin_menu")]
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+        return
+
     if data == "adm_instant_backup":
         await query.answer("⏳ در حال تهیه پشتیبان از هر دو پنل...", show_alert=False)
         try:

@@ -7305,7 +7305,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await admin_panel(update, context)
 
     # ─── بررسی دسترسی امنیتی دکمه‌های غیرفعال برای نمایندگان یا مدیران بدون دسترسی ───
-    if data in ("admin_backup", "admin_restore", "adm_instant_backup"):
+    if data in ("admin_backup", "admin_restore", "adm_instant_backup", "adm_backup_menu", "adm_backup_history"):
         if not is_sys_admin:
             await query.answer("⛔ این بخش فقط برای مدیریت ارشد سیستم در دسترس است.", show_alert=True)
             return ADMIN_MENU
@@ -7327,6 +7327,12 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if data in ("admin_stats_btn", "res_adm_stats"):
         return await admin_stats(update, context)
+
+    if data == "adm_backup_menu":
+        return await admin_backup_menu_handler(update, context)
+
+    if data == "adm_backup_history":
+        return await admin_backup_history_handler(update, context)
 
     if data in ("adm_instant_backup", "admin_backup"):
         if not is_sys_admin:
@@ -9900,7 +9906,10 @@ async def admin_instant_backup_handler(update: Update, context: ContextTypes.DEF
         logger.warning(f"Error logging backup records: {ex_log}")
 
     # ۴. پیام تایید نهایی و دکمه بازگشت
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💾 منوی مدیریت پشتیبان", callback_data="adm_backup_menu")],
+        [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")]
+    ])
 
     if main_sent and hiddify_sent:
         result_text = (
@@ -9936,9 +9945,97 @@ async def admin_instant_backup_handler(update: Update, context: ContextTypes.DEF
     return ADMIN_MENU
 
 
+async def admin_backup_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """منوی یکپارچه مدیریت پشتیبان‌گیری و بازیابی پایگاه داده"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    metrics = db.get_system_backup_metrics()
+    stats = db.get_backup_stats()
+
+    last_main = stats.get("last_main")
+    last_main_str = "ثبت نشده"
+    if last_main and last_main.get("created_at"):
+        last_main_str = str(last_main.get("created_at"))[:19].replace("T", " ")
+
+    last_hid = stats.get("last_hiddify")
+    last_hid_str = "ثبت نشده"
+    if last_hid and last_hid.get("created_at"):
+        last_hid_str = str(last_hid.get("created_at"))[:19].replace("T", " ")
+
+    text = (
+        "💾 <b>مرکز مدیریت پشتیبان‌گیری و بازیابی اطلاعات</b>\n\n"
+        "در این بخش می‌توانید از کل داده‌ها و تنظیمات سیستم پشتیبان تهیه نمایید "
+        "یا فایل پشتیبان قبلی (با پسوند <code>.zip</code> یا <code>.db</code>) را با امنیت بالا بازیابی کنید.\n\n"
+        "📊 <b>وضعیت کنونی سامانه:</b>\n"
+        f"• 👥 کل مشتریان: <code>{metrics.get('total_subscriptions', 0):,}</code> "
+        f"(فعال: <code>{metrics.get('active_subscriptions', 0):,}</code>)\n"
+        f"• 👤 کل کاربران تلگرام: <code>{metrics.get('total_users', 0):,}</code>\n"
+        f"• 👔 نمایندگان فعال: <code>{metrics.get('active_resellers', 0):,}</code>\n"
+        f"• 💾 حجم پایگاه داده: <code>{metrics.get('db_size_mb', 0)} MB</code>\n\n"
+        "🕒 <b>آخرین پشتیبان‌های موفق ثبت‌شده:</b>\n"
+        f"• دیتابیس اصلی: <code>{last_main_str}</code>\n"
+        f"• پنل هیدیفای: <code>{last_hid_str}</code>\n\n"
+        "گزینه مورد نظر خود را انتخاب نمایید:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("⚡ تهیه فوری پشتیبان (اصلی + هیدیفای)", callback_data="adm_instant_backup")],
+        [InlineKeyboardButton("📥 بازیابی فایل پشتیبان (Zip / DB)", callback_data="admin_restore")],
+        [InlineKeyboardButton("📂 تاریخچه فایل‌های پشتیبان سرور", callback_data="adm_backup_history")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="adm_adv_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    return ADMIN_MENU
+
+
+async def admin_backup_history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش لیست فایل‌های پشتیبان ذخیره‌شده در سرور"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    from backup import BackupManager, format_file_size
+    mgr = BackupManager()
+    backups = mgr.list_backups()[:10]
+
+    if not backups:
+        text = (
+            "📂 <b>تاریخچه فایل‌های پشتیبان سرور</b>\n\n"
+            "هنوز هیچ فایل پشتیبانی در دایرکتوری سرور ذخیره نشده است."
+        )
+    else:
+        text = "📂 <b>۱۰ فایل پشتیبان اخیر ذخیره‌شده در سرور:</b>\n\n"
+        for i, b in enumerate(backups, 1):
+            icon = "⚡" if b.get("is_hiddify") else "🛡️"
+            name = b.get("filename", "")
+            size = format_file_size(b.get("size", 0))
+            created = b.get("created", "")[:19].replace("T", " ")
+            text += f"{i}. {icon} <code>{name}</code>\n   ▫️ حجم: {size} | تاریخ: {created}\n"
+
+    keyboard = [
+        [InlineKeyboardButton("⚡ تهیه پشتیبان جدید", callback_data="adm_instant_backup")],
+        [InlineKeyboardButton("📥 بازیابی فایل پشتیبان", callback_data="admin_restore")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی پشتیبان", callback_data="adm_backup_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    return ADMIN_MENU
+
+
 async def admin_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """متد سازگاری به هندلر تهیه بکاپ فوری"""
-    return await admin_instant_backup_handler(update, context)
+    """متد سازگاری به منوی مدیریت پشتیبان"""
+    return await admin_backup_menu_handler(update, context)
 
 
 # وضعیت برای بازیابی پشتیبان
@@ -9948,22 +10045,28 @@ ADMIN_RESTORE_FILE = 90
 async def admin_restore_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """درخواست بازیابی پشتیبان"""
     query = update.callback_query
-    await query.answer()
+    if query:
+        await query.answer()
 
     text = (
-        "🔄 <b>بازیابی پشتیبان</b>\n\n"
-        "⚠️ <b>نکته مهم:</b>\n"
-        "• فایل پشتیبان دیتابیس (با پسوند <code>.zip</code> یا <code>.db</code>) را ارسال کنید\n"
-        "• اطلاعات فعلی با اطلاعات فایل بازنویسی خواهد شد\n"
-        "• یک نسخه پشتیبان امنیتی خودکار از وضعیت فعلی ذخیره می‌شود\n\n"
-        "📎 فایل پشتیبان را به صورت سند (Document) ارسال کنید:"
+        "🔄 <b>بازیابی پشتیبان پایگاه داده</b>\n\n"
+        "⚠️ <b>نکات مهم قبل از بازیابی:</b>\n"
+        "• فایل فشرده پشتیبان (<code>.zip</code>) یا فایل مستقیم دیتابیس (<code>.db</code>) را ارسال فرمایید.\n"
+        "• فایل ارسالی ابتدا اعتبارسنجی شده (بررسی سلامت SQLite) و سپس اعمال می‌گردد.\n"
+        "• یک فایل پشتیبان امنیتی خودکار از اطلاعات جاری قبل از جایگزینی ذخیره می‌شود.\n"
+        "• پس از بازیابی، تغییرات ساختاری و همگام‌سازی به صورت خودکار اعمال می‌گردد.\n\n"
+        "📎 لطفاً فایل پشتیبان را به صورت سند (Document) در همین چت ارسال نمایید:"
     )
 
     keyboard = [
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back_menu")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی پشتیبان", callback_data="adm_backup_menu")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="adm_adv_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return ADMIN_RESTORE_FILE
 
 
@@ -9971,8 +10074,13 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
     """پردازش فایل پشتیبان ارسال شده"""
     user = update.effective_user
 
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ شما ادمین نیستید!")
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    admin_mgr = db.get_admin_manager_by_telegram_id(user.id)
+    is_admin_mgr = bool(admin_mgr and admin_mgr.get("bot_access"))
+    is_sys_admin = is_super_admin or is_admin_mgr
+
+    if not is_sys_admin:
+        await update.message.reply_text("❌ شما دسترسی لازم برای بازیابی پایگاه داده را ندارید!")
         return ConversationHandler.END
 
     document = update.message.document
@@ -9985,58 +10093,60 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
     valid_exts = ('.db', '.zip', '.sqlite', '.sqlite3')
     if not any(fname.endswith(ext) for ext in valid_exts):
         await update.message.reply_text(
-            "❌ فایل نامعتبر است!\n\n"
-            "فقط فایل‌های پشتیبان معتبر با پسوند .zip یا .db پذیرفته می‌شوند."
+            "❌ <b>فرمت فایل نامعتبر است!</b>\n\n"
+            "فقط فایل‌های پشتیبان معتبر با پسوند <code>.zip</code> یا <code>.db</code> پذیرفته می‌شوند.",
+            parse_mode="HTML"
         )
         return ADMIN_RESTORE_FILE
 
-    await update.message.reply_text("⏳ در حال دریافت و بازیابی پشتیبان...")
+    status_msg = await update.message.reply_text("⏳ در حال دریافت و اعتبارسنجی فایل پشتیبان...")
 
     try:
-        # دانلود فایل با حفظ پسوند واقعی جهت استخراج صحیح زیپ
+        from backup import BACKUP_DIR, BackupManager
         file = await document.get_file()
         file_ext = Path(document.file_name).suffix.lower() if document.file_name else ".db"
         if file_ext not in valid_exts:
             file_ext = ".db"
-        backup_path = Path("backups") / f"restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}{file_ext}"
+        backup_path = BACKUP_DIR / f"restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}{file_ext}"
         backup_path.parent.mkdir(parents=True, exist_ok=True)
         await file.download_to_drive(str(backup_path))
 
-        # بازیابی
+        await status_msg.edit_text("⏳ فایل دریافت شد. در حال اعتبارسنجی و بازیابی پایگاه داده...")
+
+        # بازیابی امن در پس‌زمینه
         backup_mgr = BackupManager()
-        result = backup_mgr.restore_backup(str(backup_path))
+        result = await asyncio.to_thread(backup_mgr.restore_backup, str(backup_path))
 
         if result.get("success"):
-            await update.message.reply_text(
-                f"✅ **بازیابی با موفقیت انجام شد!**\n\n"
-                f"📁 فایل بازیابی شده: `{document.file_name}`\n"
-                f"💾 پشتیبان قبلی: `{result.get('pre_restore_backup', 'نامشخص')}`\n\n"
-                f"🔄 دیتابیس با موفقیت بروزرسانی و همگام گردید.",
-                parse_mode="Markdown"
+            pre_file = Path(result.get('pre_restore_backup', '')).name
+            await status_msg.edit_text(
+                f"✅ <b>پایگاه داده با موفقیت بازیابی و بروزرسانی شد!</b>\n\n"
+                f"📁 <b>فایل بازیابی‌شده:</b> <code>{document.file_name}</code>\n"
+                f"🛡️ <b>نسخه پشتیبان ایمنی قبل از بازیابی:</b> <code>{pre_file}</code>\n\n"
+                f"🔄 ساختار جداول با موفقیت بروزرسانی و کانفیگ‌ها همگام‌سازی شدند.",
+                parse_mode="HTML"
             )
         else:
-            await update.message.reply_text(
-                f"❌ خطا در بازیابی دیتابیس:\n{result.get('error', 'نامشخص')}"
+            await status_msg.edit_text(
+                f"❌ <b>خطا در بازیابی پایگاه داده:</b>\n\n<code>{result.get('error', 'نامشخص')}</code>",
+                parse_mode="HTML"
             )
 
     except Exception as e:
         logger.error(f"Error restoring backup: {e}", exc_info=True)
-        await update.message.reply_text(
-            f"❌ خطا در پردازش فایل:\n{str(e)}"
+        await status_msg.edit_text(
+            f"❌ <b>خطا در پردازش و ذخیره‌سازی فایل:</b>\n\n<code>{str(e)}</code>",
+            parse_mode="HTML"
         )
 
-    # بازگشت به پنل مدیریت
+    # دکمه‌های بازگشت
     keyboard = [
-        [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-        [InlineKeyboardButton("📦 مدیریت بسته‌ها", callback_data="admin_plans")],
-        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
-        [InlineKeyboardButton("💾 تهیه فوری بکاپ (اصلی + هیدیفای)", callback_data="adm_instant_backup")],
-        [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
+        [InlineKeyboardButton("💾 منوی مدیریت پشتیبان", callback_data="adm_backup_menu")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="adm_adv_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🔧 پنل مدیریت",
+        "🔧 جهت ادامه یکی از گزینه‌های زیر را انتخاب نمایید:",
         reply_markup=reply_markup,
     )
     return ADMIN_MENU
@@ -10575,6 +10685,8 @@ def main():
             ] + main_menu_handlers,
             ADMIN_RESTORE_FILE: [
                 MessageHandler(filters.Document.ALL, handle_restore_file),
+                CallbackQueryHandler(admin_backup_menu_handler, pattern="^adm_backup_menu$"),
+                CallbackQueryHandler(admin_panel, pattern="^adm_adv_menu$"),
                 CallbackQueryHandler(admin_menu_handler, pattern="^admin_back_menu$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
             ] + main_menu_handlers,

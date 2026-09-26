@@ -248,7 +248,22 @@ class BackupManager:
             current_backup = BACKUP_DIR / f"pre_restore_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
             target_db = Path(self.db.db_path)
             if target_db.exists():
+                try:
+                    conn_pre = sqlite3.connect(str(target_db))
+                    conn_pre.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    conn_pre.close()
+                except Exception:
+                    pass
                 shutil.copy2(target_db, current_backup)
+
+            # پاک‌سازی فایل‌های جانبی WAL و SHM برای جلوگیری از تداخل تراکنش‌های باقیمانده
+            for extra_suffix in ("-wal", "-shm"):
+                wal_extra = target_db.with_name(target_db.name + extra_suffix)
+                if wal_extra.exists():
+                    try:
+                        wal_extra.unlink()
+                    except Exception:
+                        pass
 
             # کپی فایل دیتابیس
             shutil.copy2(actual_db_file, target_db)
