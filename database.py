@@ -26,6 +26,9 @@ from session_analyzer import parse_user_agent_details
 
 logger = logging.getLogger(__name__)
 
+# جلوگیری از قفل شدن دیتابیس در لودهای همزمان با کش کردن آخرین زمان بروزرسانی هوشمند اشتراک‌ها
+_last_refresh_subscriptions_time = 0
+
 # کش سبک ۶۰ ثانیه‌ای برای دامنه‌های اختصاصی نمایندگان جهت جلوگیری از کوئری تکراری دیتابیس در هر درخواست
 _reseller_domain_cache: Dict[str, Any] = {}
 
@@ -2791,6 +2794,13 @@ class Database:
         ۱. صفر کردن آنلاین بودن برای اشتراک‌هایی که اتصال اخیر (بیش از ۱۰ دقیقه) نداشته‌اند
         ۲. بروزرسانی وضعیت اشتراک‌های منقضی‌شده بر اساس تاریخ انقضا یا حجم مصرفی
         """
+        global _last_refresh_subscriptions_time
+        now = time.time()
+        # جلوگیری از قفل شدن و کندی شدید (مخصوصاً برای مشتریان زیاد) با لیمیت کردن به هر ۶۰ ثانیه
+        if now - _last_refresh_subscriptions_time < 60:
+            return {"updated_online": 0, "updated_expired": 0, "cached": True}
+        _last_refresh_subscriptions_time = now
+
         conn = self.get_connection()
         cursor = conn.cursor()
         updated_online = 0
